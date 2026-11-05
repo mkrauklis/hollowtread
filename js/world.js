@@ -13,8 +13,8 @@ const PLAYER_R = 0.4;
 const GRAVITY = -22;
 const JUMP_V = 9.6;
 const PAD_JUMP_V = 15;
-const WALK_SPEED = 4.2;
-const RUN_SPEED = 6.4;
+const WALK_SPEED = 8.4;
+const RUN_SPEED = 12.8;
 const SAFE_R = 20;          // monsters can never come closer to spawn than this
 
 const PLATFORM_H = 3.2;
@@ -123,7 +123,7 @@ function makeGrainTexture({ size = 32, dark = 150, light = 255, repeat = 6, blot
 const woodMat = new THREE.MeshStandardMaterial({ color: 0x4e3a26, roughness: 0.95, map: makeGrainTexture({ dark: 140, light: 235, repeat: 7, blotch: 4 }) });
 const woodDarkMat = new THREE.MeshStandardMaterial({ color: 0x241b12, roughness: 1, map: makeGrainTexture({ dark: 110, light: 220, repeat: 5, blotch: 3 }) });
 const leafMat = new THREE.MeshStandardMaterial({ color: 0x15210f, roughness: 1, map: makeGrainTexture({ dark: 120, light: 255, repeat: 6, blotch: 2 }) });
-const groundMat = new THREE.MeshStandardMaterial({ color: 0x0d140c, roughness: 1, map: makeGrainTexture({ dark: 90, light: 255, repeat: 48, blotch: 2 }) });
+const groundMat = new THREE.MeshStandardMaterial({ color: 0x24401c, roughness: 1, map: makeGrainTexture({ dark: 90, light: 255, repeat: 48, blotch: 2 }) });
 const trunkMat = new THREE.MeshStandardMaterial({ color: 0x1c140c, roughness: 1, map: makeGrainTexture({ dark: 100, light: 230, repeat: 8, blotch: 3 }) });
 const padMat = new THREE.MeshStandardMaterial({ color: 0x1a3a3a, emissive: 0x2fd6c4, emissiveIntensity: 0.7, roughness: 0.6 });
 
@@ -131,13 +131,16 @@ const padMat = new THREE.MeshStandardMaterial({ color: 0x1a3a3a, emissive: 0x2fd
 /* Flat plateau on the treehouse, a ramp down from it, gently rolling
  * hills everywhere else. Trees/monsters/pads all sit on this surface. */
 
+// Pushed well out past the treehouse/ramp (distance-to-radius ratio kept
+// above ~2.5) so these being "giant" doesn't bulge the ground up under the
+// safe zone -- their footprint stays out where the forest actually is.
 const hills = [
-  { x: 30, z: 0, amp: 3.2, r: 14 },
-  { x: -34, z: 18, amp: 3.8, r: 16 },
-  { x: 10, z: 46, amp: 2.6, r: 12 },
-  { x: -18, z: 50, amp: 4.2, r: 15 },
-  { x: 42, z: 38, amp: 3, r: 13 },
-  { x: -40, z: -8, amp: 2.4, r: 11 },
+  { x: 55, z: 0, amp: 16, r: 22 },
+  { x: -60, z: 28, amp: 20, r: 24 },
+  { x: 18, z: 75, amp: 15, r: 20 },
+  { x: -30, z: 80, amp: 22, r: 26 },
+  { x: 65, z: 58, amp: 18, r: 24 },
+  { x: -62, z: -12, amp: 13, r: 20 },
 ];
 
 function baseHillHeight(x, z) {
@@ -150,7 +153,6 @@ function baseHillHeight(x, z) {
 }
 
 function groundHeight(x, z) {
-  const onRamp = Math.abs(x) <= RAMP_HALF_W && z >= -RAMP_Z1 - 0 && z <= RAMP_Z1 && z >= RAMP_Z0 * -1;
   // Ramp runs along -z (south face of the platform, toward the open forest).
   if (Math.abs(x) <= RAMP_HALF_W && z <= -RAMP_Z0 && z >= -RAMP_Z1) {
     const t = (-z - RAMP_Z0) / (RAMP_Z1 - RAMP_Z0); // 0 at platform edge, 1 at ground
@@ -160,6 +162,36 @@ function groundHeight(x, z) {
     return PLATFORM_H;
   }
   return baseHillHeight(x, z);
+}
+
+// The actual rendered ground — groundHeight() above only ever drove
+// collision/placement math; without a mesh that follows it, the forest
+// floor was invisible (void) the instant you stepped off the deck.
+const GROUND_EXTENT = 135;
+const GROUND_SEGMENTS = 135;
+const groundGeo = new THREE.PlaneGeometry(GROUND_EXTENT * 2, GROUND_EXTENT * 2, GROUND_SEGMENTS, GROUND_SEGMENTS);
+groundGeo.rotateX(-Math.PI / 2);
+{
+  const pos = groundGeo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    pos.setY(i, baseHillHeight(pos.getX(i), pos.getZ(i)));
+  }
+  pos.needsUpdate = true;
+  groundGeo.computeVertexNormals();
+}
+scene.add(new THREE.Mesh(groundGeo, groundMat));
+
+// The ramp's own slanted surface (collision already follows groundHeight's
+// lerp through this span; this box just gives it something visible).
+{
+  const rampStart = new THREE.Vector3(0, PLATFORM_H, -RAMP_Z0);
+  const rampEnd = new THREE.Vector3(0, 0, -RAMP_Z1);
+  const rampDir = new THREE.Vector3().subVectors(rampEnd, rampStart);
+  const rampLen = rampDir.length();
+  const rampMesh = new THREE.Mesh(new THREE.BoxGeometry(RAMP_HALF_W * 2, 0.3, rampLen), woodMat);
+  rampMesh.position.copy(rampStart).addScaledVector(rampDir, 0.5);
+  rampMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), rampDir.clone().normalize());
+  scene.add(rampMesh);
 }
 
 /* ---------------- obstacle colliders (trees + pedestals) ---------------- */
@@ -179,6 +211,24 @@ function collidesAt(x, z) {
         z + PLAYER_R > b.min.z && z - PLAYER_R < b.max.z) return true;
   }
   return false;
+}
+
+// A closed perimeter wall so the forest has an actual edge instead of
+// trailing off into the ground mesh's own boundary. Sits well outside
+// every hill/prop/monster placement, so nothing pokes through it.
+{
+  const WALL_R = 120;
+  const wallMat2 = new THREE.MeshStandardMaterial({ color: 0x15171c, roughness: 1, map: makeGrainTexture({ dark: 70, light: 190, repeat: 40, blotch: 3 }) });
+  function boundaryWall(x0, x1, z0, z1) {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 12, z1 - z0), wallMat2);
+    mesh.position.set((x0 + x1) / 2, 6, (z0 + z1) / 2);
+    scene.add(mesh);
+    boxColliders.push(new THREE.Box3(new THREE.Vector3(x0, 0, z0), new THREE.Vector3(x1, 12, z1)));
+  }
+  boundaryWall(-WALL_R - 1, -WALL_R + 1, -WALL_R - 1, WALL_R + 1); // west
+  boundaryWall(WALL_R - 1, WALL_R + 1, -WALL_R - 1, WALL_R + 1);   // east
+  boundaryWall(-WALL_R - 1, WALL_R + 1, -WALL_R - 1, -WALL_R + 1); // south
+  boundaryWall(-WALL_R - 1, WALL_R + 1, WALL_R - 1, WALL_R + 1);   // north
 }
 
 /* ---------------- the treehouse (spawn, safe zone) ---------------- */
@@ -259,46 +309,62 @@ function createChimpModel({
     color: bodyColor, emissive: bodyEmissive, emissiveIntensity: bodyEmissiveIntensity, roughness,
   });
 
-  const torsoY = torsoLen / 2 + 0.15;
-  const torso = new THREE.Mesh(new THREE.ConeGeometry(0.38, torsoLen, 8), mat);
-  torso.position.y = torsoY;
+  // Torso: a lean ape silhouette (a squashed sphere, not a cone) tapering
+  // down to nothing instead of legs. Low segment counts + an oversized
+  // round head is the Gorilla-Tag-ish, simple-low-poly-avatar look.
+  const torsoScaleY = torsoLen * 0.75;
+  const torsoHalfH = 0.32 * torsoScaleY;
+  const torso = new THREE.Mesh(new THREE.SphereGeometry(0.32, 7, 6), mat);
+  torso.scale.set(0.95, torsoScaleY, 0.85);
+  torso.position.y = torsoHalfH + 0.15;
   g.add(torso);
 
-  const headY = torsoY + torsoLen / 2 + 0.26 * headScale;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.34 * headScale, 10, 10), mat);
+  const headY = torso.position.y + torsoHalfH + 0.3 * headScale;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.38 * headScale, 8, 7), mat);
   head.position.y = headY;
   g.add(head);
 
+  // Muzzle + ears are what actually read as "chimp" instead of "blob".
+  const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.17 * headScale, 6, 5), mat);
+  muzzle.scale.set(1, 0.75, 1.2);
+  muzzle.position.set(0, headY - 0.1 * headScale, 0.32 * headScale);
+  g.add(muzzle);
+
   for (const side of [-1, 1]) {
-    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, armLen, 4, 8), mat);
-    arm.position.set(side * 0.4, torsoY + torsoLen * 0.25, 0.04);
-    arm.rotation.z = side * 0.55;
-    g.add(arm);
+    const ear = new THREE.Mesh(new THREE.SphereGeometry(0.1 * headScale, 6, 5), mat);
+    ear.scale.set(0.55, 1, 0.35);
+    ear.position.set(side * 0.34 * headScale, headY + 0.03 * headScale, -0.03);
+    g.add(ear);
   }
 
+  // Long ape arms, each ending in a hand so the limb actually looks jointed —
+  // anchored to the torso's shoulder line, well below the head.
+  const shoulderY = torso.position.y + torsoHalfH * 0.2;
+  for (const side of [-1, 1]) {
+    const armAngle = side * 0.6;
+    const shoulder = new THREE.Vector3(side * 0.34, shoulderY, 0.05);
+    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.11, armLen, 4, 6), mat);
+    arm.position.copy(shoulder);
+    arm.rotation.z = armAngle;
+    g.add(arm);
+
+    const handOffset = new THREE.Vector3(Math.sin(armAngle), -Math.cos(armAngle), 0).multiplyScalar(armLen / 2 + 0.06);
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.11, 6, 5), mat);
+    hand.position.copy(shoulder).add(handOffset);
+    g.add(hand);
+  }
+
+  // Pushed out past the head sphere's own radius (0.38*headScale) so they
+  // actually protrude and read as eyes instead of being buried inside it.
   const eyeMat = new THREE.MeshStandardMaterial({ color: eyeColor, emissive: eyeColor, emissiveIntensity: eyeEmissiveIntensity });
   for (const side of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.05 * headScale, 8, 8), eyeMat);
-    eye.position.set(side * 0.13 * headScale, headY, 0.27 * headScale);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.065 * headScale, 7, 6), eyeMat);
+    eye.position.set(side * 0.17 * headScale, headY + 0.03 * headScale, 0.37 * headScale);
     g.add(eye);
   }
 
   g.userData.hoverHeight = 0.15; // feet (or lack of them) float this far off the ground
   return g;
-}
-
-function createStalkerModel() {
-  return createChimpModel({ bodyColor: 0x050505, eyeColor: 0xcc2a22, eyeEmissiveIntensity: 3, torsoLen: 1.1 });
-}
-
-function createLooperModel() {
-  const g = createChimpModel({ bodyColor: 0x5a5e57, eyeColor: 0xcfe8ff, torsoLen: 0.7, headScale: 0.9, armLen: 0.4 });
-  g.userData.hoverHeight = 0.08; // hugs the ground, no legs to speak of
-  return g;
-}
-
-function createTreewatcherModel() {
-  return createChimpModel({ bodyColor: 0x2c2a22, eyeColor: 0xe7e3c8, eyeEmissiveIntensity: 2, torsoLen: 1.9, headScale: 0.85, armLen: 0.6 });
 }
 
 function createSupersonicModel() {
@@ -307,6 +373,18 @@ function createSupersonicModel() {
     eyeColor: 0xffffff, eyeEmissiveIntensity: 3.5,
     torsoLen: 2.4, headScale: 0.75, armLen: 0.6, roughness: 0.5,
   });
+}
+
+function createHotCheetoModel() {
+  // Same base proportions as Supersonic, just scaled up 4x as a whole --
+  // keeps it the same "shape", not a different (and re-tuned) silhouette.
+  const g = createChimpModel({
+    bodyColor: 0x5c1220, eyeColor: 0xff0033, eyeEmissiveIntensity: 4,
+    torsoLen: 2.4, headScale: 0.75, armLen: 0.6, roughness: 0.75,
+  });
+  g.scale.setScalar(4);
+  g.userData.hoverHeight = 0.15 * 4;
+  return g;
 }
 
 function makeLabel(text) {
@@ -327,10 +405,8 @@ function makeLabel(text) {
 /* ---------------- bestiary pedestals (inside the alcove, purely decorative) ---------------- */
 
 const bestiary = [
-  { name: 'Stalker', make: createStalkerModel, x: -5.3, z: 3.0 },
-  { name: 'Looper', make: createLooperModel, x: -2.9, z: 3.0 },
-  { name: 'Treewatcher', make: createTreewatcherModel, x: -5.3, z: 4.6 },
-  { name: 'Supersonic', make: createSupersonicModel, x: -2.9, z: 4.6 },
+  { name: 'Supersonic', make: createSupersonicModel, x: -4.9, z: 4 },
+  { name: 'Hot Cheeto', make: createHotCheetoModel, x: -3.1, z: 4 },
 ];
 const spinningMinis = [];
 for (const entry of bestiary) {
@@ -405,6 +481,63 @@ while (treesPlaced < 70) {
   treesPlaced++;
 }
 
+/* ---------------- autumn clutter: pumpkins, leaf piles, scarecrows ---------------- */
+
+const pumpkinMat = new THREE.MeshStandardMaterial({ color: 0xd9711f, emissive: 0xff7a1a, emissiveIntensity: 0.35, roughness: 0.8 });
+function makePumpkin(x, z) {
+  const h = groundHeight(x, z);
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 8), pumpkinMat);
+  body.scale.set(1, 0.82, 1);
+  body.position.set(x, h + 0.35, z);
+  scene.add(body);
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.09, 0.22, 6), woodDarkMat);
+  stem.position.set(x, h + 0.68, z);
+  scene.add(stem);
+}
+
+const leafPileMat = new THREE.MeshStandardMaterial({ color: 0x8a4a1f, roughness: 1, map: makeGrainTexture({ dark: 90, light: 230, repeat: 3, blotch: 2 }) });
+function makeLeafPile(x, z) {
+  const h = groundHeight(x, z);
+  const pile = new THREE.Mesh(new THREE.SphereGeometry(0.55 + rand() * 0.3, 8, 6), leafPileMat);
+  pile.scale.set(1, 0.25, 0.85);
+  pile.position.set(x, h + 0.12, z);
+  pile.rotation.y = rand() * Math.PI;
+  scene.add(pile);
+}
+
+const burlapMat = new THREE.MeshStandardMaterial({ color: 0xb79a65, roughness: 1, map: makeGrainTexture({ dark: 110, light: 230, repeat: 3, blotch: 2 }) });
+function makeScarecrow(x, z) {
+  const h = groundHeight(x, z);
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 2.4, 6), woodDarkMat);
+  post.position.set(x, h + 1.2, z);
+  scene.add(post);
+  const crossbeam = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.6, 6), woodDarkMat);
+  crossbeam.rotation.z = Math.PI / 2;
+  crossbeam.position.set(x, h + 1.7, z);
+  scene.add(crossbeam);
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.26, 0.9, 8), burlapMat);
+  torso.position.set(x, h + 1.5, z);
+  scene.add(torso);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 8), burlapMat);
+  head.position.set(x, h + 2.15, z);
+  scene.add(head);
+  addCircleCollider(x, z, 0.3);
+}
+
+function scatterProp(count, make) {
+  let placed = 0;
+  while (placed < count) {
+    const x = (rand() - 0.5) * 150;
+    const z = (rand() - 0.5) * 150 + 10;
+    if (isInSafeZone(x, z)) continue;
+    make(x, z);
+    placed++;
+  }
+}
+scatterProp(16, makePumpkin);
+scatterProp(12, makeLeafPile);
+scatterProp(9, makeScarecrow);
+
 /* ---------------- jump pads ---------------- */
 
 const jumpPads = [
@@ -449,109 +582,9 @@ function clampToSafeZone(pos) {
   }
 }
 
-const stalker = {
-  group: createStalkerModel(),
-  route: [
-    new THREE.Vector3(30, 0, 0), new THREE.Vector3(30, 0, 18), new THREE.Vector3(44, 0, 10),
-    new THREE.Vector3(44, 0, -8), new THREE.Vector3(26, 0, -14),
-  ],
-  idx: 0, alert: false, alertTimer: 0, catchR: 1.1,
-};
-scene.add(stalker.group);
-stalker.group.position.copy(stalker.route[0]);
-
-const looper = {
-  group: createLooperModel(),
-  route: [
-    new THREE.Vector3(-34, 0, 18), new THREE.Vector3(-44, 0, 26), new THREE.Vector3(-24, 0, 30),
-    new THREE.Vector3(-34, 0, 10),
-  ],
-  idx: 0, alert: false, alertTimer: 0, catchR: 1.0,
-};
-scene.add(looper.group);
-looper.group.position.copy(looper.route[0]);
-
-const treewatcher = {
-  group: createTreewatcherModel(),
-  home: new THREE.Vector3(10, 0, 46),
-  catchR: 1.1,
-};
-scene.add(treewatcher.group);
-treewatcher.group.position.copy(treewatcher.home);
-
-function tickStalker(dt, playerPos) {
-  const m = stalker;
-  const toPlayer = new THREE.Vector3().subVectors(playerPos, m.group.position);
-  const dist = toPlayer.length();
-  const camForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-  const dirToM = new THREE.Vector3().subVectors(m.group.position, playerPos).normalize();
-  const seen = dist < 16 && camForward.dot(dirToM) > 0.9;
-
-  if (dist < 5 || seen) { m.alert = true; m.alertTimer = 4.5; }
-  else if (m.alertTimer > 0) m.alertTimer -= dt;
-  else m.alert = false;
-
-  const speed = m.alert ? 5.4 : 1.8;
-  if (m.alert && dist > 0.01) {
-    m.group.position.add(toPlayer.normalize().multiplyScalar(speed * dt));
-  } else if (!m.alert) {
-    const target = m.route[m.idx];
-    const toTarget = new THREE.Vector3().subVectors(target, m.group.position);
-    if (toTarget.length() < 1) m.idx = (m.idx + 1) % m.route.length;
-    else m.group.position.add(toTarget.normalize().multiplyScalar(speed * dt));
-  }
-  clampToSafeZone(m.group.position);
-  m.group.position.y = groundHeight(m.group.position.x, m.group.position.z) + (m.group.userData.hoverHeight || 0);
-  m.group.lookAt(playerPos.x, m.group.position.y, playerPos.z);
-  return { dist, danger: m.alert ? Math.max(0, 1 - dist / 7) : 0, catchR: m.catchR, type: 'stalker' };
-}
-
-function tickLooper(dt, playerPos) {
-  const m = looper;
-  const toPlayer = new THREE.Vector3().subVectors(playerPos, m.group.position);
-  const dist = toPlayer.length();
-  if (dist < 9) { m.alert = true; m.alertTimer = 3.5; }
-  else if (m.alertTimer > 0) m.alertTimer -= dt;
-  else m.alert = false;
-
-  const speed = m.alert ? 6.6 : 2.4;
-  if (m.alert && dist > 0.01) {
-    m.group.position.add(toPlayer.normalize().multiplyScalar(speed * dt));
-  } else if (!m.alert) {
-    const target = m.route[m.idx];
-    const toTarget = new THREE.Vector3().subVectors(target, m.group.position);
-    if (toTarget.length() < 1) m.idx = (m.idx + 1) % m.route.length;
-    else m.group.position.add(toTarget.normalize().multiplyScalar(speed * dt));
-  }
-  clampToSafeZone(m.group.position);
-  m.group.position.y = groundHeight(m.group.position.x, m.group.position.z) + (m.group.userData.hoverHeight || 0);
-  m.group.lookAt(playerPos.x, m.group.position.y + 0.3, playerPos.z);
-  return { dist, danger: m.alert ? Math.max(0, 1 - dist / 5) : 0, catchR: m.catchR, type: 'looper' };
-}
-
-function tickTreewatcher(dt, playerPos) {
-  const m = treewatcher;
-  const toPlayer = new THREE.Vector3().subVectors(playerPos, m.group.position);
-  const dist = toPlayer.length();
-  const camForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-  const dirToM = new THREE.Vector3().subVectors(m.group.position, playerPos).normalize();
-  const watched = dist < 30 && camForward.dot(dirToM) > 0.86;
-
-  if (!watched && dist > 0.01) {
-    m.group.position.add(toPlayer.normalize().multiplyScalar(1.1 * dt));
-  }
-  clampToSafeZone(m.group.position);
-  m.group.position.y = groundHeight(m.group.position.x, m.group.position.z) + (m.group.userData.hoverHeight || 0);
-  if (watched) m.group.lookAt(playerPos.x, m.group.position.y + 0.8, playerPos.z);
-  return { dist, danger: !watched ? Math.max(0, 1 - dist / 10) : 0, catchR: m.catchR, type: 'treewatcher' };
-}
-
 const supersonic = {
   group: createSupersonicModel(),
-  route: [
-    new THREE.Vector3(26, 0, -24), new THREE.Vector3(40, 0, -30), new THREE.Vector3(34, 0, -40),
-    new THREE.Vector3(20, 0, -34),
-  ],
+  route: [new THREE.Vector3(70, 0, -65)], // southeast corner
   idx: 0, alert: false, alertTimer: 0, catchR: 1.2,
 };
 scene.add(supersonic.group);
@@ -573,20 +606,45 @@ function tickSupersonic(dt, playerPos) {
   else if (m.alertTimer > 0) m.alertTimer -= dt;
   else m.alert = false;
 
-  const speed = m.alert ? SUPERSONIC_SPEED : 2.6;
+  // Stays put until alert -- no patrol wandering.
   if (m.alert && dist > 0.01) {
-    m.group.position.add(toPlayer.normalize().multiplyScalar(speed * dt));
-  } else if (!m.alert) {
-    const target = m.route[m.idx];
-    const toTarget = new THREE.Vector3().subVectors(target, m.group.position);
-    if (toTarget.length() < 1) m.idx = (m.idx + 1) % m.route.length;
-    else m.group.position.add(toTarget.normalize().multiplyScalar(speed * dt));
+    m.group.position.add(toPlayer.normalize().multiplyScalar(SUPERSONIC_SPEED * dt));
   }
   clampToSafeZone(m.group.position);
   m.group.position.y = groundHeight(m.group.position.x, m.group.position.z) + (m.group.userData.hoverHeight || 0);
   m.group.lookAt(playerPos.x, m.group.position.y, playerPos.z);
   updateSupersonicMusic(dist);
   return { dist, danger: m.alert ? Math.max(0, 1 - dist / 9) : 0, catchR: m.catchR, type: 'supersonic' };
+}
+
+const hotCheeto = {
+  group: createHotCheetoModel(),
+  route: [new THREE.Vector3(-70, 0, 70)], // northwest corner, far from Supersonic
+  idx: 0, alert: false, alertTimer: 0, catchR: 2.8, // bigger body, bigger forgiving hitbox
+};
+scene.add(hotCheeto.group);
+hotCheeto.group.position.copy(hotCheeto.route[0]);
+
+function tickHotCheeto(dt, playerPos) {
+  const m = hotCheeto;
+  const toPlayer = new THREE.Vector3().subVectors(playerPos, m.group.position);
+  const dist = toPlayer.length();
+  const camForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+  const dirToM = new THREE.Vector3().subVectors(m.group.position, playerPos).normalize();
+  const seen = dist < 24 && camForward.dot(dirToM) > 0.86; // bigger body, easier to spot
+
+  if (dist < 8 || seen) { m.alert = true; m.alertTimer = 4; }
+  else if (m.alertTimer > 0) m.alertTimer -= dt;
+  else m.alert = false;
+
+  // Stays put until alert -- no patrol wandering. Same top speed as Supersonic.
+  if (m.alert && dist > 0.01) {
+    m.group.position.add(toPlayer.normalize().multiplyScalar(SUPERSONIC_SPEED * dt));
+  }
+  clampToSafeZone(m.group.position);
+  m.group.position.y = groundHeight(m.group.position.x, m.group.position.z) + (m.group.userData.hoverHeight || 0);
+  m.group.lookAt(playerPos.x, m.group.position.y, playerPos.z);
+  return { dist, danger: m.alert ? Math.max(0, 1 - dist / 12) : 0, catchR: m.catchR, type: 'hotcheeto' };
 }
 
 /* ---------------- audio ---------------- */
@@ -642,7 +700,7 @@ function updateSupersonicMusic(dist) {
   }
 }
 
-// Short, distinct jumpscare stings per monster type — no shared sound.
+// Distinct jumpscare stings per monster — no shared sound.
 function playScare(type) {
   const ctx = ensureAudio();
   if (!ctx) return;
@@ -673,38 +731,27 @@ function playScare(type) {
     ng.gain.value = 0.35;
     noise.connect(ng).connect(master);
     noise.start(now);
-  } else if (type === 'stalker') {
+  } else if (type === 'hotcheeto') {
+    // A low growl sliding down, then a short noisy "chomp" thump.
     const osc = ctx.createOscillator();
-    osc.type = 'square';
-    osc.frequency.setValueAtTime(90, now);
-    osc.frequency.exponentialRampToValueAtTime(38, now + 0.4);
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(140, now);
+    osc.frequency.exponentialRampToValueAtTime(45, now + 0.5);
     const g = ctx.createGain();
-    g.gain.setValueAtTime(0.65, now);
-    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
+    g.gain.setValueAtTime(0.7, now);
+    g.gain.exponentialRampToValueAtTime(0.2, now + 0.45);
     osc.connect(g).connect(master);
-    osc.start(now); osc.stop(now + 0.42);
-  } else if (type === 'looper') {
-    for (let i = 0; i < 5; i++) {
-      const t = now + i * 0.06;
-      const osc = ctx.createOscillator();
-      osc.type = 'square';
-      osc.frequency.value = 650 + Math.random() * 400;
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.45, t);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
-      osc.connect(g).connect(master);
-      osc.start(t); osc.stop(t + 0.06);
-    }
-  } else if (type === 'treewatcher') {
-    const osc = ctx.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(240, now);
-    osc.frequency.linearRampToValueAtTime(55, now + 0.8);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.5, now);
-    g.gain.linearRampToValueAtTime(0.0001, now + 0.8);
-    osc.connect(g).connect(master);
-    osc.start(now); osc.stop(now + 0.8);
+    osc.start(now); osc.stop(now + 0.5);
+
+    const chompBuf = ctx.createBuffer(1, ctx.sampleRate * 0.18, ctx.sampleRate);
+    const data = chompBuf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+    const chomp = ctx.createBufferSource();
+    chomp.buffer = chompBuf;
+    const cg = ctx.createGain();
+    cg.gain.value = 0.9;
+    chomp.connect(cg).connect(master);
+    chomp.start(now + 0.5);
   }
 }
 
@@ -872,17 +919,14 @@ function resetAfterCatch() {
   camera.position.copy(SPAWN);
   velocity.set(0, 0, 0);
   onGround = true;
-  stalker.group.position.copy(stalker.route[0]);
-  stalker.alert = false; stalker.alertTimer = 0;
-  looper.group.position.copy(looper.route[0]);
-  looper.alert = false; looper.alertTimer = 0;
-  treewatcher.group.position.copy(treewatcher.home);
   supersonic.group.position.copy(supersonic.route[0]);
   supersonic.alert = false; supersonic.alertTimer = 0;
+  hotCheeto.group.position.copy(hotCheeto.route[0]);
+  hotCheeto.alert = false; hotCheeto.alertTimer = 0;
 }
 
-const monstersByType = { stalker, looper, treewatcher, supersonic };
-const SCARE_DURATION = { stalker: 0.6, looper: 0.45, treewatcher: 0.7, supersonic: 0.8 };
+const monstersByType = { supersonic, hotcheeto: hotCheeto };
+const SCARE_DURATION = { supersonic: 0.8, hotcheeto: 0.9 };
 
 let scareActive = false;
 
@@ -945,12 +989,7 @@ function animate() {
       }
     }
 
-    const results = [
-      tickStalker(dt, camera.position),
-      tickLooper(dt, camera.position),
-      tickTreewatcher(dt, camera.position),
-      tickSupersonic(dt, camera.position),
-    ];
+    const results = [tickSupersonic(dt, camera.position), tickHotCheeto(dt, camera.position)];
     const danger = Math.max(...results.map((r) => r.danger));
     vignette.style.opacity = String(danger);
     const caught = results.find((r) => r.dist < r.catchR);

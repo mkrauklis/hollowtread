@@ -214,15 +214,11 @@ canvas.game-canvas {
 
 #jumpscare-flash.show { opacity: 1; }
 
-@keyframes scare-flash-stalker { 0% { opacity: 0; } 8% { opacity: 0.95; } 35% { opacity: 0.25; } 65% { opacity: 0.7; } 100% { opacity: 0; } }
-@keyframes scare-flash-looper { 0%, 100% { opacity: 0; } 8%, 28%, 48%, 68% { opacity: 0.85; } 18%, 38%, 58%, 80% { opacity: 0; } }
-@keyframes scare-flash-treewatcher { 0% { opacity: 0; } 35% { opacity: 0.55; } 100% { opacity: 0.92; } }
 @keyframes scare-flash-supersonic { 0% { opacity: 0; } 12% { opacity: 1; } 45% { opacity: 0.35; } 75% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes scare-flash-hotcheeto { 0% { opacity: 0; } 15% { opacity: 0.9; } 40% { opacity: 0.5; } 70% { opacity: 1; } 100% { opacity: 0; } }
 
-#jumpscare-flash.scare-stalker { background: #b23b2e; animation: scare-flash-stalker 0.6s ease-out; }
-#jumpscare-flash.scare-looper { background: #eef2f5; animation: scare-flash-looper 0.45s steps(1, end); }
-#jumpscare-flash.scare-treewatcher { background: #0a0806; animation: scare-flash-treewatcher 0.7s ease-in; }
 #jumpscare-flash.scare-supersonic { background: #1ec8ff; animation: scare-flash-supersonic 0.8s ease-in-out; }
+#jumpscare-flash.scare-hotcheeto { background: #5c1220; animation: scare-flash-hotcheeto 0.9s ease-in; }
 
 #blocker {
   position: absolute;

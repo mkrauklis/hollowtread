@@ -26,14 +26,14 @@ There's one map, and it's all connected — no level select, no loading
 screens between areas. You spawn on a **treehouse deck**, built up on stilts
 around a big tree. That deck is a safe zone: nothing that hunts at night can
 cross onto it or come within 20 units of its center. A ramp off the south
-side of the deck is the only way down, into one continuous forest of rolling
-hills, scattered trees, and glowing jump pads.
+side of the deck is the only way down, into one continuous forest bounded by
+a perimeter wall, with giant rolling hills, scattered trees (bare, with real
+climbable branches), glowing jump pads, and autumn clutter — pumpkins, leaf
+piles, scarecrows.
 
-A small alcove on the deck (the **bestiary room**) holds miniature, slowly
-turning models of each thing loose in the forest, labelled by name. It's
-purely informational — nothing in there can catch you — and it's meant to
-grow as more creatures are added, the same way the forest itself is meant to
-grow past "rolling hills and trees."
+A small alcove on the deck (the **bestiary room**) holds a miniature, slowly
+turning model of the thing loose in the forest, labelled by name. It's
+purely informational — nothing in there can catch you.
 
 ## Controls
 
@@ -44,32 +44,28 @@ Walking onto one of the teal jump pads launches you hard into the air.
 ## Objective
 
 Three embers are hidden out in the forest. Find all three and carry them
-back onto the treehouse deck to win. Getting caught by anything out there
-triggers that creature's own jumpscare, then resets you and it back to the
-deck — you don't lose embers you've already found.
+back onto the treehouse deck to win. Getting caught resets you (and it)
+back to the deck — you don't lose embers you've already found.
 
 ## What's out there
 
-Every creature is the same shape language: a chimp with no legs, hovering
-instead of standing on anything.
+**Supersonic** — a chimp with no legs, hovering instead of standing on
+anything, neon blue and stretched tall. It stays put wherever it spawned
+until you get close or it sees you — it isn't patrolling the whole forest
+looking for you. Once alert, it's genuinely faster than you can run (1.2x
+your own top speed), so outrunning it in a straight line never works. A
+faint arpeggio plays and gets louder the closer it is, even before it's
+actively hunting you — your only real warning. Catches you by grabbing you
+and screaming in your face.
 
-- **Stalker** — locks onto you the instant your flashlight lands on it (or
-  you get close), and gives chase at well over your running speed for a
-  few seconds before giving up. Catches you with a sudden red close-up.
-- **Looper** — low, fast, keyed almost entirely to proximity rather than
-  line of sight. Doesn't need to see you coming. Catches you with a quick,
-  strobing flash.
-- **Treewatcher** — tall, thin, and still. It only closes the distance while
-  you *aren't* looking at it; keep it in view (or keep your distance) and it
-  can't reach you. Catches you with a slow fade to black.
-- **Supersonic** — neon blue, stretched tall, and genuinely faster than you
-  can run (1.2x your top speed), so outrunning it in a straight line never
-  works. A faint arpeggio plays and gets louder the closer it is, even
-  before it's actively hunting you — your only real warning. Catches you by
-  grabbing you and screaming in your face.
+**Hot Cheeto** — the same no-legs chimp shape as Supersonic, scaled up 4x:
+maroon, with glowing neon red eyes, hovering out in the northwest corner of
+the forest. Same top speed as Supersonic, same "stays put until alert"
+behavior, but its sheer size makes it easier to spot from further away. Its
+jumpscare is it picking you up and putting you in its mouth.
 
-All four are capped at a 20-unit radius from the treehouse — once you're
-back near home, you're safe, mid-chase or not.
+Both are capped at a 20-unit radius from the treehouse — once you're back
+near home, you're safe, mid-chase or not.
 
 ## Lessons carried over from Desolate Apes (goofy-horror)
 
