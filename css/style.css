@@ -1,0 +1,222 @@
+:root {
+  --bg: #07080a;
+  --panel: #0e1013;
+  --ink: #e6e6ea;
+  --dim: #6b6f78;
+  --accent: #b23b2e;
+  --accent-dim: #5c231d;
+  --good: #3ba26b;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Segoe UI", system-ui, sans-serif;
+  height: 100%;
+  overflow-x: hidden;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ---------- menu page ---------- */
+
+.menu-wrap {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 48px 24px 80px;
+}
+
+.menu-wrap h1 {
+  font-size: 2.4rem;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+
+.tagline {
+  color: var(--dim);
+  margin-top: 0;
+  margin-bottom: 36px;
+}
+
+.level-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.level-card {
+  display: block;
+  background: var(--panel);
+  border: 1px solid #1c1f24;
+  border-radius: 10px;
+  padding: 18px 20px;
+  transition: border-color 0.15s, transform 0.15s;
+}
+
+.level-card:hover {
+  border-color: var(--accent);
+  transform: translateX(4px);
+  text-decoration: none;
+}
+
+.level-card h2 {
+  margin: 0 0 4px;
+  font-size: 1.1rem;
+  color: var(--ink);
+}
+
+.level-card p {
+  margin: 0;
+  color: var(--dim);
+  font-size: 0.92rem;
+}
+
+.level-card.locked {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.menu-foot {
+  margin-top: 40px;
+  font-size: 0.85rem;
+  color: var(--dim);
+}
+
+/* ---------- in-game HUD ---------- */
+
+#game-root {
+  position: fixed;
+  inset: 0;
+  background: #000;
+}
+
+canvas.game-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  z-index: 1;
+}
+
+#hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  z-index: 2;
+}
+
+#hud .top-left {
+  position: absolute;
+  top: 18px;
+  left: 18px;
+  font-size: 1rem;
+  letter-spacing: 0.05em;
+  color: var(--ink);
+  text-shadow: 0 0 6px #000, 0 0 2px #000;
+}
+
+#hud .embers {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+#hud .ember-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #2a2a2a;
+  border: 1px solid #444;
+}
+
+#hud .ember-dot.lit {
+  background: #e8a33d;
+  box-shadow: 0 0 8px #e8a33d;
+  border-color: #e8a33d;
+}
+
+#hud .hint {
+  position: absolute;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: var(--dim);
+  font-size: 0.85rem;
+  text-shadow: 0 0 6px #000;
+}
+
+#dread-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, rgba(178,59,46,0) 55%, rgba(178,59,46,0.55) 100%);
+  opacity: 0;
+  transition: opacity 0.2s linear;
+  z-index: 2;
+}
+
+#blocker {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.85);
+  text-align: center;
+  cursor: pointer;
+  z-index: 3;
+}
+
+#blocker .msg {
+  max-width: 420px;
+  padding: 24px;
+}
+
+#blocker h2 {
+  margin-top: 0;
+  letter-spacing: 0.04em;
+}
+
+#blocker p {
+  color: var(--dim);
+  line-height: 1.5;
+}
+
+#end-screen {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.92);
+  text-align: center;
+  flex-direction: column;
+  gap: 18px;
+  z-index: 3;
+}
+
+#end-screen.show { display: flex; }
+
+#end-screen h2 {
+  font-size: 2rem;
+  letter-spacing: 0.05em;
+}
+
+#end-screen a.btn, #end-screen button.btn {
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  color: var(--ink);
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+#end-screen a.btn:hover, #end-screen button.btn:hover {
+  background: var(--accent-dim);
+}
