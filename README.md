@@ -4,16 +4,21 @@ A browser-based, open first-person horror game. Real JavaScript, no build step.
 
 ## Running it
 
-No install, no build. Open [`index.html`](index.html) in a browser, or serve
-the folder with any static server, e.g.:
+**Play it live: [mkrauklis.github.io/hollowtread](https://mkrauklis.github.io/hollowtread/)**
+
+No install, no build — but [`world.html`](world.html) (the game itself)
+loads [Three.js](https://threejs.org) as an ES module via a CDN import map,
+and browsers refuse to load ES modules over `file://`. So double-clicking
+`world.html` from disk will fail to load the game entirely, with no visible
+error beyond a stuck start screen. To run it locally, serve the folder with
+any static server instead:
 
 ```
 npx serve .
 ```
 
-[`index.html`](index.html) is the menu; [`world.html`](world.html) is the
-game itself, built with [Three.js](https://threejs.org) loaded straight from
-a CDN via an import map — no bundler.
+[`index.html`](index.html) (the menu) is plain HTML/CSS and opens fine
+directly from disk either way.
 
 ## The world
 
