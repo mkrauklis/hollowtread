@@ -1042,7 +1042,6 @@ function triggerJumpscare(type) {
   const duration = SCARE_DURATION[type] || 0.6;
   setTimeout(() => {
     jumpscareEl.classList.remove('show', 'scare-' + type);
-    camera.rotation.z = 0;
     scareActive = false;
     resetAfterCatch();
   }, duration * 1000);
@@ -1059,10 +1058,13 @@ function updateScareCamera(p, t) {
     camera.position.copy(scareCamBase)
       .addScaledVector(new THREE.Vector3(0, 1, 0), lift)
       .addScaledVector(scareCamDir, pull);
-    const shakeAmt = p < 0.3 ? 0.03 : (p < 0.7 ? 0.09 : 0.16);
+    // (Positional shake only -- deliberately never touches camera rotation
+    // here: doing that previously corrupted the look direction afterward,
+    // since this game manages orientation through its own YXZ euler/
+    // quaternion path, not the object's default rotation property.)
+    const shakeAmt = p < 0.3 ? 0.04 : (p < 0.7 ? 0.12 : 0.2);
     camera.position.x += shake(shakeAmt);
     camera.position.y += shake(shakeAmt);
-    camera.rotation.z = Math.sin(t * 13) * (p > 0.3 ? 0.09 : 0.02);
   } else if (scareType === 'supersonic') {
     // A hard grab-jerk toward it right at the start, then held close and
     // shaken while it screams.
