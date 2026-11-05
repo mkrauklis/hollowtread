@@ -44,6 +44,9 @@
     </div>
   </div>
 </div>
-<script type="module" src="js/world.js"></script>
+<!-- cache-bust the module on every deploy: bump this version string any
+     time js/world.js changes, so a returning player's browser can't keep
+     running a stale cached copy against the current markup/CSS. -->
+<script type="module" src="js/world.js?v=4"></script>
 </body>
 </html>
