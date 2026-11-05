@@ -169,6 +169,24 @@ canvas.game-canvas {
   text-shadow: 0 0 6px #000;
 }
 
+#relock-hint {
+  display: none;
+  position: absolute;
+  bottom: 54px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(14,16,19,0.9);
+  border: 1px solid var(--accent);
+  color: var(--ink);
+  padding: 8px 18px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+#relock-hint.show { display: block; }
+
 #dread-vignette {
   position: absolute;
   inset: 0;

@@ -461,29 +461,45 @@ const controls = new PointerLockControls(camera, renderer.domElement);
 const blocker = document.getElementById('blocker');
 const endScreen = document.getElementById('end-screen');
 
-// Pointer Lock isn't available everywhere (embedded frames, some mobile
-// browsers, some privacy settings) — if it fails, fall back to plain
-// click-drag mouselook instead of leaving the player stuck on this screen.
-let pointerLockBroken = false;
+// Pointer Lock sometimes fails on the first try (or isn't available at
+// all — embedded frames, some mobile browsers, some privacy settings).
+// Never leave the player stuck on the start screen because of it: drop
+// into click-drag mouselook immediately, but keep retrying a real lock
+// on every click so it upgrades to true mouse capture the moment it can.
 let fallbackLook = false;
 let dragging = false;
+let lastLockAttempt = 0;
 const lookEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+const relockHint = document.getElementById('relock-hint');
+
+function attemptLock() {
+  const now = performance.now();
+  if (now - lastLockAttempt < 400) return; // dodge Chrome's brief re-lock cooldown
+  lastLockAttempt = now;
+  controls.lock();
+}
 
 function enterFallbackLook() {
   fallbackLook = true;
   blocker.style.display = 'none';
+  relockHint.classList.add('show');
 }
 
 blocker.addEventListener('click', () => {
-  if (pointerLockBroken) { enterFallbackLook(); return; }
-  controls.lock();
+  attemptLock();
+  if (!controls.isLocked) enterFallbackLook();
 });
-controls.addEventListener('lock', () => { blocker.style.display = 'none'; });
+relockHint.addEventListener('click', () => attemptLock());
+controls.addEventListener('lock', () => {
+  blocker.style.display = 'none';
+  fallbackLook = false;
+  dragging = false;
+  relockHint.classList.remove('show');
+});
 controls.addEventListener('unlock', () => {
   if (!endScreen.classList.contains('show') && !fallbackLook) blocker.style.display = 'flex';
 });
 document.addEventListener('pointerlockerror', () => {
-  pointerLockBroken = true;
   enterFallbackLook();
 });
 
