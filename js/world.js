@@ -831,6 +831,96 @@ document.addEventListener('keyup', (e) => {
   }
 });
 
+/* ---------------- touch controls ---------------- */
+/* WASD + mouse don't exist on a phone, and Pointer Lock barely works there
+ * either -- a virtual joystick (movement), a drag-anywhere look zone (reuses
+ * the same manual euler rotation as desktop's click-drag fallback), and a
+ * jump button. All hidden unless touch is actually detected. */
+
+let touchMove = { x: 0, y: 0 }; // -1..1 each axis, blended into movePlayer's moveDir
+let touchJumpPressed = false;
+
+if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+  document.getElementById('game-root').classList.add('touch-ui');
+  document.getElementById('start-hint').textContent =
+    'Tap to drop in. Left stick to move, drag anywhere to look, JUMP to jump.';
+  document.querySelector('#hud .hint').textContent =
+    'Left stick move · drag to look · JUMP button · jump pads glow teal';
+
+  const joystick = document.getElementById('touch-joystick');
+  const knob = document.getElementById('touch-joystick-knob');
+  const lookZone = document.getElementById('touch-look-zone');
+  const jumpBtn = document.getElementById('touch-jump');
+
+  let joystickTouchId = null;
+  let joystickCenter = { x: 0, y: 0 };
+  const JOYSTICK_RADIUS = 52;
+
+  joystick.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    const t = e.changedTouches[0];
+    joystickTouchId = t.identifier;
+    const rect = joystick.getBoundingClientRect();
+    joystickCenter = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  }, { passive: false });
+
+  function moveJoystick(t) {
+    let dx = t.clientX - joystickCenter.x;
+    let dy = t.clientY - joystickCenter.y;
+    const len = Math.hypot(dx, dy);
+    if (len > JOYSTICK_RADIUS) { dx = (dx / len) * JOYSTICK_RADIUS; dy = (dy / len) * JOYSTICK_RADIUS; }
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+    touchMove.x = dx / JOYSTICK_RADIUS;
+    touchMove.y = dy / JOYSTICK_RADIUS;
+  }
+  function resetJoystick() {
+    joystickTouchId = null;
+    touchMove.x = 0; touchMove.y = 0;
+    knob.style.transform = 'translate(0, 0)';
+  }
+  joystick.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    for (const t of e.changedTouches) if (t.identifier === joystickTouchId) moveJoystick(t);
+  }, { passive: false });
+  joystick.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    for (const t of e.changedTouches) if (t.identifier === joystickTouchId) resetJoystick();
+  }, { passive: false });
+  joystick.addEventListener('touchcancel', resetJoystick);
+
+  let lookTouchId = null;
+  let lookLast = { x: 0, y: 0 };
+  lookZone.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    ensureAudio();
+    const t = e.changedTouches[0];
+    lookTouchId = t.identifier;
+    lookLast = { x: t.clientX, y: t.clientY };
+  }, { passive: false });
+  lookZone.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      if (t.identifier !== lookTouchId) continue;
+      const dx = t.clientX - lookLast.x, dy = t.clientY - lookLast.y;
+      lookLast = { x: t.clientX, y: t.clientY };
+      const sensitivity = 0.0035;
+      lookEuler.setFromQuaternion(camera.quaternion);
+      lookEuler.y -= dx * sensitivity;
+      lookEuler.x -= dy * sensitivity;
+      lookEuler.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, lookEuler.x));
+      camera.quaternion.setFromEuler(lookEuler);
+    }
+  }, { passive: false });
+  lookZone.addEventListener('touchend', (e) => {
+    for (const t of e.changedTouches) if (t.identifier === lookTouchId) lookTouchId = null;
+  });
+
+  jumpBtn.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    touchJumpPressed = true;
+  }, { passive: false });
+}
+
 const SPAWN = new THREE.Vector3(0, PLATFORM_H + EYE_H, -1);
 const velocity = new THREE.Vector3();
 let onGround = true;
@@ -858,7 +948,9 @@ function movePlayer(dt) {
   if (keys.s) moveDir.sub(forward);
   if (keys.d) moveDir.add(right);
   if (keys.a) moveDir.sub(right);
-  const moving = moveDir.lengthSq() > 0;
+  moveDir.addScaledVector(forward, -touchMove.y);
+  moveDir.addScaledVector(right, touchMove.x);
+  const moving = moveDir.lengthSq() > 0.0001;
   if (moving) moveDir.normalize();
 
   const speed = keys.shift ? RUN_SPEED : WALK_SPEED;
@@ -868,6 +960,11 @@ function movePlayer(dt) {
   if (!collidesAt(nx, pos.z)) pos.x = nx;
   const nz = pos.z + moveDir.z * speed * dt;
   if (!collidesAt(pos.x, nz)) pos.z = nz;
+
+  if (touchJumpPressed) {
+    touchJumpPressed = false;
+    if (onGround) { velocity.y = JUMP_V; onGround = false; }
+  }
 
   const footY = pos.y - EYE_H;
   const supportY = supportHeight(pos.x, pos.z, footY) + EYE_H;
@@ -915,18 +1012,27 @@ const SCARE_DURATION = { supersonic: 0.8, hotcheeto: 0.9 };
 
 let scareActive = false;
 
-// The catch itself: the thing that got you snaps right into your face
-// (not a generic flash) — a scream, a close-up, your own HUD frozen on
-// it — before the usual reset to the treehouse.
+// The catch itself: the thing that got you snaps right into your face and
+// the CAMERA moves through the scare in first person -- lifted, pulled in,
+// shaken -- not just a static shot with a color flash over it.
+let scareType = null;
+let scareStart = 0;
+let scareCamBase = new THREE.Vector3();
+let scareCamDir = new THREE.Vector3();
+
 function triggerJumpscare(type) {
   if (scareActive) return;
   scareActive = true;
+  scareType = type;
+  scareStart = performance.now();
   const m = monstersByType[type];
 
-  const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-  const facePos = camera.position.clone().addScaledVector(dir, 0.85);
+  scareCamBase.copy(camera.position);
+  scareCamDir.set(0, 0, -1).applyQuaternion(camera.quaternion);
+
+  const facePos = scareCamBase.clone().addScaledVector(scareCamDir, 0.85);
   m.group.position.copy(facePos);
-  m.group.lookAt(camera.position);
+  m.group.lookAt(scareCamBase);
 
   playScare(type);
   jumpscareEl.className = '';
@@ -936,9 +1042,39 @@ function triggerJumpscare(type) {
   const duration = SCARE_DURATION[type] || 0.6;
   setTimeout(() => {
     jumpscareEl.classList.remove('show', 'scare-' + type);
+    camera.rotation.z = 0;
     scareActive = false;
     resetAfterCatch();
   }, duration * 1000);
+}
+
+function updateScareCamera(p, t) {
+  const shake = (amt) => (Math.random() - 0.5) * amt;
+
+  if (scareType === 'hotcheeto') {
+    // Picked up (lifted off your feet), pulled in toward the mouth, then
+    // held in the dark getting chewed on -- three readable beats.
+    const lift = Math.min(p / 0.3, 1) * 1.7;
+    const pull = Math.max(0, Math.min((p - 0.3) / 0.4, 1)) * 0.95;
+    camera.position.copy(scareCamBase)
+      .addScaledVector(new THREE.Vector3(0, 1, 0), lift)
+      .addScaledVector(scareCamDir, pull);
+    const shakeAmt = p < 0.3 ? 0.03 : (p < 0.7 ? 0.09 : 0.16);
+    camera.position.x += shake(shakeAmt);
+    camera.position.y += shake(shakeAmt);
+    camera.rotation.z = Math.sin(t * 13) * (p > 0.3 ? 0.09 : 0.02);
+  } else if (scareType === 'supersonic') {
+    // A hard grab-jerk toward it right at the start, then held close and
+    // shaken while it screams.
+    const jerk = p < 0.08 ? (1 - p / 0.08) * 0.5 : 0;
+    camera.position.copy(scareCamBase).addScaledVector(scareCamDir, jerk);
+    camera.position.x += shake(0.06);
+    camera.position.y += shake(0.06);
+  } else {
+    camera.position.copy(scareCamBase);
+    camera.position.x += shake(0.05);
+    camera.position.y += shake(0.05);
+  }
 }
 
 /* ---------------- main loop ---------------- */
@@ -953,8 +1089,9 @@ function animate() {
   for (const mini of spinningMinis) mini.rotation.y += dt * 0.6;
 
   if (scareActive) {
-    camera.position.x += (Math.random() - 0.5) * 0.05;
-    camera.position.y += (Math.random() - 0.5) * 0.05;
+    const t = (now - scareStart) / 1000;
+    const duration = SCARE_DURATION[scareType] || 0.6;
+    updateScareCamera(Math.min(t / duration, 1), t);
   } else if (controls.isLocked || fallbackLook) {
     movePlayer(dt);
 

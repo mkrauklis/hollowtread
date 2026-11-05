@@ -200,6 +200,73 @@ canvas.game-canvas {
 #jumpscare-flash.scare-supersonic { background: #1ec8ff; animation: scare-flash-supersonic 0.8s ease-in-out; }
 #jumpscare-flash.scare-hotcheeto { background: #5c1220; animation: scare-flash-hotcheeto 0.9s ease-in; }
 
+/* Touch controls -- hidden entirely unless js/world.js adds .touch-ui to
+ * #game-root after feature-detecting touch, so desktop players never see
+ * a joystick they can't use. */
+
+/* Touch always falls back to manual drag-look (Pointer Lock barely exists
+ * on mobile), so the "Mouse not locked" retry hint -- meant for desktop --
+ * is just confusing noise here. */
+#game-root.touch-ui #relock-hint { display: none !important; }
+#touch-look-zone, #touch-joystick, #touch-jump { display: none; }
+
+#game-root.touch-ui #touch-look-zone {
+  display: block;
+  position: absolute;
+  inset: 0;
+  /* Below #blocker (z-index 3) so the start tap still reaches it normally;
+     above the canvas/HUD once the blocker is hidden. */
+  z-index: 2;
+  touch-action: none;
+}
+
+#game-root.touch-ui #touch-joystick {
+  display: block;
+  position: absolute;
+  left: 28px;
+  bottom: 28px;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: rgba(230,230,234,0.08);
+  border: 1px solid rgba(230,230,234,0.25);
+  z-index: 2;
+  touch-action: none;
+}
+
+#touch-joystick-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 52px;
+  height: 52px;
+  margin: -26px 0 0 -26px;
+  border-radius: 50%;
+  background: rgba(230,230,234,0.3);
+  border: 1px solid rgba(230,230,234,0.5);
+}
+
+#game-root.touch-ui #touch-jump {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  right: 32px;
+  bottom: 40px;
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: rgba(178,59,46,0.25);
+  border: 1px solid var(--accent);
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  z-index: 2;
+  touch-action: none;
+  user-select: none;
+}
+
 #blocker {
   position: absolute;
   inset: 0;

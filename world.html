@@ -40,13 +40,20 @@
         things that don't live in the bestiary room by choice. No objective —
         just you, the dark, and however far you want to go.
       </p>
-      <p>Click to drop in. Esc to pause. (If your browser won't lock the mouse, click-and-drag to look instead.)</p>
+      <p id="start-hint">Click to drop in. Esc to pause. (If your browser won't lock the mouse, click-and-drag to look instead.)</p>
     </div>
   </div>
+
+  <!-- Touch controls: hidden by default, shown only on touch devices (see
+       js/world.js, which adds .touch-ui to #game-root after feature-
+       detecting touch) -- desktop players never see or load these. -->
+  <div id="touch-look-zone"></div>
+  <div id="touch-joystick"><div id="touch-joystick-knob"></div></div>
+  <div id="touch-jump">JUMP</div>
 </div>
 <!-- cache-bust the module on every deploy: bump this version string any
      time js/world.js changes, so a returning player's browser can't keep
      running a stale cached copy against the current markup/CSS. -->
-<script type="module" src="js/world.js?v=4"></script>
+<script type="module" src="js/world.js?v=5"></script>
 </body>
 </html>
