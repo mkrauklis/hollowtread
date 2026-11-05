@@ -87,12 +87,44 @@ armGroup.add(makeArm(-1), makeArm(1));
 camera.add(armGroup);
 
 /* ---------------- materials ---------------- */
+/* Flat low-poly surfaces with a blotchy, hand-painted grain texture on
+ * them — generated on a canvas at load, not a fetched image file — is
+ * closer to the simple, slightly grimy look of a game like Gorilla Tag
+ * than a clean flat color. */
 
-const woodMat = new THREE.MeshStandardMaterial({ color: 0x4e3a26, roughness: 0.95 });
-const woodDarkMat = new THREE.MeshStandardMaterial({ color: 0x241b12, roughness: 1 });
-const leafMat = new THREE.MeshStandardMaterial({ color: 0x15210f, roughness: 1 });
-const groundMat = new THREE.MeshStandardMaterial({ color: 0x0d140c, roughness: 1 });
-const trunkMat = new THREE.MeshStandardMaterial({ color: 0x1c140c, roughness: 1 });
+function makeGrainTexture({ size = 32, dark = 150, light = 255, repeat = 6, blotch = 3 } = {}) {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  // Low-res noise, upscaled with no smoothing, reads as blotches rather
+  // than fine grain — keeps it in the same chunky, pixelated register
+  // as the rest of the screen instead of looking like a photo texture.
+  const cells = Math.max(2, Math.floor(size / blotch));
+  const small = document.createElement('canvas');
+  small.width = small.height = cells;
+  const sctx = small.getContext('2d');
+  const img = sctx.createImageData(cells, cells);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = dark + Math.random() * (light - dark);
+    img.data[i] = v; img.data[i + 1] = v; img.data[i + 2] = v; img.data[i + 3] = 255;
+  }
+  sctx.putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(small, 0, 0, size, size);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.repeat.set(repeat, repeat);
+  return tex;
+}
+
+const woodMat = new THREE.MeshStandardMaterial({ color: 0x4e3a26, roughness: 0.95, map: makeGrainTexture({ dark: 140, light: 235, repeat: 7, blotch: 4 }) });
+const woodDarkMat = new THREE.MeshStandardMaterial({ color: 0x241b12, roughness: 1, map: makeGrainTexture({ dark: 110, light: 220, repeat: 5, blotch: 3 }) });
+const leafMat = new THREE.MeshStandardMaterial({ color: 0x15210f, roughness: 1, map: makeGrainTexture({ dark: 120, light: 255, repeat: 6, blotch: 2 }) });
+const groundMat = new THREE.MeshStandardMaterial({ color: 0x0d140c, roughness: 1, map: makeGrainTexture({ dark: 90, light: 255, repeat: 48, blotch: 2 }) });
+const trunkMat = new THREE.MeshStandardMaterial({ color: 0x1c140c, roughness: 1, map: makeGrainTexture({ dark: 100, light: 230, repeat: 8, blotch: 3 }) });
 const padMat = new THREE.MeshStandardMaterial({ color: 0x1a3a3a, emissive: 0x2fd6c4, emissiveIntensity: 0.7, roughness: 0.6 });
 
 /* ---------------- terrain height field ---------------- */
@@ -187,9 +219,9 @@ function railing(x0, x1, z0, z1) {
 railing(-6, 6, 5.7, 6);     // +z edge
 railing(5.7, 6, -6, 6);     // +x edge
 railing(-6, -5.7, -6, 6);   // -x edge
-railing(-RAMP_HALF_W - 0.3, RAMP_HALF_W + 0.3, -6, -5.7); // -z edge, minus the ramp gap handled below
-// Leave the ramp gap open: punch it by re-adding the two side stubs only.
-boxColliders.pop();
+// -z edge: two stubs only, leaving the ramp's own width as a real, open gap
+// (an earlier version also drew a full-span bar across this gap and only
+// removed its collider, so the ramp looked sealed even though it wasn't).
 railing(-6, -RAMP_HALF_W - 0.3, -6, -5.7);
 railing(RAMP_HALF_W + 0.3, 6, -6, -5.7);
 
@@ -309,7 +341,29 @@ function isInSafeZone(x, z) {
   return Math.sqrt(x * x + z * z) < SAFE_R || (Math.abs(x) <= RAMP_HALF_W + 1 && z <= 0 && z >= -RAMP_Z1 - 2);
 }
 
-const treeCanopyMat = new THREE.MeshStandardMaterial({ color: 0x182814, roughness: 1 });
+// Branches are real jumpable platforms (rectangular footprints in
+// branchPlatforms, checked against in movePlayer's supportHeight), not
+// just decoration, so bare trees double as climbable terrain.
+const branchPlatforms = []; // { x0, x1, z0, z1, y }
+
+function makeBranch(x0, y0, z0, x1, y1, z1) {
+  const start = new THREE.Vector3(x0, y0, z0);
+  const end = new THREE.Vector3(x1, y1, z1);
+  const dir = new THREE.Vector3().subVectors(end, start);
+  const len = dir.length();
+  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.17, len, 6), trunkMat);
+  mesh.position.copy(start).addScaledVector(dir, 0.5);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+  scene.add(mesh);
+
+  const margin = 0.45; // generous landing hitbox, easy to land on at a jog
+  branchPlatforms.push({
+    x0: Math.min(x0, x1) - margin, x1: Math.max(x0, x1) + margin,
+    z0: Math.min(z0, z1) - margin, z1: Math.max(z0, z1) + margin,
+    y: Math.max(y0, y1) + 0.15,
+  });
+}
+
 let treesPlaced = 0;
 while (treesPlaced < 70) {
   const x = (rand() - 0.5) * 140;
@@ -321,10 +375,19 @@ while (treesPlaced < 70) {
   const t = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.7, r, trunkH, 7), trunkMat);
   t.position.set(x, h + trunkH / 2, z);
   scene.add(t);
-  const canopy = new THREE.Mesh(new THREE.SphereGeometry(1.4 + rand(), 8, 8), treeCanopyMat);
-  canopy.position.set(x, h + trunkH + 0.6, z);
-  scene.add(canopy);
   addCircleCollider(x, z, r + 0.15);
+
+  // One or two bare branches per tree, jutting out at random heights/angles.
+  const branchCount = rand() < 0.4 ? 2 : 1;
+  for (let b = 0; b < branchCount; b++) {
+    const angle = rand() * Math.PI * 2;
+    const len = 1.6 + rand() * 1.3;
+    const branchH = h + trunkH * (0.4 + rand() * 0.45);
+    const tilt = (rand() - 0.5) * 0.6;
+    const ex = x + Math.cos(angle) * (r + len);
+    const ez = z + Math.sin(angle) * (r + len);
+    makeBranch(x + Math.cos(angle) * r, branchH, z + Math.sin(angle) * r, ex, branchH + tilt, ez);
+  }
   treesPlaced++;
 }
 
@@ -563,6 +626,18 @@ const SPAWN = new THREE.Vector3(0, PLATFORM_H + EYE_H, -1);
 const velocity = new THREE.Vector3();
 let onGround = true;
 
+// The terrain height, or a branch's top if you're standing on/falling onto
+// one — never snaps you UP onto a branch from underneath, only lets you
+// land on top of it, same as any simple platformer.
+function supportHeight(x, z, footY) {
+  let best = groundHeight(x, z);
+  for (const p of branchPlatforms) {
+    if (x < p.x0 || x > p.x1 || z < p.z0 || z > p.z1) continue;
+    if (p.y > best && p.y <= footY + 0.4) best = p.y;
+  }
+  return best;
+}
+
 function movePlayer(dt) {
   const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
   forward.y = 0; forward.normalize();
@@ -585,14 +660,17 @@ function movePlayer(dt) {
   const nz = pos.z + moveDir.z * speed * dt;
   if (!collidesAt(pos.x, nz)) pos.z = nz;
 
-  const groundY = groundHeight(pos.x, pos.z) + EYE_H;
+  const footY = pos.y - EYE_H;
+  const supportY = supportHeight(pos.x, pos.z, footY) + EYE_H;
 
   if (!onGround) {
     velocity.y += GRAVITY * dt;
     pos.y += velocity.y * dt;
-    if (pos.y <= groundY) { pos.y = groundY; velocity.y = 0; onGround = true; }
+    if (pos.y <= supportY) { pos.y = supportY; velocity.y = 0; onGround = true; }
+  } else if (supportY < pos.y - 0.2) {
+    onGround = false; // stepped off a branch/ledge — fall instead of teleporting down
   } else {
-    pos.y = groundY;
+    pos.y = supportY;
     for (const pad of jumpPads) {
       const dx = pos.x - pad.x, dz = pos.z - pad.z;
       if (dx * dx + dz * dz < pad.r * pad.r) {
