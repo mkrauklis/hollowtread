@@ -142,26 +142,6 @@ canvas.game-canvas {
   text-shadow: 0 0 6px #000, 0 0 2px #000;
 }
 
-#hud .embers {
-  display: flex;
-  gap: 6px;
-  margin-top: 6px;
-}
-
-#hud .ember-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #2a2a2a;
-  border: 1px solid #444;
-}
-
-#hud .ember-dot.lit {
-  background: #e8a33d;
-  box-shadow: 0 0 8px #e8a33d;
-  border-color: #e8a33d;
-}
-
 #hud .hint {
   position: absolute;
   bottom: 22px;
@@ -247,36 +227,3 @@ canvas.game-canvas {
   line-height: 1.5;
 }
 
-#end-screen {
-  position: absolute;
-  inset: 0;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0,0,0,0.92);
-  text-align: center;
-  flex-direction: column;
-  gap: 18px;
-  z-index: 3;
-}
-
-#end-screen.show { display: flex; }
-
-#end-screen h2 {
-  font-size: 2rem;
-  letter-spacing: 0.05em;
-}
-
-#end-screen a.btn, #end-screen button.btn {
-  background: var(--panel);
-  border: 1px solid var(--accent);
-  color: var(--ink);
-  padding: 10px 20px;
-  border-radius: 8px;
-  font-size: 0.95rem;
-  cursor: pointer;
-}
-
-#end-screen a.btn:hover, #end-screen button.btn:hover {
-  background: var(--accent-dim);
-}

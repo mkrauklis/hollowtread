@@ -1,6 +1,7 @@
 # Hollowtread
 
-A browser-based, open first-person horror game. Real JavaScript, no build step.
+A browser-based, free-roam first-person horror game with no objective. Real
+JavaScript, no build step.
 
 ## Running it
 
@@ -31,8 +32,8 @@ a perimeter wall, with giant rolling hills, scattered trees (bare, with real
 climbable branches), glowing jump pads, and autumn clutter — pumpkins, leaf
 piles, scarecrows.
 
-A small alcove on the deck (the **bestiary room**) holds a miniature, slowly
-turning model of the thing loose in the forest, labelled by name. It's
+A small alcove on the deck (the **bestiary room**) holds miniature, slowly
+turning models of the things loose in the forest, labelled by name. It's
 purely informational — nothing in there can catch you.
 
 ## Controls
@@ -43,9 +44,10 @@ Walking onto one of the teal jump pads launches you hard into the air.
 
 ## Objective
 
-Three embers are hidden out in the forest. Find all three and carry them
-back onto the treehouse deck to win. Getting caught resets you (and it)
-back to the deck — you don't lose embers you've already found.
+There isn't one. This is free roam — explore the forest, find the hills,
+the jump pads, the autumn clutter, at your own pace. Getting caught just
+resets you (and whatever caught you) back to the treehouse deck; there's
+nothing to lose and nothing to win.
 
 ## What's out there
 

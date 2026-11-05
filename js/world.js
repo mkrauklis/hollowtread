@@ -2,10 +2,10 @@ import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
 /* ----------------------------------------------------------------------
- * Hollowtread — one continuous forest. Spawn is a treehouse (safe zone,
+ * Hollowtread — free roam, no objective. Spawn is a treehouse (safe zone,
  * holds the bestiary alcove); everything below it — hills, trees, jump
- * pads, embers, the three things that hunt at night — is one connected
- * ground, no level breaks, no loading screens.
+ * pads, the things that hunt at night — is one connected ground, no level
+ * breaks, no loading screens.
  * ------------------------------------------------------------------- */
 
 const EYE_H = 1.5;          // chimp stands lower than a human
@@ -554,24 +554,6 @@ const jumpPads = [
   return { x, z, r: 1.3, h };
 });
 
-/* ---------------- embers (collectibles) ---------------- */
-
-const emberGeo = new THREE.SphereGeometry(0.22, 12, 12);
-function makeEmber(x, z) {
-  const h = groundHeight(x, z);
-  const mat = new THREE.MeshStandardMaterial({ color: 0xe8a33d, emissive: 0xe8a33d, emissiveIntensity: 1.6 });
-  const mesh = new THREE.Mesh(emberGeo, mat);
-  mesh.position.set(x, h + 1.1, z);
-  mesh.add(new THREE.PointLight(0xe8a33d, 1.6, 7, 2));
-  scene.add(mesh);
-  return { mesh, collected: false };
-}
-const embers = [makeEmber(30, 2), makeEmber(-34, 20), makeEmber(-18, 51)];
-let embersFound = 0;
-function updateEmberHud() {
-  document.querySelectorAll('.ember-dot').forEach((dot, i) => dot.classList.toggle('lit', i < embersFound));
-}
-
 /* ---------------- monsters ---------------- */
 
 function clampToSafeZone(pos) {
@@ -596,7 +578,10 @@ const SUPERSONIC_SPEED = RUN_SPEED * 1.2;
 
 function tickSupersonic(dt, playerPos) {
   const m = supersonic;
-  const toPlayer = new THREE.Vector3().subVectors(playerPos, m.group.position);
+  // Horizontal distance only -- the player's eye height sits well above
+  // this thing's near-ground hover, so a 3D distance (including that
+  // vertical gap) could exceed catchR and never register a catch at all.
+  const toPlayer = new THREE.Vector3(playerPos.x - m.group.position.x, 0, playerPos.z - m.group.position.z);
   const dist = toPlayer.length();
   const camForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
   const dirToM = new THREE.Vector3().subVectors(m.group.position, playerPos).normalize();
@@ -627,7 +612,8 @@ hotCheeto.group.position.copy(hotCheeto.route[0]);
 
 function tickHotCheeto(dt, playerPos) {
   const m = hotCheeto;
-  const toPlayer = new THREE.Vector3().subVectors(playerPos, m.group.position);
+  // Horizontal distance only -- see tickSupersonic for why.
+  const toPlayer = new THREE.Vector3(playerPos.x - m.group.position.x, 0, playerPos.z - m.group.position.z);
   const dist = toPlayer.length();
   const camForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
   const dirToM = new THREE.Vector3().subVectors(m.group.position, playerPos).normalize();
@@ -759,7 +745,6 @@ function playScare(type) {
 
 const controls = new PointerLockControls(camera, renderer.domElement);
 const blocker = document.getElementById('blocker');
-const endScreen = document.getElementById('end-screen');
 
 // Pointer Lock sometimes fails on the first try (or isn't available at
 // all — embedded frames, some mobile browsers, some privacy settings).
@@ -798,7 +783,7 @@ controls.addEventListener('lock', () => {
   relockHint.classList.remove('show');
 });
 controls.addEventListener('unlock', () => {
-  if (!endScreen.classList.contains('show') && !fallbackLook) blocker.style.display = 'flex';
+  if (!fallbackLook) blocker.style.display = 'flex';
 });
 document.addEventListener('pointerlockerror', () => {
   enterFallbackLook();
@@ -816,7 +801,7 @@ renderer.domElement.addEventListener('mousemove', (e) => {
   camera.quaternion.setFromEuler(lookEuler);
 });
 document.addEventListener('keydown', (e) => {
-  if (e.code === 'Escape' && fallbackLook && !endScreen.classList.contains('show')) {
+  if (e.code === 'Escape' && fallbackLook) {
     fallbackLook = false;
     blocker.style.display = 'flex';
   }
@@ -956,12 +941,6 @@ function triggerJumpscare(type) {
   }, duration * 1000);
 }
 
-function winGame() {
-  endScreen.classList.add('show');
-  fallbackLook = false;
-  if (controls.isLocked) controls.unlock();
-}
-
 /* ---------------- main loop ---------------- */
 
 let last = performance.now();
@@ -976,28 +955,14 @@ function animate() {
   if (scareActive) {
     camera.position.x += (Math.random() - 0.5) * 0.05;
     camera.position.y += (Math.random() - 0.5) * 0.05;
-  } else if ((controls.isLocked || fallbackLook) && !endScreen.classList.contains('show')) {
+  } else if (controls.isLocked || fallbackLook) {
     movePlayer(dt);
-
-    for (const ember of embers) {
-      if (ember.collected) continue;
-      if (camera.position.distanceTo(ember.mesh.position) < 1.4) {
-        ember.collected = true;
-        ember.mesh.visible = false;
-        embersFound += 1;
-        updateEmberHud();
-      }
-    }
 
     const results = [tickSupersonic(dt, camera.position), tickHotCheeto(dt, camera.position)];
     const danger = Math.max(...results.map((r) => r.danger));
     vignette.style.opacity = String(danger);
     const caught = results.find((r) => r.dist < r.catchR);
     if (caught) triggerJumpscare(caught.type);
-
-    const home = Math.sqrt(camera.position.x * camera.position.x) < PLATFORM_HALF &&
-      Math.abs(camera.position.z) < PLATFORM_HALF && camera.position.y > PLATFORM_H;
-    if (embersFound === embers.length && home) winGame();
   }
 
   renderer.render(scene, camera);
