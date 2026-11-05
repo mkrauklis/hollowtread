@@ -45,21 +45,30 @@ Walking onto one of the teal jump pads launches you hard into the air.
 
 Three embers are hidden out in the forest. Find all three and carry them
 back onto the treehouse deck to win. Getting caught by anything out there
-sends you back to the deck and resets its patrol — you don't lose embers
-you've already found.
+triggers that creature's own jumpscare, then resets you and it back to the
+deck — you don't lose embers you've already found.
 
 ## What's out there
 
-- **Stalker** — patrols the facility-era ground in the open, locks onto you
-  the instant your flashlight lands on it (or you get close), and gives
-  chase at well over your running speed for a few seconds before giving up.
-- **Looper** — low, fast, four-legged, keyed almost entirely to proximity
-  rather than line of sight. Doesn't need to see you coming.
+Every creature is the same shape language: a chimp with no legs, hovering
+instead of standing on anything.
+
+- **Stalker** — locks onto you the instant your flashlight lands on it (or
+  you get close), and gives chase at well over your running speed for a
+  few seconds before giving up. Catches you with a sudden red close-up.
+- **Looper** — low, fast, keyed almost entirely to proximity rather than
+  line of sight. Doesn't need to see you coming. Catches you with a quick,
+  strobing flash.
 - **Treewatcher** — tall, thin, and still. It only closes the distance while
   you *aren't* looking at it; keep it in view (or keep your distance) and it
-  can't reach you.
+  can't reach you. Catches you with a slow fade to black.
+- **Supersonic** — neon blue, stretched tall, and genuinely faster than you
+  can run (1.2x your top speed), so outrunning it in a straight line never
+  works. A faint arpeggio plays and gets louder the closer it is, even
+  before it's actively hunting you — your only real warning. Catches you by
+  grabbing you and screaming in your face.
 
-All three are capped at a 20-unit radius from the treehouse — once you're
+All four are capped at a 20-unit radius from the treehouse — once you're
 back near home, you're safe, mid-chase or not.
 
 ## Lessons carried over from Desolate Apes (goofy-horror)

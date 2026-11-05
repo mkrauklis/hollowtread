@@ -11,8 +11,8 @@ import { PointerLockControls } from 'three/addons/controls/PointerLockControls.j
 const EYE_H = 1.5;          // chimp stands lower than a human
 const PLAYER_R = 0.4;
 const GRAVITY = -22;
-const JUMP_V = 7.2;
-const PAD_JUMP_V = 13;
+const JUMP_V = 9.6;
+const PAD_JUMP_V = 15;
 const WALK_SPEED = 4.2;
 const RUN_SPEED = 6.4;
 const SAFE_R = 20;          // monsters can never come closer to spawn than this
@@ -244,56 +244,69 @@ campLight.position.set(-4, PLATFORM_H + 2, 4);
 scene.add(campLight);
 
 /* ---------------- monster model factory (shared by minis + full size) ---------------- */
+/* Every creature is the same shape language: a chimp with no legs, torso
+ * tapering straight down to a point and hovering off the ground instead of
+ * standing on anything — reads as "wrong" at a glance, and lets one factory
+ * cover all four by varying proportions, color, and glow. */
 
-function createStalkerModel() {
+function createChimpModel({
+  bodyColor, bodyEmissive = 0x000000, bodyEmissiveIntensity = 0,
+  eyeColor, eyeEmissiveIntensity = 2.5,
+  torsoLen = 1.0, headScale = 1, armLen = 0.5, roughness = 0.9,
+}) {
   const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.45, 1.3, 6, 10),
-    new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 1 }));
-  body.position.y = 1.1;
-  g.add(body);
-  const eyeMat = new THREE.MeshStandardMaterial({ color: 0xcc2a22, emissive: 0xcc2a22, emissiveIntensity: 3 });
+  const mat = new THREE.MeshStandardMaterial({
+    color: bodyColor, emissive: bodyEmissive, emissiveIntensity: bodyEmissiveIntensity, roughness,
+  });
+
+  const torsoY = torsoLen / 2 + 0.15;
+  const torso = new THREE.Mesh(new THREE.ConeGeometry(0.38, torsoLen, 8), mat);
+  torso.position.y = torsoY;
+  g.add(torso);
+
+  const headY = torsoY + torsoLen / 2 + 0.26 * headScale;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.34 * headScale, 10, 10), mat);
+  head.position.y = headY;
+  g.add(head);
+
   for (const side of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), eyeMat);
-    eye.position.set(side * 0.14, 1.65, 0.38);
+    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, armLen, 4, 8), mat);
+    arm.position.set(side * 0.4, torsoY + torsoLen * 0.25, 0.04);
+    arm.rotation.z = side * 0.55;
+    g.add(arm);
+  }
+
+  const eyeMat = new THREE.MeshStandardMaterial({ color: eyeColor, emissive: eyeColor, emissiveIntensity: eyeEmissiveIntensity });
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.05 * headScale, 8, 8), eyeMat);
+    eye.position.set(side * 0.13 * headScale, headY, 0.27 * headScale);
     g.add(eye);
   }
+
+  g.userData.hoverHeight = 0.15; // feet (or lack of them) float this far off the ground
   return g;
 }
 
+function createStalkerModel() {
+  return createChimpModel({ bodyColor: 0x050505, eyeColor: 0xcc2a22, eyeEmissiveIntensity: 3, torsoLen: 1.1 });
+}
+
 function createLooperModel() {
-  const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.4, 1.1, 6, 10),
-    new THREE.MeshStandardMaterial({ color: 0x5a5e57, roughness: 1 }));
-  body.rotation.z = Math.PI / 2;
-  body.position.y = 0.45;
-  g.add(body);
-  for (const [lx, lz] of [[0.3, 0.5], [-0.3, 0.5], [0.3, -0.5], [-0.3, -0.5]]) {
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.5, 6), woodDarkMat);
-    leg.position.set(lx, 0.25, lz);
-    g.add(leg);
-  }
-  const eyeMat = new THREE.MeshStandardMaterial({ color: 0xcfe8ff, emissive: 0xcfe8ff, emissiveIntensity: 2.5 });
-  for (const side of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), eyeMat);
-    eye.position.set(side * 0.12, 0.6, 0.65);
-    g.add(eye);
-  }
+  const g = createChimpModel({ bodyColor: 0x5a5e57, eyeColor: 0xcfe8ff, torsoLen: 0.7, headScale: 0.9, armLen: 0.4 });
+  g.userData.hoverHeight = 0.08; // hugs the ground, no legs to speak of
   return g;
 }
 
 function createTreewatcherModel() {
-  const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 2.0, 6, 10),
-    new THREE.MeshStandardMaterial({ color: 0x2c2a22, roughness: 1 }));
-  body.position.y = 1.3;
-  g.add(body);
-  const eyeMat = new THREE.MeshStandardMaterial({ color: 0xe7e3c8, emissive: 0xe7e3c8, emissiveIntensity: 2 });
-  for (const side of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), eyeMat);
-    eye.position.set(side * 0.1, 2.15, 0.2);
-    g.add(eye);
-  }
-  return g;
+  return createChimpModel({ bodyColor: 0x2c2a22, eyeColor: 0xe7e3c8, eyeEmissiveIntensity: 2, torsoLen: 1.9, headScale: 0.85, armLen: 0.6 });
+}
+
+function createSupersonicModel() {
+  return createChimpModel({
+    bodyColor: 0x0f2e40, bodyEmissive: 0x1ec8ff, bodyEmissiveIntensity: 1.3,
+    eyeColor: 0xffffff, eyeEmissiveIntensity: 3.5,
+    torsoLen: 2.4, headScale: 0.75, armLen: 0.6, roughness: 0.5,
+  });
 }
 
 function makeLabel(text) {
@@ -314,9 +327,10 @@ function makeLabel(text) {
 /* ---------------- bestiary pedestals (inside the alcove, purely decorative) ---------------- */
 
 const bestiary = [
-  { name: 'Stalker', make: createStalkerModel, x: -5, z: 3 },
-  { name: 'Looper', make: createLooperModel, x: -4, z: 4.6 },
-  { name: 'Treewatcher', make: createTreewatcherModel, x: -2.8, z: 3 },
+  { name: 'Stalker', make: createStalkerModel, x: -5.3, z: 3.0 },
+  { name: 'Looper', make: createLooperModel, x: -2.9, z: 3.0 },
+  { name: 'Treewatcher', make: createTreewatcherModel, x: -5.3, z: 4.6 },
+  { name: 'Supersonic', make: createSupersonicModel, x: -2.9, z: 4.6 },
 ];
 const spinningMinis = [];
 for (const entry of bestiary) {
@@ -331,7 +345,7 @@ for (const entry of bestiary) {
   spinningMinis.push(mini);
 
   const label = makeLabel(entry.name);
-  label.position.set(entry.x, PLATFORM_H + 1.7, entry.z);
+  label.position.set(entry.x, PLATFORM_H + 2.15, entry.z); // clears even the tallest (Supersonic) mini
   scene.add(label);
 }
 
@@ -487,9 +501,9 @@ function tickStalker(dt, playerPos) {
     else m.group.position.add(toTarget.normalize().multiplyScalar(speed * dt));
   }
   clampToSafeZone(m.group.position);
-  m.group.position.y = groundHeight(m.group.position.x, m.group.position.z);
+  m.group.position.y = groundHeight(m.group.position.x, m.group.position.z) + (m.group.userData.hoverHeight || 0);
   m.group.lookAt(playerPos.x, m.group.position.y, playerPos.z);
-  return { dist, danger: m.alert ? Math.max(0, 1 - dist / 7) : 0, catchR: m.catchR };
+  return { dist, danger: m.alert ? Math.max(0, 1 - dist / 7) : 0, catchR: m.catchR, type: 'stalker' };
 }
 
 function tickLooper(dt, playerPos) {
@@ -510,9 +524,9 @@ function tickLooper(dt, playerPos) {
     else m.group.position.add(toTarget.normalize().multiplyScalar(speed * dt));
   }
   clampToSafeZone(m.group.position);
-  m.group.position.y = groundHeight(m.group.position.x, m.group.position.z);
+  m.group.position.y = groundHeight(m.group.position.x, m.group.position.z) + (m.group.userData.hoverHeight || 0);
   m.group.lookAt(playerPos.x, m.group.position.y + 0.3, playerPos.z);
-  return { dist, danger: m.alert ? Math.max(0, 1 - dist / 5) : 0, catchR: m.catchR };
+  return { dist, danger: m.alert ? Math.max(0, 1 - dist / 5) : 0, catchR: m.catchR, type: 'looper' };
 }
 
 function tickTreewatcher(dt, playerPos) {
@@ -527,9 +541,171 @@ function tickTreewatcher(dt, playerPos) {
     m.group.position.add(toPlayer.normalize().multiplyScalar(1.1 * dt));
   }
   clampToSafeZone(m.group.position);
-  m.group.position.y = groundHeight(m.group.position.x, m.group.position.z);
+  m.group.position.y = groundHeight(m.group.position.x, m.group.position.z) + (m.group.userData.hoverHeight || 0);
   if (watched) m.group.lookAt(playerPos.x, m.group.position.y + 0.8, playerPos.z);
-  return { dist, danger: !watched ? Math.max(0, 1 - dist / 10) : 0, catchR: m.catchR };
+  return { dist, danger: !watched ? Math.max(0, 1 - dist / 10) : 0, catchR: m.catchR, type: 'treewatcher' };
+}
+
+const supersonic = {
+  group: createSupersonicModel(),
+  route: [
+    new THREE.Vector3(26, 0, -24), new THREE.Vector3(40, 0, -30), new THREE.Vector3(34, 0, -40),
+    new THREE.Vector3(20, 0, -34),
+  ],
+  idx: 0, alert: false, alertTimer: 0, catchR: 1.2,
+};
+scene.add(supersonic.group);
+supersonic.group.position.copy(supersonic.route[0]);
+
+// 1.2x the player's own top speed — genuinely faster than you can run once
+// it's alert, so outrunning it in a straight line never works.
+const SUPERSONIC_SPEED = RUN_SPEED * 1.2;
+
+function tickSupersonic(dt, playerPos) {
+  const m = supersonic;
+  const toPlayer = new THREE.Vector3().subVectors(playerPos, m.group.position);
+  const dist = toPlayer.length();
+  const camForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+  const dirToM = new THREE.Vector3().subVectors(m.group.position, playerPos).normalize();
+  const seen = dist < 20 && camForward.dot(dirToM) > 0.88;
+
+  if (dist < 6 || seen) { m.alert = true; m.alertTimer = 4; }
+  else if (m.alertTimer > 0) m.alertTimer -= dt;
+  else m.alert = false;
+
+  const speed = m.alert ? SUPERSONIC_SPEED : 2.6;
+  if (m.alert && dist > 0.01) {
+    m.group.position.add(toPlayer.normalize().multiplyScalar(speed * dt));
+  } else if (!m.alert) {
+    const target = m.route[m.idx];
+    const toTarget = new THREE.Vector3().subVectors(target, m.group.position);
+    if (toTarget.length() < 1) m.idx = (m.idx + 1) % m.route.length;
+    else m.group.position.add(toTarget.normalize().multiplyScalar(speed * dt));
+  }
+  clampToSafeZone(m.group.position);
+  m.group.position.y = groundHeight(m.group.position.x, m.group.position.z) + (m.group.userData.hoverHeight || 0);
+  m.group.lookAt(playerPos.x, m.group.position.y, playerPos.z);
+  updateSupersonicMusic(dist);
+  return { dist, danger: m.alert ? Math.max(0, 1 - dist / 9) : 0, catchR: m.catchR, type: 'supersonic' };
+}
+
+/* ---------------- audio ---------------- */
+/* Everything here is generated live with oscillators/noise buffers, same
+ * "no asset files" rule as the rest of the project — no mp3s, no fetches. */
+
+let audioCtx = null;
+function ensureAudio() {
+  if (!audioCtx) {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return null;
+    audioCtx = new Ctx();
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+// Supersonic's "plays music when close": a small neon arpeggio that fades
+// in as it closes the distance, audible well before it's actually alert.
+const SUPERSONIC_MUSIC_RANGE = 26;
+const supersonicNotes = [392, 523.25, 440, 659.25, 523.25, 440, 392, 587.33];
+let supersonicNoteIdx = 0;
+let supersonicNoteTimer = 0;
+let supersonicMusicGain = null;
+
+function updateSupersonicMusic(dist) {
+  const ctx = audioCtx; // only once the player has interacted — don't force-start audio
+  if (!ctx) return;
+  if (!supersonicMusicGain) {
+    supersonicMusicGain = ctx.createGain();
+    supersonicMusicGain.gain.value = 0;
+    supersonicMusicGain.connect(ctx.destination);
+  }
+  const target = Math.max(0, 1 - dist / SUPERSONIC_MUSIC_RANGE) * 0.35;
+  supersonicMusicGain.gain.setTargetAtTime(target, ctx.currentTime, 0.2);
+
+  supersonicNoteTimer -= 1 / 60;
+  if (target > 0.01 && supersonicNoteTimer <= 0) {
+    supersonicNoteTimer = 0.22;
+    const freq = supersonicNotes[supersonicNoteIdx % supersonicNotes.length];
+    supersonicNoteIdx++;
+    const osc = ctx.createOscillator();
+    osc.type = 'square';
+    osc.frequency.value = freq;
+    const g = ctx.createGain();
+    g.gain.value = 0;
+    osc.connect(g).connect(supersonicMusicGain);
+    const now = ctx.currentTime;
+    g.gain.linearRampToValueAtTime(0.6, now + 0.02);
+    g.gain.linearRampToValueAtTime(0, now + 0.18);
+    osc.start(now);
+    osc.stop(now + 0.2);
+  }
+}
+
+// Short, distinct jumpscare stings per monster type — no shared sound.
+function playScare(type) {
+  const ctx = ensureAudio();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  const master = ctx.createGain();
+  master.gain.value = 0.9;
+  master.connect(ctx.destination);
+
+  if (type === 'supersonic') {
+    // A harsh pitch-dropping scream plus a noise burst under it.
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(1500, now);
+    osc.frequency.exponentialRampToValueAtTime(160, now + 0.55);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(0.85, now + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.6);
+    osc.connect(g).connect(master);
+    osc.start(now); osc.stop(now + 0.6);
+
+    const noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 0.5, ctx.sampleRate);
+    const data = noiseBuf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+    const noise = ctx.createBufferSource();
+    noise.buffer = noiseBuf;
+    const ng = ctx.createGain();
+    ng.gain.value = 0.35;
+    noise.connect(ng).connect(master);
+    noise.start(now);
+  } else if (type === 'stalker') {
+    const osc = ctx.createOscillator();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(90, now);
+    osc.frequency.exponentialRampToValueAtTime(38, now + 0.4);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.65, now);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
+    osc.connect(g).connect(master);
+    osc.start(now); osc.stop(now + 0.42);
+  } else if (type === 'looper') {
+    for (let i = 0; i < 5; i++) {
+      const t = now + i * 0.06;
+      const osc = ctx.createOscillator();
+      osc.type = 'square';
+      osc.frequency.value = 650 + Math.random() * 400;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.45, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+      osc.connect(g).connect(master);
+      osc.start(t); osc.stop(t + 0.06);
+    }
+  } else if (type === 'treewatcher') {
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(240, now);
+    osc.frequency.linearRampToValueAtTime(55, now + 0.8);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.5, now);
+    g.gain.linearRampToValueAtTime(0.0001, now + 0.8);
+    osc.connect(g).connect(master);
+    osc.start(now); osc.stop(now + 0.8);
+  }
 }
 
 /* ---------------- player controller ---------------- */
@@ -563,6 +739,7 @@ function enterFallbackLook() {
 }
 
 blocker.addEventListener('click', () => {
+  ensureAudio();
   attemptLock();
   if (!controls.isLocked) enterFallbackLook();
 });
@@ -689,8 +866,9 @@ function movePlayer(dt) {
 /* ---------------- game state ---------------- */
 
 const vignette = document.getElementById('dread-vignette');
+const jumpscareEl = document.getElementById('jumpscare-flash');
 
-function respawnFromCatch() {
+function resetAfterCatch() {
   camera.position.copy(SPAWN);
   velocity.set(0, 0, 0);
   onGround = true;
@@ -699,8 +877,39 @@ function respawnFromCatch() {
   looper.group.position.copy(looper.route[0]);
   looper.alert = false; looper.alertTimer = 0;
   treewatcher.group.position.copy(treewatcher.home);
-  document.body.style.filter = 'brightness(3) saturate(0)';
-  setTimeout(() => { document.body.style.filter = ''; }, 120);
+  supersonic.group.position.copy(supersonic.route[0]);
+  supersonic.alert = false; supersonic.alertTimer = 0;
+}
+
+const monstersByType = { stalker, looper, treewatcher, supersonic };
+const SCARE_DURATION = { stalker: 0.6, looper: 0.45, treewatcher: 0.7, supersonic: 0.8 };
+
+let scareActive = false;
+
+// The catch itself: the thing that got you snaps right into your face
+// (not a generic flash) — a scream, a close-up, your own HUD frozen on
+// it — before the usual reset to the treehouse.
+function triggerJumpscare(type) {
+  if (scareActive) return;
+  scareActive = true;
+  const m = monstersByType[type];
+
+  const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+  const facePos = camera.position.clone().addScaledVector(dir, 0.85);
+  m.group.position.copy(facePos);
+  m.group.lookAt(camera.position);
+
+  playScare(type);
+  jumpscareEl.className = '';
+  void jumpscareEl.offsetWidth; // restart the CSS animation even if it just played
+  jumpscareEl.classList.add('show', 'scare-' + type);
+
+  const duration = SCARE_DURATION[type] || 0.6;
+  setTimeout(() => {
+    jumpscareEl.classList.remove('show', 'scare-' + type);
+    scareActive = false;
+    resetAfterCatch();
+  }, duration * 1000);
 }
 
 function winGame() {
@@ -720,7 +929,10 @@ function animate() {
 
   for (const mini of spinningMinis) mini.rotation.y += dt * 0.6;
 
-  if ((controls.isLocked || fallbackLook) && !endScreen.classList.contains('show')) {
+  if (scareActive) {
+    camera.position.x += (Math.random() - 0.5) * 0.05;
+    camera.position.y += (Math.random() - 0.5) * 0.05;
+  } else if ((controls.isLocked || fallbackLook) && !endScreen.classList.contains('show')) {
     movePlayer(dt);
 
     for (const ember of embers) {
@@ -737,10 +949,12 @@ function animate() {
       tickStalker(dt, camera.position),
       tickLooper(dt, camera.position),
       tickTreewatcher(dt, camera.position),
+      tickSupersonic(dt, camera.position),
     ];
     const danger = Math.max(...results.map((r) => r.danger));
     vignette.style.opacity = String(danger);
-    for (const r of results) if (r.dist < r.catchR) respawnFromCatch();
+    const caught = results.find((r) => r.dist < r.catchR);
+    if (caught) triggerJumpscare(caught.type);
 
     const home = Math.sqrt(camera.position.x * camera.position.x) < PLATFORM_HALF &&
       Math.abs(camera.position.z) < PLATFORM_HALF && camera.position.y > PLATFORM_H;

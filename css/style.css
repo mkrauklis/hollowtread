@@ -200,6 +200,30 @@ canvas.game-canvas {
   z-index: 2;
 }
 
+/* Jumpscare: the thing that caught you is snapped right up to the camera
+ * in the 3D scene itself (see triggerJumpscare in js/world.js); this is
+ * just the screen-space color sting layered on top of that, one per
+ * monster so each catch reads differently. */
+#jumpscare-flash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 4;
+}
+
+#jumpscare-flash.show { opacity: 1; }
+
+@keyframes scare-flash-stalker { 0% { opacity: 0; } 8% { opacity: 0.95; } 35% { opacity: 0.25; } 65% { opacity: 0.7; } 100% { opacity: 0; } }
+@keyframes scare-flash-looper { 0%, 100% { opacity: 0; } 8%, 28%, 48%, 68% { opacity: 0.85; } 18%, 38%, 58%, 80% { opacity: 0; } }
+@keyframes scare-flash-treewatcher { 0% { opacity: 0; } 35% { opacity: 0.55; } 100% { opacity: 0.92; } }
+@keyframes scare-flash-supersonic { 0% { opacity: 0; } 12% { opacity: 1; } 45% { opacity: 0.35; } 75% { opacity: 1; } 100% { opacity: 0; } }
+
+#jumpscare-flash.scare-stalker { background: #b23b2e; animation: scare-flash-stalker 0.6s ease-out; }
+#jumpscare-flash.scare-looper { background: #eef2f5; animation: scare-flash-looper 0.45s steps(1, end); }
+#jumpscare-flash.scare-treewatcher { background: #0a0806; animation: scare-flash-treewatcher 0.7s ease-in; }
+#jumpscare-flash.scare-supersonic { background: #1ec8ff; animation: scare-flash-supersonic 0.8s ease-in-out; }
+
 #blocker {
   position: absolute;
   inset: 0;
