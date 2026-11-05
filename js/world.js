@@ -567,17 +567,38 @@ function clampToSafeZone(pos) {
   }
 }
 
+// Turn rate matters as real gameplay, not just visual polish: a monster
+// that can only turn slowly can be juked by cutting around it, even if
+// it's faster than you in a straight line. heading is a yaw angle (the
+// same convention Object3D.rotation.y uses), moved toward targetHeading
+// at up to maxRate radians/sec, and that heading is what both the facing
+// AND the actual movement direction are derived from -- it can't strafe
+// or snap-correct onto you, only turn at its own pace.
+function turnToward(heading, targetHeading, maxRate, dt) {
+  let diff = targetHeading - heading;
+  diff = ((diff + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+  const maxStep = maxRate * dt;
+  if (Math.abs(diff) <= maxStep) return targetHeading;
+  return heading + Math.sign(diff) * maxStep;
+}
+
+function headingTo(dx, dz) {
+  return Math.atan2(-dx, -dz); // matches Object3D's default -Z-forward convention
+}
+
 const supersonic = {
   group: createSupersonicModel(),
   route: [new THREE.Vector3(70, 0, -65)], // southeast corner
-  idx: 0, alert: false, alertTimer: 0, catchR: 1.2,
+  idx: 0, alert: false, alertTimer: 0, catchR: 1.2, heading: 0,
 };
 scene.add(supersonic.group);
 supersonic.group.position.copy(supersonic.route[0]);
 
 // 1.2x the player's own top speed — genuinely faster than you can run once
-// it's alert, so outrunning it in a straight line never works.
+// it's alert, so outrunning it in a straight line never works. But it
+// turns almost instantly (SUPERSONIC_TURN_RATE), so juking it is hard too.
 const SUPERSONIC_SPEED = RUN_SPEED * 1.2;
+const SUPERSONIC_TURN_RATE = 9.0; // rad/sec
 
 function tickSupersonic(dt, playerPos) {
   const m = supersonic;
@@ -594,13 +615,16 @@ function tickSupersonic(dt, playerPos) {
   else if (m.alertTimer > 0) m.alertTimer -= dt;
   else m.alert = false;
 
-  // Stays put until alert -- no patrol wandering.
+  // Stays put until alert -- no patrol wandering. Moves in the direction
+  // it's actually FACING, not straight at you -- turning is what limits it.
   if (m.alert && dist > 0.01) {
-    m.group.position.add(toPlayer.normalize().multiplyScalar(SUPERSONIC_SPEED * dt));
+    m.heading = turnToward(m.heading, headingTo(toPlayer.x, toPlayer.z), SUPERSONIC_TURN_RATE, dt);
+    m.group.position.x += -Math.sin(m.heading) * SUPERSONIC_SPEED * dt;
+    m.group.position.z += -Math.cos(m.heading) * SUPERSONIC_SPEED * dt;
   }
   clampToSafeZone(m.group.position);
   m.group.position.y = groundHeight(m.group.position.x, m.group.position.z) + (m.group.userData.hoverHeight || 0);
-  m.group.lookAt(playerPos.x, m.group.position.y, playerPos.z);
+  m.group.rotation.y = m.heading;
   updateSupersonicMusic(dist);
   return { dist, danger: m.alert ? Math.max(0, 1 - dist / 9) : 0, catchR: m.catchR, type: 'supersonic' };
 }
@@ -608,10 +632,15 @@ function tickSupersonic(dt, playerPos) {
 const hotCheeto = {
   group: createHotCheetoModel(),
   route: [new THREE.Vector3(-70, 0, 70)], // northwest corner, far from Supersonic
-  idx: 0, alert: false, alertTimer: 0, catchR: 2.8, // bigger body, bigger forgiving hitbox
+  idx: 0, alert: false, alertTimer: 0, catchR: 2.8, heading: 0, // bigger body, bigger forgiving hitbox
 };
 scene.add(hotCheeto.group);
 hotCheeto.group.position.copy(hotCheeto.route[0]);
+
+// Same top speed as Supersonic, but turns slowly -- a straight-line sprint
+// can't outrun it, but circling around it works, since it can't correct
+// its heading fast enough to cut you off.
+const HOTCHEETO_TURN_RATE = 0.9; // rad/sec
 
 function tickHotCheeto(dt, playerPos) {
   const m = hotCheeto;
@@ -626,13 +655,15 @@ function tickHotCheeto(dt, playerPos) {
   else if (m.alertTimer > 0) m.alertTimer -= dt;
   else m.alert = false;
 
-  // Stays put until alert -- no patrol wandering. Same top speed as Supersonic.
+  // Stays put until alert -- no patrol wandering.
   if (m.alert && dist > 0.01) {
-    m.group.position.add(toPlayer.normalize().multiplyScalar(SUPERSONIC_SPEED * dt));
+    m.heading = turnToward(m.heading, headingTo(toPlayer.x, toPlayer.z), HOTCHEETO_TURN_RATE, dt);
+    m.group.position.x += -Math.sin(m.heading) * SUPERSONIC_SPEED * dt;
+    m.group.position.z += -Math.cos(m.heading) * SUPERSONIC_SPEED * dt;
   }
   clampToSafeZone(m.group.position);
   m.group.position.y = groundHeight(m.group.position.x, m.group.position.z) + (m.group.userData.hoverHeight || 0);
-  m.group.lookAt(playerPos.x, m.group.position.y, playerPos.z);
+  m.group.rotation.y = m.heading;
   return { dist, danger: m.alert ? Math.max(0, 1 - dist / 12) : 0, catchR: m.catchR, type: 'hotcheeto' };
 }
 
