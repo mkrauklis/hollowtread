@@ -13,8 +13,12 @@
 <!-- Classic script, not type="module" -- ES modules are blocked entirely
      over file://, which would make double-clicking this file never work
      at all. three.min.js is the plain global/UMD build (sets window.THREE),
-     loaded before world.js needs it. -->
-<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+     loaded before world.js needs it. Pinned to 0.149.0, not latest: 0.150+
+     deprecates this classic build, and at 0.160.0 specifically it's
+     unreliable -- window.THREE ends up defined, but not synchronously
+     before the very next script tag runs, which is exactly when this one
+     needs it. 0.149.0 is the last version before that deprecation. -->
+<script src="https://unpkg.com/three@0.149.0/build/three.min.js"></script>
 </head>
 <body>
 <div id="game-root">
@@ -33,9 +37,10 @@
       <h2>The Hollow</h2>
       <p>
         Home is the treehouse — safe, lit, yours. Everything past the ramp is one
-        unbroken, free-roam forest: giant hills, jump pads, pumpkins, and two
-        things that don't live in the bestiary room by choice. No objective —
-        just you, the dark, and however far you want to go.
+        unbroken, free-roam forest: giant trees, connected platforms and
+        bridges, jump pads, pumpkins, and three things that don't live in the
+        bestiary room by choice. No objective — just you, the dark, and
+        however far you want to go.
       </p>
       <p id="start-hint">Click to drop in. Esc to pause. (If your browser won't lock the mouse, click-and-drag to look instead.)</p>
     </div>
@@ -51,6 +56,6 @@
 <!-- cache-bust on every deploy: bump this version string any time
      js/world.js changes, so a returning player's browser can't keep
      running a stale cached copy against the current markup/CSS. -->
-<script src="js/world.js?v=8"></script>
+<script src="js/world.js?v=9" defer></script>
 </body>
 </html>

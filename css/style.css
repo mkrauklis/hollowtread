@@ -196,9 +196,11 @@ canvas.game-canvas {
 
 @keyframes scare-flash-supersonic { 0% { opacity: 0; } 12% { opacity: 1; } 45% { opacity: 0.35; } 75% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes scare-flash-hotcheeto { 0% { opacity: 0; } 15% { opacity: 0.9; } 40% { opacity: 0.5; } 70% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes scare-flash-peanut { 0% { opacity: 0; } 10% { opacity: 1; } 55% { opacity: 0.2; } 100% { opacity: 0; } }
 
 #jumpscare-flash.scare-supersonic { background: #1ec8ff; animation: scare-flash-supersonic 0.8s ease-in-out; }
 #jumpscare-flash.scare-hotcheeto { background: #5c1220; animation: scare-flash-hotcheeto 0.9s ease-in; }
+#jumpscare-flash.scare-peanut { background: #c9a06b; animation: scare-flash-peanut 0.6s ease-out; }
 
 /* Touch controls -- hidden entirely unless js/world.js adds .touch-ui to
  * #game-root after feature-detecting touch, so desktop players never see

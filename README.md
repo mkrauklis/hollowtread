@@ -28,9 +28,10 @@ screens between areas. You spawn on a **treehouse deck**, built up on stilts
 around a big tree. That deck is a safe zone: nothing that hunts at night can
 cross onto it or come within 20 units of its center. A ramp off the south
 side of the deck is the only way down, into one continuous forest bounded by
-a perimeter wall, with giant rolling hills, scattered trees (bare, with real
-climbable branches), glowing jump pads, and autumn clutter — pumpkins, leaf
-piles, scarecrows.
+a perimeter wall, with giant rolling hills, oversized bare trees (real
+climbable branches), a loop of connected elevated platforms and bridges
+north of the treehouse, glowing jump pads, and autumn clutter — pumpkins,
+leaf piles, scarecrows.
 
 A small alcove on the deck (the **bestiary room**) holds miniature, slowly
 turning models of the things loose in the forest, labelled by name. It's
@@ -63,11 +64,18 @@ and screaming in your face.
 **Hot Cheeto** — the same no-legs chimp shape as Supersonic, scaled up 4x:
 maroon, with glowing neon red eyes, hovering out in the northwest corner of
 the forest. Same top speed as Supersonic, same "stays put until alert"
-behavior, but its sheer size makes it easier to spot from further away. Its
-jumpscare is it picking you up and putting you in its mouth.
+behavior, but its sheer size makes it easier to spot from further away. It
+also turns slowly (unlike Supersonic) — a straight sprint still won't
+outrun it, but circling around it actually works. Its jumpscare is it
+picking you up and putting you in its mouth.
 
-Both are capped at a 20-unit radius from the treehouse — once you're back
-near home, you're safe, mid-chase or not.
+**Peanut** — light brown, no arms, hovering out in the northeast corner.
+Slightly *slower* than you (0.98x your top speed) but turns faster than
+anything else out there — it can't catch you in a straight line, but don't
+expect to lose it by weaving, either. Its jumpscare is a quick, sharp tackle.
+
+All three are capped at a 20-unit radius from the treehouse — once you're
+back near home, you're safe, mid-chase or not.
 
 ## Lessons carried over from Desolate Apes (goofy-horror)
 

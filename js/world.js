@@ -11,6 +11,15 @@
  * breaks, no loading screens.
  * ------------------------------------------------------------------- */
 
+// Everything is wrapped in boot() and only invoked once `THREE` genuinely
+// exists (see waitForThreeThenBoot at the bottom of this file). Script-tag
+// order alone (three.min.js before this one, no defer/async) *should*
+// guarantee that by spec, but it was observed not holding in at least one
+// real environment -- THREE ending up defined, just not synchronously
+// before this script's first line ran. Polling a few times is cheap
+// insurance against that, whatever the exact cause.
+function boot() {
+
 const EYE_H = 1.5;          // chimp stands lower than a human
 const PLAYER_R = 0.4;
 const GRAVITY = -22;
@@ -95,7 +104,7 @@ camera.add(armGroup);
  * closer to the simple, slightly grimy look of a game like Gorilla Tag
  * than a clean flat color. */
 
-function makeGrainTexture({ size = 32, dark = 150, light = 255, repeat = 6, blotch = 3 } = {}) {
+function makeGrainTexture({ size = 96, dark = 150, light = 255, repeat = 6, blotch = 3 } = {}) {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext('2d');
@@ -126,7 +135,7 @@ function makeGrainTexture({ size = 32, dark = 150, light = 255, repeat = 6, blot
 const woodMat = new THREE.MeshStandardMaterial({ color: 0x4e3a26, roughness: 0.95, map: makeGrainTexture({ dark: 140, light: 235, repeat: 7, blotch: 4 }) });
 const woodDarkMat = new THREE.MeshStandardMaterial({ color: 0x241b12, roughness: 1, map: makeGrainTexture({ dark: 110, light: 220, repeat: 5, blotch: 3 }) });
 const leafMat = new THREE.MeshStandardMaterial({ color: 0x15210f, roughness: 1, map: makeGrainTexture({ dark: 120, light: 255, repeat: 6, blotch: 2 }) });
-const groundMat = new THREE.MeshStandardMaterial({ color: 0x24401c, roughness: 1, map: makeGrainTexture({ dark: 90, light: 255, repeat: 48, blotch: 2 }) });
+const groundMat = new THREE.MeshStandardMaterial({ color: 0x24401c, roughness: 1, map: makeGrainTexture({ size: 192, dark: 90, light: 255, repeat: 48, blotch: 2 }) });
 const trunkMat = new THREE.MeshStandardMaterial({ color: 0x1c140c, roughness: 1, map: makeGrainTexture({ dark: 100, light: 230, repeat: 8, blotch: 3 }) });
 const padMat = new THREE.MeshStandardMaterial({ color: 0x1a3a3a, emissive: 0x2fd6c4, emissiveIntensity: 0.7, roughness: 0.6 });
 
@@ -305,7 +314,7 @@ scene.add(campLight);
 function createChimpModel({
   bodyColor, bodyEmissive = 0x000000, bodyEmissiveIntensity = 0,
   eyeColor, eyeEmissiveIntensity = 2.5,
-  torsoLen = 1.0, headScale = 1, armLen = 0.5, roughness = 0.9,
+  torsoLen = 1.0, headScale = 1, armLen = 0.5, roughness = 0.9, arms = true,
 }) {
   const g = new THREE.Group();
   const mat = new THREE.MeshStandardMaterial({
@@ -341,21 +350,31 @@ function createChimpModel({
   }
 
   // Long ape arms, each ending in a hand so the limb actually looks jointed —
-  // anchored to the torso's shoulder line, well below the head.
-  const shoulderY = torso.position.y + torsoHalfH * 0.2;
-  for (const side of [-1, 1]) {
-    const armAngle = side * 0.6;
-    const shoulder = new THREE.Vector3(side * 0.34, shoulderY, 0.05);
-    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.11, armLen, 4, 6), mat);
-    arm.position.copy(shoulder);
-    arm.rotation.z = armAngle;
-    g.add(arm);
+  // anchored to the torso's shoulder line, well below the head. Some
+  // creatures (Peanut) skip this entirely -- torso and head only.
+  const armPivots = [];
+  if (arms) {
+    const shoulderY = torso.position.y + torsoHalfH * 0.2;
+    for (const side of [-1, 1]) {
+      const armAngle = side * 0.6;
+      const shoulder = new THREE.Vector3(side * 0.34, shoulderY, 0.05);
+      const pivot = new THREE.Group();
+      pivot.position.copy(shoulder);
+      g.add(pivot);
 
-    const handOffset = new THREE.Vector3(Math.sin(armAngle), -Math.cos(armAngle), 0).multiplyScalar(armLen / 2 + 0.06);
-    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.11, 6, 5), mat);
-    hand.position.copy(shoulder).add(handOffset);
-    g.add(hand);
+      const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.11, armLen, 4, 6), mat);
+      arm.rotation.z = armAngle;
+      pivot.add(arm);
+
+      const handOffset = new THREE.Vector3(Math.sin(armAngle), -Math.cos(armAngle), 0).multiplyScalar(armLen / 2 + 0.06);
+      const hand = new THREE.Mesh(new THREE.SphereGeometry(0.11, 6, 5), mat);
+      hand.position.copy(handOffset);
+      pivot.add(hand);
+
+      armPivots.push(pivot);
+    }
   }
+  g.userData.armPivots = armPivots; // used to swing arms for the run cycle
 
   // Pushed out past the head sphere's own radius (0.38*headScale) so they
   // actually protrude and read as eyes instead of being buried inside it.
@@ -390,6 +409,13 @@ function createHotCheetoModel() {
   return g;
 }
 
+function createPeanutModel() {
+  return createChimpModel({
+    bodyColor: 0xc9a06b, eyeColor: 0x3a2a14, eyeEmissiveIntensity: 1.2,
+    torsoLen: 1.0, headScale: 1.05, roughness: 0.85, arms: false,
+  });
+}
+
 function makeLabel(text) {
   const canvas = document.createElement('canvas');
   canvas.width = 256; canvas.height = 64;
@@ -408,8 +434,9 @@ function makeLabel(text) {
 /* ---------------- bestiary pedestals (inside the alcove, purely decorative) ---------------- */
 
 const bestiary = [
-  { name: 'Supersonic', make: createSupersonicModel, x: -4.9, z: 4 },
-  { name: 'Hot Cheeto', make: createHotCheetoModel, x: -3.1, z: 4 },
+  { name: 'Supersonic', make: createSupersonicModel, x: -5.4, z: 4 },
+  { name: 'Hot Cheeto', make: createHotCheetoModel, x: -4.0, z: 4 },
+  { name: 'Peanut', make: createPeanutModel, x: -2.6, z: 4 },
 ];
 const spinningMinis = [];
 for (const entry of bestiary) {
@@ -463,8 +490,9 @@ while (treesPlaced < 70) {
   const z = (rand() - 0.5) * 140 + 10;
   if (isInSafeZone(x, z)) continue;
   const h = groundHeight(x, z);
-  const trunkH = 3 + rand() * 2.5;
-  const r = 0.3 + rand() * 0.25;
+  const TREE_SCALE = 2; // trees stand twice as tall/thick as they used to
+  const trunkH = (3 + rand() * 2.5) * TREE_SCALE;
+  const r = (0.3 + rand() * 0.25) * TREE_SCALE;
   const t = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.7, r, trunkH, 7), trunkMat);
   t.position.set(x, h + trunkH / 2, z);
   scene.add(t);
@@ -474,9 +502,9 @@ while (treesPlaced < 70) {
   const branchCount = rand() < 0.4 ? 2 : 1;
   for (let b = 0; b < branchCount; b++) {
     const angle = rand() * Math.PI * 2;
-    const len = 1.6 + rand() * 1.3;
+    const len = (1.6 + rand() * 1.3) * TREE_SCALE;
     const branchH = h + trunkH * (0.4 + rand() * 0.45);
-    const tilt = (rand() - 0.5) * 0.6;
+    const tilt = (rand() - 0.5) * 0.6 * TREE_SCALE;
     const ex = x + Math.cos(angle) * (r + len);
     const ez = z + Math.sin(angle) * (r + len);
     makeBranch(x + Math.cos(angle) * r, branchH, z + Math.sin(angle) * r, ex, branchH + tilt, ez);
@@ -541,6 +569,54 @@ scatterProp(16, makePumpkin);
 scatterProp(12, makeLeafPile);
 scatterProp(9, makeScarecrow);
 
+/* ---------------- platform network: connected platforms + bridges ---------------- */
+/* A loop of elevated wooden platforms north of the treehouse, each one
+ * walkable, linked to its neighbors by flat bridge walkways -- reuses the
+ * exact same branchPlatforms support system the tree branches use, so
+ * landing/walking on any of it works identically. Height stays low enough
+ * (just above a normal jump) to reach straight from the ground. */
+
+function addFlatPlatform(cx, cz, half) {
+  const cy = groundHeight(cx, cz) + 2.2;
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(half * 2, 0.3, half * 2), woodMat);
+  mesh.position.set(cx, cy, cz);
+  scene.add(mesh);
+  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, cy, 6), woodDarkMat);
+    post.position.set(cx + sx * (half - 0.2), cy / 2, cz + sz * (half - 0.2));
+    scene.add(post);
+  }
+  branchPlatforms.push({ x0: cx - half, x1: cx + half, z0: cz - half, z1: cz + half, y: cy + 0.15 });
+  return cy;
+}
+
+function addBridge(x0, z0, y0, x1, z1, y1) {
+  const dx = x1 - x0, dz = z1 - z0;
+  const len = Math.hypot(dx, dz);
+  const midY = (y0 + y1) / 2;
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.25, len), woodMat);
+  mesh.position.set((x0 + x1) / 2, midY, (z0 + z1) / 2);
+  mesh.rotation.y = Math.atan2(dx, dz);
+  scene.add(mesh);
+  const margin = 1.0; // generous -- walking off the edge of a thin bridge isn't fun
+  branchPlatforms.push({
+    x0: Math.min(x0, x1) - margin, x1: Math.max(x0, x1) + margin,
+    z0: Math.min(z0, z1) - margin, z1: Math.max(z0, z1) + margin,
+    y: midY + 0.15,
+  });
+}
+
+{
+  const nodes = [
+    { x: 0, z: 22 }, { x: -14, z: 34 }, { x: 0, z: 46 }, { x: 14, z: 34 },
+  ];
+  const nodeY = nodes.map((n) => addFlatPlatform(n.x, n.z, 2.4));
+  for (let i = 0; i < nodes.length; i++) {
+    const a = nodes[i], b = nodes[(i + 1) % nodes.length];
+    addBridge(a.x, a.z, nodeY[i], b.x, b.z, nodeY[(i + 1) % nodes.length]);
+  }
+}
+
 /* ---------------- jump pads ---------------- */
 
 const jumpPads = [
@@ -586,6 +662,23 @@ function headingTo(dx, dz) {
   return Math.atan2(-dx, -dz); // matches Object3D's default -Z-forward convention
 }
 
+// A simple running cycle for legless creatures: a bounce (feet they don't
+// have still need to look like they're covering ground) plus an arm swing
+// for whichever ones have arms. Rate/amp are tuned per monster so each
+// reads differently -- Supersonic quick and light, Hot Cheeto heavy and
+// slow, Peanut light and fast.
+function animateRunCycle(m, rate, bobAmp, armSwingAmp = 0) {
+  const t = performance.now() / 1000;
+  const phase = t * rate;
+  m.group.position.y += Math.abs(Math.sin(phase)) * bobAmp;
+  const pivots = m.group.userData.armPivots;
+  if (pivots && pivots.length) {
+    const swing = Math.sin(phase * 2) * armSwingAmp;
+    pivots[0].rotation.x = swing;
+    pivots[1].rotation.x = -swing;
+  }
+}
+
 const supersonic = {
   group: createSupersonicModel(),
   route: [new THREE.Vector3(70, 0, -65)], // southeast corner
@@ -625,6 +718,7 @@ function tickSupersonic(dt, playerPos) {
   clampToSafeZone(m.group.position);
   m.group.position.y = groundHeight(m.group.position.x, m.group.position.z) + (m.group.userData.hoverHeight || 0);
   m.group.rotation.y = m.heading;
+  if (m.alert) animateRunCycle(m, 14, 0.08, 0.55);
   updateSupersonicMusic(dist);
   return { dist, danger: m.alert ? Math.max(0, 1 - dist / 9) : 0, catchR: m.catchR, type: 'supersonic' };
 }
@@ -664,7 +758,46 @@ function tickHotCheeto(dt, playerPos) {
   clampToSafeZone(m.group.position);
   m.group.position.y = groundHeight(m.group.position.x, m.group.position.z) + (m.group.userData.hoverHeight || 0);
   m.group.rotation.y = m.heading;
+  if (m.alert) animateRunCycle(m, 4, 0.35, 0.4);
   return { dist, danger: m.alert ? Math.max(0, 1 - dist / 12) : 0, catchR: m.catchR, type: 'hotcheeto' };
+}
+
+const peanut = {
+  group: createPeanutModel(),
+  route: [new THREE.Vector3(60, 0, 70)], // northeast corner, away from the other two
+  idx: 0, alert: false, alertTimer: 0, catchR: 1.0, heading: 0,
+};
+scene.add(peanut.group);
+peanut.group.position.copy(peanut.route[0]);
+
+// Slightly slower than you (0.98x) but turns on a dime (even faster than
+// Supersonic) -- can't win a straight chase, but it corners perfectly, so
+// don't expect to lose it by weaving.
+const PEANUT_SPEED = RUN_SPEED * 0.98;
+const PEANUT_TURN_RATE = 12.0; // rad/sec
+
+function tickPeanut(dt, playerPos) {
+  const m = peanut;
+  const toPlayer = new THREE.Vector3(playerPos.x - m.group.position.x, 0, playerPos.z - m.group.position.z);
+  const dist = toPlayer.length();
+  const camForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+  const dirToM = new THREE.Vector3().subVectors(m.group.position, playerPos).normalize();
+  const seen = dist < 20 && camForward.dot(dirToM) > 0.88;
+
+  if (dist < 6 || seen) { m.alert = true; m.alertTimer = 4; }
+  else if (m.alertTimer > 0) m.alertTimer -= dt;
+  else m.alert = false;
+
+  if (m.alert && dist > 0.01) {
+    m.heading = turnToward(m.heading, headingTo(toPlayer.x, toPlayer.z), PEANUT_TURN_RATE, dt);
+    m.group.position.x += -Math.sin(m.heading) * PEANUT_SPEED * dt;
+    m.group.position.z += -Math.cos(m.heading) * PEANUT_SPEED * dt;
+  }
+  clampToSafeZone(m.group.position);
+  m.group.position.y = groundHeight(m.group.position.x, m.group.position.z) + (m.group.userData.hoverHeight || 0);
+  m.group.rotation.y = m.heading;
+  if (m.alert) animateRunCycle(m, 16, 0.1, 0);
+  return { dist, danger: m.alert ? Math.max(0, 1 - dist / 9) : 0, catchR: m.catchR, type: 'peanut' };
 }
 
 /* ---------------- audio ---------------- */
@@ -772,6 +905,27 @@ function playScare(type) {
     cg.gain.value = 0.9;
     chomp.connect(cg).connect(master);
     chomp.start(now + 0.5);
+  } else if (type === 'peanut') {
+    // Quick and sharp -- a fast little tackle, not a drawn-out scare.
+    const thud = ctx.createBuffer(1, ctx.sampleRate * 0.12, ctx.sampleRate);
+    const data = thud.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+    const noise = ctx.createBufferSource();
+    noise.buffer = thud;
+    const ng = ctx.createGain();
+    ng.gain.value = 0.7;
+    noise.connect(ng).connect(master);
+    noise.start(now);
+
+    const osc = ctx.createOscillator();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(260, now);
+    osc.frequency.exponentialRampToValueAtTime(90, now + 0.2);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.5, now);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+    osc.connect(g).connect(master);
+    osc.start(now); osc.stop(now + 0.22);
   }
 }
 
@@ -1048,10 +1202,12 @@ function resetAfterCatch() {
   supersonic.alert = false; supersonic.alertTimer = 0;
   hotCheeto.group.position.copy(hotCheeto.route[0]);
   hotCheeto.alert = false; hotCheeto.alertTimer = 0;
+  peanut.group.position.copy(peanut.route[0]);
+  peanut.alert = false; peanut.alertTimer = 0;
 }
 
-const monstersByType = { supersonic, hotcheeto: hotCheeto };
-const SCARE_DURATION = { supersonic: 0.8, hotcheeto: 0.9 };
+const monstersByType = { supersonic, hotcheeto: hotCheeto, peanut };
+const SCARE_DURATION = { supersonic: 0.8, hotcheeto: 0.9, peanut: 0.6 };
 
 let scareActive = false;
 
@@ -1140,7 +1296,7 @@ function animate() {
   } else if (isLocked() || fallbackLook) {
     movePlayer(dt);
 
-    const results = [tickSupersonic(dt, camera.position), tickHotCheeto(dt, camera.position)];
+    const results = [tickSupersonic(dt, camera.position), tickHotCheeto(dt, camera.position), tickPeanut(dt, camera.position)];
     const danger = Math.max(...results.map((r) => r.danger));
     vignette.style.opacity = String(danger);
     const caught = results.find((r) => r.dist < r.catchR);
@@ -1152,3 +1308,11 @@ function animate() {
 animate();
 
 window.addEventListener('resize', resizeRenderer);
+
+} // end boot()
+
+function waitForThreeThenBoot() {
+  if (typeof THREE !== 'undefined') boot();
+  else setTimeout(waitForThreeThenBoot, 10);
+}
+waitForThreeThenBoot();
