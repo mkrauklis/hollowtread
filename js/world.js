@@ -1,5 +1,8 @@
-import * as THREE from 'three';
-import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+// Classic script, not an ES module -- THREE is a global from the plain
+// <script src="three.min.js"> tag in world.html. Modules are blocked from
+// loading over file:// entirely (no way around it, browser security), so
+// this is deliberately NOT `import * as THREE from 'three'` -- that one
+// choice is what makes double-clicking world.html actually work.
 
 /* ----------------------------------------------------------------------
  * Hollowtread — free roam, no objective. Spawn is a treehouse (safe zone,
@@ -743,8 +746,13 @@ function playScare(type) {
 
 /* ---------------- player controller ---------------- */
 
-const controls = new PointerLockControls(camera, renderer.domElement);
+// Pointer Lock, implemented directly against the native API rather than
+// three.js's PointerLockControls -- that addon only ships as an ES module,
+// and modules are blocked entirely over file://. This is a small enough
+// surface (request/track lock, apply mouse deltas) to just own outright.
 const blocker = document.getElementById('blocker');
+
+function isLocked() { return document.pointerLockElement === renderer.domElement; }
 
 // Pointer Lock sometimes fails on the first try (or isn't available at
 // all — embedded frames, some mobile browsers, some privacy settings).
@@ -757,11 +765,20 @@ let lastLockAttempt = 0;
 const lookEuler = new THREE.Euler(0, 0, 0, 'YXZ');
 const relockHint = document.getElementById('relock-hint');
 
+function applyLookDelta(movementX, movementY) {
+  const sensitivity = 0.0025;
+  lookEuler.setFromQuaternion(camera.quaternion);
+  lookEuler.y -= movementX * sensitivity;
+  lookEuler.x -= movementY * sensitivity;
+  lookEuler.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, lookEuler.x));
+  camera.quaternion.setFromEuler(lookEuler);
+}
+
 function attemptLock() {
   const now = performance.now();
   if (now - lastLockAttempt < 400) return; // dodge Chrome's brief re-lock cooldown
   lastLockAttempt = now;
-  controls.lock();
+  try { renderer.domElement.requestPointerLock(); } catch (err) { /* handled by pointerlockerror */ }
 }
 
 function enterFallbackLook() {
@@ -773,17 +790,18 @@ function enterFallbackLook() {
 blocker.addEventListener('click', () => {
   ensureAudio();
   attemptLock();
-  if (!controls.isLocked) enterFallbackLook();
+  if (!isLocked()) enterFallbackLook();
 });
 relockHint.addEventListener('click', () => attemptLock());
-controls.addEventListener('lock', () => {
-  blocker.style.display = 'none';
-  fallbackLook = false;
-  dragging = false;
-  relockHint.classList.remove('show');
-});
-controls.addEventListener('unlock', () => {
-  if (!fallbackLook) blocker.style.display = 'flex';
+document.addEventListener('pointerlockchange', () => {
+  if (isLocked()) {
+    blocker.style.display = 'none';
+    fallbackLook = false;
+    dragging = false;
+    relockHint.classList.remove('show');
+  } else if (!fallbackLook) {
+    blocker.style.display = 'flex';
+  }
 });
 document.addEventListener('pointerlockerror', () => {
   enterFallbackLook();
@@ -791,14 +809,8 @@ document.addEventListener('pointerlockerror', () => {
 
 renderer.domElement.addEventListener('mousedown', () => { if (fallbackLook) dragging = true; });
 window.addEventListener('mouseup', () => { dragging = false; });
-renderer.domElement.addEventListener('mousemove', (e) => {
-  if (!fallbackLook || !dragging) return;
-  const sensitivity = 0.0025;
-  lookEuler.setFromQuaternion(camera.quaternion);
-  lookEuler.y -= e.movementX * sensitivity;
-  lookEuler.x -= e.movementY * sensitivity;
-  lookEuler.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, lookEuler.x));
-  camera.quaternion.setFromEuler(lookEuler);
+document.addEventListener('mousemove', (e) => {
+  if (isLocked() || (fallbackLook && dragging)) applyLookDelta(e.movementX, e.movementY);
 });
 document.addEventListener('keydown', (e) => {
   if (e.code === 'Escape' && fallbackLook) {
@@ -1094,7 +1106,7 @@ function animate() {
     const t = (now - scareStart) / 1000;
     const duration = SCARE_DURATION[scareType] || 0.6;
     updateScareCamera(Math.min(t / duration, 1), t);
-  } else if (controls.isLocked || fallbackLook) {
+  } else if (isLocked() || fallbackLook) {
     movePlayer(dt);
 
     const results = [tickSupersonic(dt, camera.position), tickHotCheeto(dt, camera.position)];

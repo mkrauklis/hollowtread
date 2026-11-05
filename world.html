@@ -10,14 +10,11 @@
 <style>
   body { background: #000; }
 </style>
-<script type="importmap">
-{
-  "imports": {
-    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-  }
-}
-</script>
+<!-- Classic script, not type="module" -- ES modules are blocked entirely
+     over file://, which would make double-clicking this file never work
+     at all. three.min.js is the plain global/UMD build (sets window.THREE),
+     loaded before world.js needs it. -->
+<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
 </head>
 <body>
 <div id="game-root">
@@ -51,9 +48,9 @@
   <div id="touch-joystick"><div id="touch-joystick-knob"></div></div>
   <div id="touch-jump">JUMP</div>
 </div>
-<!-- cache-bust the module on every deploy: bump this version string any
-     time js/world.js changes, so a returning player's browser can't keep
+<!-- cache-bust on every deploy: bump this version string any time
+     js/world.js changes, so a returning player's browser can't keep
      running a stale cached copy against the current markup/CSS. -->
-<script type="module" src="js/world.js?v=6"></script>
+<script src="js/world.js?v=7"></script>
 </body>
 </html>

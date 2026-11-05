@@ -7,19 +7,19 @@ JavaScript, no build step.
 
 **Play it live: [mkrauklis.github.io/hollowtread](https://mkrauklis.github.io/hollowtread/)**
 
-No install, no build — but [`world.html`](world.html) (the game itself)
-loads [Three.js](https://threejs.org) as an ES module via a CDN import map,
-and browsers refuse to load ES modules over `file://`. So double-clicking
-`world.html` from disk will fail to load the game entirely, with no visible
-error beyond a stuck start screen. To run it locally, serve the folder with
-any static server instead:
+No install, no build, no server required — every page, including
+[`world.html`](world.html) (the game itself), is plain HTML/CSS/JS with
+classic (non-module) `<script>` tags, so double-clicking any `.html` file
+in this repo just works. [Three.js](https://threejs.org) loads from a CDN
+as its classic global build (`three.min.js`, sets `window.THREE`) rather
+than an ES module — modules are blocked entirely over `file://` with no
+way around it, which is exactly why this project avoids them.
+
+Serving the folder with a static server works too, if you'd rather:
 
 ```
 npx serve .
 ```
-
-[`index.html`](index.html) (the menu) is plain HTML/CSS and opens fine
-directly from disk either way.
 
 ## The world
 
@@ -74,8 +74,12 @@ near home, you're safe, mid-chase or not.
 This project reuses the working parts of an earlier browser horror game
 rather than re-deriving them:
 
-- **No build step, ever.** Plain HTML/CSS/JS (here, ES modules importing
-  Three.js from a CDN import map) — open the file and it runs.
+- **No build step, ever — and that means no ES modules either.** The first
+  version of this loaded Three.js as an ES module via a CDN import map,
+  which quietly meant the game could never actually be opened from disk —
+  only ES modules are blocked over `file://`, not classic scripts, so this
+  now loads Three.js's classic global build instead. "Open the file and it
+  runs" has to mean *any* file, including just double-clicking it.
 - **A bestiary belongs *in* the game, not as a separate page.** An earlier
   attempt at a standalone "monsterpedia" page got cut — it was redundant
   and easy to let go stale. Putting miniatures in a safe room inside the
