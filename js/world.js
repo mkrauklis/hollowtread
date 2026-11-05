@@ -44,11 +44,25 @@ scene.fog = new THREE.FogExp2(0x04070a, 0.028);
 const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.05, 260);
 camera.position.set(0, PLATFORM_H + EYE_H, -1);
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+// Rendered at a reduced internal resolution, then scaled back up with
+// nearest-neighbor filtering (see css/style.css) for a light pixelated
+// look — the drawing buffer is small, the CSS size is full window.
+const PIXEL_SCALE = 2.5;
+
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setPixelRatio(1);
 document.getElementById('game-root').appendChild(renderer.domElement);
 renderer.domElement.classList.add('game-canvas');
+
+function resizeRenderer() {
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(Math.max(1, Math.floor(w / PIXEL_SCALE)), Math.max(1, Math.floor(h / PIXEL_SCALE)), false);
+  renderer.domElement.style.width = w + 'px';
+  renderer.domElement.style.height = h + 'px';
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+resizeRenderer();
 
 scene.add(new THREE.AmbientLight(0x1a2230, 1.0));
 const moon = new THREE.DirectionalLight(0x8fa3c9, 0.55);
@@ -659,8 +673,4 @@ function animate() {
 }
 animate();
 
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
+window.addEventListener('resize', resizeRenderer);

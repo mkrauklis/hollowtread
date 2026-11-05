@@ -119,6 +119,9 @@ canvas.game-canvas {
   inset: 0;
   display: block;
   z-index: 1;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
 }
 
 #hud {
