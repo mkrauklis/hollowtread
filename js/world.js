@@ -461,10 +461,48 @@ const controls = new PointerLockControls(camera, renderer.domElement);
 const blocker = document.getElementById('blocker');
 const endScreen = document.getElementById('end-screen');
 
-blocker.addEventListener('click', () => controls.lock());
+// Pointer Lock isn't available everywhere (embedded frames, some mobile
+// browsers, some privacy settings) — if it fails, fall back to plain
+// click-drag mouselook instead of leaving the player stuck on this screen.
+let pointerLockBroken = false;
+let fallbackLook = false;
+let dragging = false;
+const lookEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+
+function enterFallbackLook() {
+  fallbackLook = true;
+  blocker.style.display = 'none';
+}
+
+blocker.addEventListener('click', () => {
+  if (pointerLockBroken) { enterFallbackLook(); return; }
+  controls.lock();
+});
 controls.addEventListener('lock', () => { blocker.style.display = 'none'; });
 controls.addEventListener('unlock', () => {
-  if (!endScreen.classList.contains('show')) blocker.style.display = 'flex';
+  if (!endScreen.classList.contains('show') && !fallbackLook) blocker.style.display = 'flex';
+});
+document.addEventListener('pointerlockerror', () => {
+  pointerLockBroken = true;
+  enterFallbackLook();
+});
+
+renderer.domElement.addEventListener('mousedown', () => { if (fallbackLook) dragging = true; });
+window.addEventListener('mouseup', () => { dragging = false; });
+renderer.domElement.addEventListener('mousemove', (e) => {
+  if (!fallbackLook || !dragging) return;
+  const sensitivity = 0.0025;
+  lookEuler.setFromQuaternion(camera.quaternion);
+  lookEuler.y -= e.movementX * sensitivity;
+  lookEuler.x -= e.movementY * sensitivity;
+  lookEuler.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, lookEuler.x));
+  camera.quaternion.setFromEuler(lookEuler);
+});
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Escape' && fallbackLook && !endScreen.classList.contains('show')) {
+    fallbackLook = false;
+    blocker.style.display = 'flex';
+  }
 });
 
 const keys = { w: false, a: false, s: false, d: false, shift: false };
@@ -559,8 +597,8 @@ function respawnFromCatch() {
 
 function winGame() {
   endScreen.classList.add('show');
-  controls.unlock();
-  document.exitPointerLock && document.exitPointerLock();
+  fallbackLook = false;
+  if (controls.isLocked) controls.unlock();
 }
 
 /* ---------------- main loop ---------------- */
@@ -574,7 +612,7 @@ function animate() {
 
   for (const mini of spinningMinis) mini.rotation.y += dt * 0.6;
 
-  if (controls.isLocked && !endScreen.classList.contains('show')) {
+  if ((controls.isLocked || fallbackLook) && !endScreen.classList.contains('show')) {
     movePlayer(dt);
 
     for (const ember of embers) {
