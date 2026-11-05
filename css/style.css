@@ -43,6 +43,25 @@ a:hover { text-decoration: underline; }
   margin-bottom: 36px;
 }
 
+.play-btn {
+  display: inline-block;
+  background: var(--accent);
+  color: #0a0a0a;
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: 0.03em;
+  padding: 14px 30px;
+  border-radius: 8px;
+  margin-bottom: 36px;
+  transition: background 0.15s, transform 0.15s;
+}
+
+.play-btn:hover {
+  background: #d14a3a;
+  transform: translateY(-2px);
+  text-decoration: none;
+}
+
 .level-list {
   display: flex;
   flex-direction: column;
