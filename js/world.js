@@ -40,7 +40,14 @@ const RAMP_Z1 = PLATFORM_HALF + 12; // and reaches the ground 12 units out
 
 // Badland: a desert town in the northeast corner. Same deal -- groundHeight()
 // flattens this whole patch, so it needs these before anything else runs.
-const BADLAND_X = 95, BADLAND_Z = 95, BADLAND_HALF = 45;
+// Center + half-extent must keep the whole town inside the world's own
+// outer boundary wall (WALL_R = 120 below) -- an earlier (95, 95) center
+// put Badland's far edge at 140, so its own north/east perimeter wall and
+// the third western building (reaching ~x=122) both crossed straight
+// through the outer wall's collider, splitting the town with an invisible
+// wall partway through. 68 keeps the far edge at 113, a safe margin inside
+// the outer wall's ~119 inner face.
+const BADLAND_X = 68, BADLAND_Z = 68, BADLAND_HALF = 45;
 
 /* ---------------- deterministic scatter (no Math.random so the forest is stable) ---------------- */
 
