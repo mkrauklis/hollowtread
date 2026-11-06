@@ -38,16 +38,26 @@ const RAMP_HALF_W = 1.6;
 const RAMP_Z0 = PLATFORM_HALF;      // ramp starts at the platform edge
 const RAMP_Z1 = PLATFORM_HALF + 12; // and reaches the ground 12 units out
 
-// Badland: a desert town in the northeast corner. Same deal -- groundHeight()
-// flattens this whole patch, so it needs these before anything else runs.
-// Center + half-extent must keep the whole town inside the world's own
-// outer boundary wall (WALL_R = 120 below) -- an earlier (95, 95) center
-// put Badland's far edge at 140, so its own north/east perimeter wall and
-// the third western building (reaching ~x=122) both crossed straight
-// through the outer wall's collider, splitting the town with an invisible
-// wall partway through. 68 keeps the far edge at 113, a safe margin inside
-// the outer wall's ~119 inner face.
-const BADLAND_X = 68, BADLAND_Z = 68, BADLAND_HALF = 45;
+// The world's outer boundary wall's radius -- declared up here (not just
+// in its own block further down) because Badland's position depends on
+// it directly now (see below).
+const WALL_R = 120;
+
+// Badland: a desert town that doesn't share the forest's ground at all --
+// it sits entirely past the world's own outer boundary wall, reached
+// through a hole cut straight into that wall (see the boundary wall's own
+// block below, and Badland's own block further down -- both holes line up
+// at BADLAND_Z). Two earlier attempts tried fitting it *inside* the
+// forest instead (centered at (95,95), then (68,68)) and kept colliding
+// with whatever already lived in that spot -- the boundary wall itself,
+// a hill, buildings clipping through geometry -- because nowhere inside
+// the forest is actually empty space reserved for it. Putting it past the
+// wall entirely sidesteps that class of bug for good: nothing else is
+// ever placed out here, so there's nothing left to collide with.
+const BADLAND_HALF = 40;
+const BADLAND_HOLE_HALF_W = 2.5; // shared by both the boundary wall's hole and Badland's own
+const BADLAND_X = WALL_R + 1 + BADLAND_HALF; // flush against the boundary wall's outer face
+const BADLAND_Z = 0;
 
 /* ---------------- deterministic scatter (no Math.random so the forest is stable) ---------------- */
 
@@ -247,7 +257,6 @@ function collidesAt(x, z) {
 // trailing off into the ground mesh's own boundary. Sits well outside
 // every hill/prop/monster placement, so nothing pokes through it.
 {
-  const WALL_R = 120;
   const wallMat2 = new THREE.MeshStandardMaterial({ color: 0x15171c, roughness: 1, map: makeGrainTexture({ dark: 70, light: 190, repeat: 40, blotch: 3 }) });
   function boundaryWall(x0, x1, z0, z1) {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 12, z1 - z0), wallMat2);
@@ -256,9 +265,26 @@ function collidesAt(x, z) {
     boxColliders.push(new THREE.Box3(new THREE.Vector3(x0, 0, z0), new THREE.Vector3(x1, 12, z1)));
   }
   boundaryWall(-WALL_R - 1, -WALL_R + 1, -WALL_R - 1, WALL_R + 1); // west
-  boundaryWall(WALL_R - 1, WALL_R + 1, -WALL_R - 1, WALL_R + 1);   // east
   boundaryWall(-WALL_R - 1, WALL_R + 1, -WALL_R - 1, -WALL_R + 1); // south
   boundaryWall(-WALL_R - 1, WALL_R + 1, WALL_R - 1, WALL_R + 1);   // north
+
+  // East wall: split around a hole at BADLAND_Z -- the only way out to
+  // Badland, which sits just past this same wall. A lintel caps the
+  // opening at a normal doorway height instead of leaving the full
+  // 12-unit wall height open.
+  boundaryWall(WALL_R - 1, WALL_R + 1, -WALL_R - 1, BADLAND_Z - BADLAND_HOLE_HALF_W);
+  boundaryWall(WALL_R - 1, WALL_R + 1, BADLAND_Z + BADLAND_HOLE_HALF_W, WALL_R + 1);
+  {
+    const holeH = 4.5;
+    const lintelH = 12 - holeH;
+    const lintel = new THREE.Mesh(new THREE.BoxGeometry(2, lintelH, BADLAND_HOLE_HALF_W * 2), wallMat2);
+    lintel.position.set(WALL_R, holeH + lintelH / 2, BADLAND_Z);
+    scene.add(lintel);
+    boxColliders.push(new THREE.Box3(
+      new THREE.Vector3(WALL_R - 1, holeH, BADLAND_Z - BADLAND_HOLE_HALF_W),
+      new THREE.Vector3(WALL_R + 1, 12, BADLAND_Z + BADLAND_HOLE_HALF_W)
+    ));
+  }
 }
 
 /* ---------------- spawn perimeter: wooden stockade wall ---------------- */
@@ -921,7 +947,7 @@ const jumpPads = [
   return { x, z, r: 1.3, h };
 });
 
-/* ---------------- Badland (desert town, northeast corner) ---------------- */
+/* ---------------- Badland (desert town past the east boundary wall) ---------------- */
 
 const sandMat = new THREE.MeshStandardMaterial({ color: 0xd2b48c, roughness: 1, map: makeGrainTexture({ size: 150, dark: 150, light: 255, repeat: 30, blotch: 2 }) });
 const cactusMat = new THREE.MeshStandardMaterial({ color: 0x3f7d4f, roughness: 0.9 });
@@ -935,9 +961,10 @@ const cactusMat = new THREE.MeshStandardMaterial({ color: 0x3f7d4f, roughness: 0
 
 // A wooden perimeter wall around the whole town -- Badland is its own
 // separate section, not just an open patch of sand you wander into. The
-// only way in is a hole in the south wall, facing back toward the forest.
+// only way in is a hole in the west wall, lined up with the boundary
+// wall's own hole a few units away across a short stretch of open ground
+// -- walk through one and you're immediately at the other.
 const BADLAND_WALL_H = 4.5;
-const BADLAND_HOLE_HALF_W = 2.5;
 function badlandWallBox(x0, x1, y0, y1, z0, z1) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0), woodDarkMat);
   mesh.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
@@ -949,13 +976,13 @@ function badlandWallBox(x0, x1, y0, y1, z0, z1) {
   const bMinZ = BADLAND_Z - BADLAND_HALF, bMaxZ = BADLAND_Z + BADLAND_HALF;
   const wallT = 0.6;
   badlandWallBox(bMinX, bMaxX, 0, BADLAND_WALL_H, bMaxZ - wallT, bMaxZ); // north
-  badlandWallBox(bMinX, bMinX + wallT, 0, BADLAND_WALL_H, bMinZ, bMaxZ); // west
-  badlandWallBox(bMaxX - wallT, bMaxX, 0, BADLAND_WALL_H, bMinZ, bMaxZ); // east
-  // South wall, split around the hole.
-  badlandWallBox(bMinX, BADLAND_X - BADLAND_HOLE_HALF_W, 0, BADLAND_WALL_H, bMinZ, bMinZ + wallT);
-  badlandWallBox(BADLAND_X + BADLAND_HOLE_HALF_W, bMaxX, 0, BADLAND_WALL_H, bMinZ, bMinZ + wallT);
-  const lintel = new THREE.Mesh(new THREE.BoxGeometry(BADLAND_HOLE_HALF_W * 2, 1.2, wallT), woodDarkMat);
-  lintel.position.set(BADLAND_X, BADLAND_WALL_H - 0.6, bMinZ + wallT / 2);
+  badlandWallBox(bMinX, bMaxX, 0, BADLAND_WALL_H, bMinZ, bMinZ + wallT); // south
+  badlandWallBox(bMaxX - wallT, bMaxX, 0, BADLAND_WALL_H, bMinZ, bMaxZ); // east (dead end)
+  // West wall, split around the hole.
+  badlandWallBox(bMinX, bMinX + wallT, 0, BADLAND_WALL_H, bMinZ, BADLAND_Z - BADLAND_HOLE_HALF_W);
+  badlandWallBox(bMinX, bMinX + wallT, 0, BADLAND_WALL_H, BADLAND_Z + BADLAND_HOLE_HALF_W, bMaxZ);
+  const lintel = new THREE.Mesh(new THREE.BoxGeometry(wallT, 1.2, BADLAND_HOLE_HALF_W * 2), woodDarkMat);
+  lintel.position.set(bMinX + wallT / 2, BADLAND_WALL_H - 0.6, BADLAND_Z);
   scene.add(lintel);
 }
 

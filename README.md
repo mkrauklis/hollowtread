@@ -35,11 +35,13 @@ lands) so leaving never means walking the fence looking for a way out.
 Past the wall: **the forest** — giant rolling hills, oversized bare trees
 (real climbable branches), several loops of connected elevated platforms and
 bridges, glowing jump pads, and autumn clutter (pumpkins, leaf piles,
-scarecrows) scattered the whole way out to a perimeter wall. Hidden in the
-northeast corner, behind its own wooden perimeter wall, is **Badland**, a
-desert town reached through a single hole in that wall, with hollow,
-walk-in western buildings and cactus scrub. It isn't marked or hinted at on
-the way in — finding it is the point.
+scarecrows) scattered the whole way out to a perimeter wall that rings the
+whole forest. That wall isn't fully sealed: a single hole on its east side
+leads out to **Badland**, a desert town that doesn't share the forest's
+ground at all — it sits entirely past that wall, behind its own perimeter
+wall with a matching hole a few steps further in, hollow walk-in western
+buildings, and cactus scrub. Neither hole is marked or hinted at from the
+forest side — finding the gap in the wall is the point.
 
 A small alcove on the deck (the **bestiary room**) holds miniature, slowly
 turning models of the things loose out there, labelled by name, on
@@ -88,11 +90,13 @@ than anything else out there — it can't catch you in a straight line, but
 don't expect to lose it by weaving either. Its jumpscare is a quick, sharp
 tackle.
 
-### Badland (hidden, northeast)
+### Badland (hidden, past the forest's own east wall)
 
-A desert town behind its own wooden perimeter wall — sand, cactus scrub,
-hollow false-front buildings you can actually walk into. A single hole in
-the south side of that wall is the only way in.
+A desert town that isn't part of the forest's ground at all — reached by
+finding the one hole in the forest's own outer perimeter wall, then the
+matching hole in Badland's own wooden perimeter wall a few steps past it.
+Sand, cactus scrub, hollow false-front buildings you can actually walk
+into.
 
 **Lizard** — 2x your size, a skull where its head should be, a tail. 1.02x
 your speed.
