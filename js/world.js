@@ -23,10 +23,13 @@ function boot() {
 const EYE_H = 1.5;          // chimp stands lower than a human
 const PLAYER_R = 0.4;
 const GRAVITY = -22;
-const JUMP_V = 9.6;
+// All 1.5x the original tuning (player speed/jump, and every monster's
+// speed with it -- every monster's own speed constant below is derived
+// from RUN_SPEED, so scaling this one number scales them all together).
+const JUMP_V = 9.6 * 1.5;
 const PAD_JUMP_V = 15;
-const WALK_SPEED = 8.4;
-const RUN_SPEED = 12.8;
+const WALK_SPEED = 8.4 * 1.5;
+const RUN_SPEED = 12.8 * 1.5;
 const SAFE_R = 20;          // monsters can never come closer to spawn than this
 
 const PLATFORM_H = 3.2;
@@ -304,33 +307,46 @@ function collidesAt(x, z) {
   }
 
   // Collision: a ring of overlapping circle colliders (cheap and rotation-
-  // free, unlike the axis-aligned box colliders used elsewhere), same gate gap.
+  // free, unlike the axis-aligned box colliders used elsewhere), gapped at
+  // every gate. This used to check distance from angle 0 only, so it
+  // correctly opened the south gate but left an invisible wall at the
+  // other three -- they looked open (no wall mesh there) but still
+  // blocked movement. nearAnyGate() checks all four, same as the wall
+  // segments above.
   const COLLIDE_STEPS = 72;
   const collideStep = (Math.PI * 2) / COLLIDE_STEPS;
   for (let i = 0; i < COLLIDE_STEPS; i++) {
     const a0 = i * collideStep;
     const a = a0 > Math.PI ? a0 - Math.PI * 2 : a0;
-    if (Math.abs(a) < GATE_HALF_ANGLE) continue; // matches the gate posts' own spacing below
+    if (nearAnyGate(a)) continue;
     addCircleCollider(SPAWN_WALL_R * Math.sin(a0), -SPAWN_WALL_R * Math.cos(a0), WALL_THICK / 2 + 1.0);
   }
 
-  // The gate itself: two posts and a lintel framing the hole -- nothing
-  // fills the middle, so walking through is always just walking through.
-  const gateCz = -SPAWN_WALL_R;
-  const gateH = groundHeight(0, gateCz);
-  for (const s of [-1, 1]) {
-    const post = new THREE.Mesh(new THREE.BoxGeometry(0.4, WALL_H + 0.4, WALL_THICK), woodDarkMat);
-    post.position.set(s * (chord / 2 - 0.2), gateH + (WALL_H + 0.4) / 2, gateCz);
-    scene.add(post);
-    for (let k = 0; k < 2; k++) {
-      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.5, 5), woodDarkMat);
-      spike.position.set(s * (chord / 2 - 0.2) + (k - 0.5) * 0.15, gateH + WALL_H + 0.65, gateCz);
-      scene.add(spike);
+  // Each gate's own frame: two posts and a lintel around the hole -- built
+  // at all four gate angles now (an earlier version only framed the south
+  // one), using the same tangent direction the wall segments themselves
+  // use so a post always sits flush with the wall at that point.
+  for (const ga of GATE_ANGLES) {
+    const cx = SPAWN_WALL_R * Math.sin(ga), cz = -SPAWN_WALL_R * Math.cos(ga);
+    const tx = Math.cos(ga), tz = Math.sin(ga);
+    const h = groundHeight(cx, cz);
+    for (const s of [-1, 1]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.4, WALL_H + 0.4, WALL_THICK), woodDarkMat);
+      post.position.set(cx + tx * s * (chord / 2 - 0.2), h + (WALL_H + 0.4) / 2, cz + tz * s * (chord / 2 - 0.2));
+      post.rotation.y = -ga;
+      scene.add(post);
+      for (let k = 0; k < 2; k++) {
+        const off = s * (chord / 2 - 0.2) + (k - 0.5) * 0.15;
+        const spike = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.5, 5), woodDarkMat);
+        spike.position.set(cx + tx * off, h + WALL_H + 0.65, cz + tz * off);
+        scene.add(spike);
+      }
     }
+    const lintel = new THREE.Mesh(new THREE.BoxGeometry(chord + 0.4, 0.35, WALL_THICK), woodDarkMat);
+    lintel.position.set(cx, h + WALL_H + 0.2, cz);
+    lintel.rotation.y = -ga;
+    scene.add(lintel);
   }
-  const lintel = new THREE.Mesh(new THREE.BoxGeometry(chord + 0.4, 0.35, WALL_THICK), woodDarkMat);
-  lintel.position.set(0, gateH + WALL_H + 0.2, gateCz);
-  scene.add(lintel);
 }
 
 /* ---------------- the treehouse (spawn, safe zone) ---------------- */
@@ -1095,7 +1111,7 @@ function animateRunCycle(m, rate, bobAmp, armSwingAmp = 0, canJump = false) {
   if (canJump) {
     const cycle = 3; // seconds
     const jumpT = ((t * 0.4 + m.group.id * 0.173) % cycle + cycle) % cycle;
-    if (jumpT < 0.5) yOffset += Math.sin((jumpT / 0.5) * Math.PI) * 1.3;
+    if (jumpT < 0.5) yOffset += Math.sin((jumpT / 0.5) * Math.PI) * 1.3 * 1.5;
   }
   m.bobOffset = yOffset;
   const pivots = m.group.userData.armPivots;
