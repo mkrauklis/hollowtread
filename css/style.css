@@ -170,6 +170,22 @@ canvas.game-canvas {
 
 #relock-hint.show { display: block; }
 
+#interact-hint {
+  display: none;
+  position: absolute;
+  bottom: 96px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(14,16,19,0.9);
+  border: 1px solid var(--good);
+  color: var(--ink);
+  padding: 6px 16px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+#interact-hint.show { display: block; }
+
 #dread-vignette {
   position: absolute;
   inset: 0;
@@ -197,10 +213,14 @@ canvas.game-canvas {
 @keyframes scare-flash-supersonic { 0% { opacity: 0; } 12% { opacity: 1; } 45% { opacity: 0.35; } 75% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes scare-flash-hotcheeto { 0% { opacity: 0; } 15% { opacity: 0.9; } 40% { opacity: 0.5; } 70% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes scare-flash-peanut { 0% { opacity: 0; } 10% { opacity: 1; } 55% { opacity: 0.2; } 100% { opacity: 0; } }
+@keyframes scare-flash-western { 0% { opacity: 0; } 15% { opacity: 1; } 50% { opacity: 0.25; } 100% { opacity: 0; } }
 
 #jumpscare-flash.scare-supersonic { background: #1ec8ff; animation: scare-flash-supersonic 0.8s ease-in-out; }
 #jumpscare-flash.scare-hotcheeto { background: #5c1220; animation: scare-flash-hotcheeto 0.9s ease-in; }
 #jumpscare-flash.scare-peanut { background: #c9a06b; animation: scare-flash-peanut 0.6s ease-out; }
+#jumpscare-flash.scare-lizard { background: #5a6b3a; animation: scare-flash-western 0.7s ease-in-out; }
+#jumpscare-flash.scare-gunslinger { background: #6b4a2f; animation: scare-flash-western 0.65s ease-in-out; }
+#jumpscare-flash.scare-outlaw { background: #7a1f1f; animation: scare-flash-western 0.6s ease-in-out; }
 
 /* Touch controls -- hidden entirely unless js/world.js adds .touch-ui to
  * #game-root after feature-detecting touch, so desktop players never see
@@ -209,7 +229,7 @@ canvas.game-canvas {
 /* Touch always falls back to manual drag-look (Pointer Lock barely exists
  * on mobile), so the "Mouse not locked" retry hint -- meant for desktop --
  * is just confusing noise here. */
-#game-root.touch-ui #relock-hint { display: none !important; }
+#game-root.touch-ui #relock-hint, #game-root.touch-ui #interact-hint { display: none !important; }
 #touch-look-zone, #touch-joystick, #touch-jump { display: none; }
 
 #game-root.touch-ui #touch-look-zone {

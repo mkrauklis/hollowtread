@@ -35,6 +35,10 @@ const RAMP_HALF_W = 1.6;
 const RAMP_Z0 = PLATFORM_HALF;      // ramp starts at the platform edge
 const RAMP_Z1 = PLATFORM_HALF + 12; // and reaches the ground 12 units out
 
+// Badland: a desert town in the northeast corner. Same deal -- groundHeight()
+// flattens this whole patch, so it needs these before anything else runs.
+const BADLAND_X = 95, BADLAND_Z = 95, BADLAND_HALF = 45;
+
 /* ---------------- deterministic scatter (no Math.random so the forest is stable) ---------------- */
 
 function mulberry32(seed) {
@@ -50,8 +54,8 @@ const rand = mulberry32(1337);
 /* ---------------- renderer / scene / camera ---------------- */
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x04070a);
-scene.fog = new THREE.FogExp2(0x04070a, 0.028);
+scene.background = new THREE.Color(0x000000);
+scene.fog = new THREE.FogExp2(0x000000, 0.028); // matches the sky so the fade-out has no visible seam
 
 const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.05, 260);
 camera.position.set(0, PLATFORM_H + EYE_H, -1);
@@ -173,6 +177,10 @@ function groundHeight(x, z) {
   if (Math.abs(x) <= PLATFORM_HALF && Math.abs(z) <= PLATFORM_HALF) {
     return PLATFORM_H;
   }
+  // Badland: flat desert, no hills.
+  if (Math.abs(x - BADLAND_X) <= BADLAND_HALF && Math.abs(z - BADLAND_Z) <= BADLAND_HALF) {
+    return 0;
+  }
   return baseHillHeight(x, z);
 }
 
@@ -243,6 +251,88 @@ function collidesAt(x, z) {
   boundaryWall(-WALL_R - 1, WALL_R + 1, WALL_R - 1, WALL_R + 1);   // north
 }
 
+/* ---------------- spawn perimeter: wooden stockade wall ---------------- */
+/* A ring of sharpened log wall around the treehouse/ramp, just inside the
+ * SAFE_R monsters can't cross anyway -- a gate, framed by two posts and a
+ * lintel with an open hole between them (no center panel at all), sits
+ * right where the ramp comes down so leaving never requires squeezing
+ * past anything. */
+{
+  const SPAWN_WALL_R = 19;
+  const SEGMENTS = 28;
+  const WALL_H = 3.0;
+  const WALL_THICK = 0.5;
+  const GATE_HALF_ANGLE = 0.12; // wide enough to drop exactly one segment per gate
+  // Four gates: south (the ramp) plus three more spaced evenly around the
+  // ring, so leaving toward the forest never means a long walk first.
+  const GATE_ANGLES = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
+  function nearAnyGate(a) {
+    for (const ga of GATE_ANGLES) {
+      let d = a - ga;
+      d = ((d + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+      if (Math.abs(d) < GATE_HALF_ANGLE) return true;
+    }
+    return false;
+  }
+
+  const angleStep = (Math.PI * 2) / SEGMENTS;
+  const chord = 2 * SPAWN_WALL_R * Math.sin(angleStep / 2);
+
+  for (let i = 0; i < SEGMENTS; i++) {
+    const angle = i * angleStep;
+    const a = angle > Math.PI ? angle - Math.PI * 2 : angle;
+    if (nearAnyGate(a)) continue; // a gate goes here instead
+
+    const cx = SPAWN_WALL_R * Math.sin(angle), cz = -SPAWN_WALL_R * Math.cos(angle);
+    const h = groundHeight(cx, cz);
+    const seg = new THREE.Mesh(new THREE.BoxGeometry(chord, WALL_H, WALL_THICK), woodDarkMat);
+    seg.position.set(cx, h + WALL_H / 2, cz);
+    // Negated: three.js's rotation.y maps local +X to world (cos,-sin), not
+    // (cos,sin) -- using +angle here pointed each segment along the wrong
+    // chord (matching the true tangent only at the four compass points),
+    // so the ring looked like disconnected, crossing fence posts instead
+    // of a closed wall everywhere in between.
+    seg.rotation.y = -angle;
+    scene.add(seg);
+
+    // Carved spikes along the top -- a stockade, not a smooth fence.
+    for (let s = -1; s <= 1; s++) {
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.5, 5), woodDarkMat);
+      spike.position.set(cx + Math.cos(angle) * s * chord * 0.3, h + WALL_H + 0.25, cz + Math.sin(angle) * s * chord * 0.3);
+      scene.add(spike);
+    }
+  }
+
+  // Collision: a ring of overlapping circle colliders (cheap and rotation-
+  // free, unlike the axis-aligned box colliders used elsewhere), same gate gap.
+  const COLLIDE_STEPS = 72;
+  const collideStep = (Math.PI * 2) / COLLIDE_STEPS;
+  for (let i = 0; i < COLLIDE_STEPS; i++) {
+    const a0 = i * collideStep;
+    const a = a0 > Math.PI ? a0 - Math.PI * 2 : a0;
+    if (Math.abs(a) < GATE_HALF_ANGLE) continue; // matches the gate posts' own spacing below
+    addCircleCollider(SPAWN_WALL_R * Math.sin(a0), -SPAWN_WALL_R * Math.cos(a0), WALL_THICK / 2 + 1.0);
+  }
+
+  // The gate itself: two posts and a lintel framing the hole -- nothing
+  // fills the middle, so walking through is always just walking through.
+  const gateCz = -SPAWN_WALL_R;
+  const gateH = groundHeight(0, gateCz);
+  for (const s of [-1, 1]) {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.4, WALL_H + 0.4, WALL_THICK), woodDarkMat);
+    post.position.set(s * (chord / 2 - 0.2), gateH + (WALL_H + 0.4) / 2, gateCz);
+    scene.add(post);
+    for (let k = 0; k < 2; k++) {
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.5, 5), woodDarkMat);
+      spike.position.set(s * (chord / 2 - 0.2) + (k - 0.5) * 0.15, gateH + WALL_H + 0.65, gateCz);
+      scene.add(spike);
+    }
+  }
+  const lintel = new THREE.Mesh(new THREE.BoxGeometry(chord + 0.4, 0.35, WALL_THICK), woodDarkMat);
+  lintel.position.set(0, gateH + WALL_H + 0.2, gateCz);
+  scene.add(lintel);
+}
+
 /* ---------------- the treehouse (spawn, safe zone) ---------------- */
 
 const platform = new THREE.Mesh(
@@ -311,6 +401,8 @@ scene.add(campLight);
  * standing on anything — reads as "wrong" at a glance, and lets one factory
  * cover all four by varying proportions, color, and glow. */
 
+const faceDetailMat = new THREE.MeshStandardMaterial({ color: 0x0c0a08, roughness: 1 });
+
 function createChimpModel({
   bodyColor, bodyEmissive = 0x000000, bodyEmissiveIntensity = 0,
   eyeColor, eyeEmissiveIntensity = 2.5,
@@ -349,12 +441,16 @@ function createChimpModel({
     g.add(ear);
   }
 
-  // Long ape arms, each ending in a hand so the limb actually looks jointed —
-  // anchored to the torso's shoulder line, well below the head. Some
-  // creatures (Peanut) skip this entirely -- torso and head only.
-  const armPivots = [];
+  // Real two-segment jointed arms -- a shoulder pivot swinging an upper arm,
+  // an elbow pivot (child of it) swinging a forearm+hand -- instead of one
+  // rigid capsule. The upper arm's own outward tilt is what gives it a
+  // bent-elbow resting pose even before anything animates. Some creatures
+  // (Peanut) skip this entirely -- torso and head only.
+  const armPivots = [];    // shoulder joints -- swung by the run cycle
+  const elbowPivots = [];  // elbow joints -- swung a beat behind the shoulder
   if (arms) {
     const shoulderY = torso.position.y + torsoHalfH * 0.2;
+    const upperLen = armLen * 0.55, foreLen = armLen * 0.55;
     for (const side of [-1, 1]) {
       const armAngle = side * 0.6;
       const shoulder = new THREE.Vector3(side * 0.34, shoulderY, 0.05);
@@ -362,19 +458,31 @@ function createChimpModel({
       pivot.position.copy(shoulder);
       g.add(pivot);
 
-      const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.11, armLen, 4, 6), mat);
-      arm.rotation.z = armAngle;
-      pivot.add(arm);
+      const upperDir = new THREE.Vector3(Math.sin(armAngle), -Math.cos(armAngle), 0);
+      const upperArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, upperLen, 4, 6), mat);
+      upperArm.rotation.z = armAngle;
+      upperArm.position.copy(upperDir.clone().multiplyScalar(upperLen / 2 + 0.05));
+      pivot.add(upperArm);
 
-      const handOffset = new THREE.Vector3(Math.sin(armAngle), -Math.cos(armAngle), 0).multiplyScalar(armLen / 2 + 0.06);
-      const hand = new THREE.Mesh(new THREE.SphereGeometry(0.11, 6, 5), mat);
-      hand.position.copy(handOffset);
-      pivot.add(hand);
+      const elbow = new THREE.Group();
+      elbow.position.copy(upperDir.clone().multiplyScalar(upperLen + 0.08));
+      pivot.add(elbow);
+
+      const foreArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.085, foreLen, 4, 6), mat);
+      foreArm.position.y = -foreLen / 2 - 0.05;
+      elbow.add(foreArm);
+
+      const hand = new THREE.Mesh(new THREE.SphereGeometry(0.1, 6, 5), mat);
+      hand.position.y = -foreLen - 0.09;
+      elbow.add(hand);
 
       armPivots.push(pivot);
+      elbowPivots.push(elbow);
     }
   }
-  g.userData.armPivots = armPivots; // used to swing arms for the run cycle
+  g.userData.armPivots = armPivots;
+  g.userData.elbowPivots = elbowPivots;
+  g.userData.head = head; // used for a running head-bob, even on armless monsters
 
   // Pushed out past the head sphere's own radius (0.38*headScale) so they
   // actually protrude and read as eyes instead of being buried inside it.
@@ -384,6 +492,27 @@ function createChimpModel({
     eye.position.set(side * 0.17 * headScale, headY + 0.03 * headScale, 0.37 * headScale);
     g.add(eye);
   }
+
+  // Brow ridges, nostrils, a mouth line, and pupils -- the glowing eyes
+  // alone read as a blank, blind mask; these few extra low-poly details
+  // are what actually makes it look like a face looking back at you.
+  for (const side of [-1, 1]) {
+    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.16 * headScale, 0.045 * headScale, 0.09 * headScale), faceDetailMat);
+    brow.position.set(side * 0.17 * headScale, headY + 0.11 * headScale, 0.35 * headScale);
+    brow.rotation.z = side * 0.15;
+    g.add(brow);
+
+    const nostril = new THREE.Mesh(new THREE.SphereGeometry(0.03 * headScale, 5, 4), faceDetailMat);
+    nostril.position.set(side * 0.06 * headScale, headY - 0.14 * headScale, 0.44 * headScale);
+    g.add(nostril);
+
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.032 * headScale, 5, 4), faceDetailMat);
+    pupil.position.set(side * 0.17 * headScale, headY + 0.03 * headScale, 0.41 * headScale);
+    g.add(pupil);
+  }
+  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.17 * headScale, 0.03 * headScale, 0.05 * headScale), faceDetailMat);
+  mouth.position.set(0, headY - 0.24 * headScale, 0.41 * headScale);
+  g.add(mouth);
 
   g.userData.hoverHeight = 0.15; // feet (or lack of them) float this far off the ground
   return g;
@@ -416,6 +545,97 @@ function createPeanutModel() {
   });
 }
 
+/* ---------------- Badland: desert-town cast (props bolted onto the same
+ * chimp factory) ---------------- */
+/* headY/torsoY duplicate createChimpModel's own internal math rather than
+ * exposing it, since every other prop in that factory (eyes, muzzle, ears)
+ * is positioned the same way -- keeping it a pure function of the same
+ * torsoLen/headScale inputs instead of reaching into the model afterward. */
+function chimpTorsoY(torsoLen) {
+  const torsoHalfH = 0.32 * (torsoLen * 0.75);
+  return torsoHalfH + 0.15;
+}
+function chimpHeadY(torsoLen, headScale) {
+  const torsoHalfH = 0.32 * (torsoLen * 0.75);
+  return chimpTorsoY(torsoLen) + torsoHalfH + 0.3 * headScale;
+}
+
+const westernPropMat = new THREE.MeshStandardMaterial({ color: 0x3a2a1a, roughness: 0.9 });
+const boneMat = new THREE.MeshStandardMaterial({ color: 0xe8e2d0, roughness: 0.8 });
+const bandanaMat = new THREE.MeshStandardMaterial({ color: 0x7a1f1f, roughness: 0.9 });
+
+function addCowboyHat(g, headY, headScale) {
+  const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.42 * headScale, 0.42 * headScale, 0.05, 12), westernPropMat);
+  brim.position.set(0, headY + 0.34 * headScale, 0);
+  g.add(brim);
+  const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.2 * headScale, 0.24 * headScale, 0.26 * headScale, 10), westernPropMat);
+  crown.position.set(0, headY + 0.5 * headScale, 0);
+  g.add(crown);
+}
+
+function addBandana(g, headY, headScale) {
+  const band = new THREE.Mesh(new THREE.TorusGeometry(0.2 * headScale, 0.045 * headScale, 6, 10), bandanaMat);
+  band.position.set(0, headY - 0.1 * headScale, 0.03 * headScale);
+  band.rotation.x = Math.PI / 2;
+  g.add(band);
+}
+
+function addSkullHead(g, headY, headScale) {
+  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.22 * headScale, 7, 6), boneMat);
+  skull.position.set(0, headY + 0.4 * headScale, 0);
+  g.add(skull);
+  for (const side of [-1, 1]) {
+    const socket = new THREE.Mesh(new THREE.SphereGeometry(0.05 * headScale, 5, 4), faceDetailMat);
+    socket.position.set(side * 0.08 * headScale, headY + 0.38 * headScale, 0.18 * headScale);
+    g.add(socket);
+  }
+}
+
+function addTail(g, torsoY, color) {
+  const tailMat = new THREE.MeshStandardMaterial({ color, roughness: 0.9 });
+  const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.04, 1.3, 6), tailMat);
+  tail.position.set(0, torsoY - 0.1, -0.45);
+  tail.rotation.x = 1.0;
+  g.add(tail);
+}
+
+function createLizardModel() {
+  const torsoLen = 1.0, headScale = 1.0;
+  const g = createChimpModel({
+    bodyColor: 0x5a6b3a, eyeColor: 0xd4ff3a, eyeEmissiveIntensity: 2.5,
+    torsoLen, headScale, armLen: 0.55, roughness: 0.85,
+  });
+  addSkullHead(g, chimpHeadY(torsoLen, headScale), headScale);
+  addTail(g, chimpTorsoY(torsoLen), 0x5a6b3a);
+  g.scale.setScalar(2); // 2x the player's own size
+  g.userData.hoverHeight *= 2;
+  return g;
+}
+
+function createGunslingerModel() {
+  const torsoLen = 1.0, headScale = 1.0;
+  const g = createChimpModel({
+    bodyColor: 0x6b4a2f, eyeColor: 0x3a2a14, eyeEmissiveIntensity: 1.2,
+    torsoLen, headScale, armLen: 0.5, roughness: 0.85,
+  });
+  addCowboyHat(g, chimpHeadY(torsoLen, headScale), headScale);
+  g.scale.setScalar(1.2);
+  g.userData.hoverHeight *= 1.2;
+  return g;
+}
+
+function createOutlawModel() {
+  const torsoLen = 1.0, headScale = 1.0;
+  const g = createChimpModel({
+    bodyColor: 0x4a3a2a, eyeColor: 0x8a1a1a, eyeEmissiveIntensity: 1.5,
+    torsoLen, headScale, armLen: 0.5, roughness: 0.85,
+  });
+  const headY = chimpHeadY(torsoLen, headScale);
+  addCowboyHat(g, headY, headScale);
+  addBandana(g, headY, headScale);
+  return g; // same size as the player's own chimp body
+}
+
 function makeLabel(text) {
   const canvas = document.createElement('canvas');
   canvas.width = 256; canvas.height = 64;
@@ -431,29 +651,63 @@ function makeLabel(text) {
   return sprite;
 }
 
-/* ---------------- bestiary pedestals (inside the alcove, purely decorative) ---------------- */
+/* ---------------- bestiary pedestals (inside the alcove) ---------------- */
+/* Pedestals are fixed furniture and stay put; which monsters stand on them
+ * is a "page" that switches when you're standing close and press E --
+ * one page per map (this forest, then Badland) rather than cramming
+ * every monster from every area onto the same stands forever. */
 
-const bestiary = [
-  { name: 'Supersonic', make: createSupersonicModel, x: -5.4, z: 4 },
-  { name: 'Hot Cheeto', make: createHotCheetoModel, x: -4.0, z: 4 },
-  { name: 'Peanut', make: createPeanutModel, x: -2.6, z: 4 },
+const bestiaryPages = [
+  { title: 'THIS FOREST', monsters: [
+      { name: 'Supersonic', make: createSupersonicModel },
+      { name: 'Hot Cheeto', make: createHotCheetoModel },
+      { name: 'Peanut', make: createPeanutModel },
+    ] },
+  { title: 'BADLAND', monsters: [
+      { name: 'Lizard', make: createLizardModel },
+      { name: 'Gunslinger', make: createGunslingerModel },
+      { name: 'Outlaw', make: createOutlawModel },
+    ] },
 ];
-const spinningMinis = [];
-for (const entry of bestiary) {
-  const pedestal = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.5, 0.8, 10), woodDarkMat);
-  pedestal.position.set(entry.x, PLATFORM_H + 0.4, entry.z);
+const BESTIARY_SLOT_X = [-5.4, -4.0, -2.6];
+const BESTIARY_Z = 4;
+
+for (const x of BESTIARY_SLOT_X) {
+  const pedestal = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.45, 0.8, 10), woodDarkMat);
+  pedestal.position.set(x, PLATFORM_H + 0.4, BESTIARY_Z);
   scene.add(pedestal);
-
-  const mini = entry.make();
-  mini.scale.set(0.4, 0.4, 0.4);
-  mini.position.set(entry.x, PLATFORM_H + 0.8, entry.z);
-  scene.add(mini);
-  spinningMinis.push(mini);
-
-  const label = makeLabel(entry.name);
-  label.position.set(entry.x, PLATFORM_H + 2.15, entry.z); // clears even the tallest (Supersonic) mini
-  scene.add(label);
 }
+
+const spinningMinis = [];
+const bestiaryPageGroups = bestiaryPages.map((page) => {
+  const group = new THREE.Group();
+  page.monsters.forEach((entry, i) => {
+    const x = BESTIARY_SLOT_X[i];
+    const mini = entry.make();
+    mini.scale.set(0.4, 0.4, 0.4);
+    mini.position.set(x, PLATFORM_H + 0.8, BESTIARY_Z);
+    group.add(mini);
+    spinningMinis.push(mini);
+
+    const label = makeLabel(entry.name);
+    label.position.set(x, PLATFORM_H + 2.15, BESTIARY_Z);
+    group.add(label);
+  });
+  const title = makeLabel(page.title);
+  title.scale.set(1.9, 0.45, 1);
+  title.position.set(-4.0, PLATFORM_H + 2.75, BESTIARY_Z);
+  group.add(title);
+  scene.add(group);
+  return group;
+});
+
+let bestiaryPageIndex = 0;
+function showBestiaryPage(i) {
+  bestiaryPageIndex = ((i % bestiaryPageGroups.length) + bestiaryPageGroups.length) % bestiaryPageGroups.length;
+  bestiaryPageGroups.forEach((g, idx) => { g.visible = idx === bestiaryPageIndex; });
+}
+showBestiaryPage(0);
+const bestiaryCenter = new THREE.Vector3(-4.0, PLATFORM_H + EYE_H, BESTIARY_Z);
 
 /* ---------------- forest: trees ---------------- */
 
@@ -606,9 +860,13 @@ function addBridge(x0, z0, y0, x1, z1, y1) {
   });
 }
 
-{
+// One loop builder, called at several spots across the map instead of
+// just the one north of the treehouse -- same diamond-of-4 shape each
+// time, just re-centered and re-sized, so the network reads as something
+// that recurs through the whole forest rather than a single landmark.
+function buildPlatformLoop(cx, cz, rx = 14, rz = 12) {
   const nodes = [
-    { x: 0, z: 22 }, { x: -14, z: 34 }, { x: 0, z: 46 }, { x: 14, z: 34 },
+    { x: cx, z: cz + rz }, { x: cx - rx, z: cz }, { x: cx, z: cz - rz }, { x: cx + rx, z: cz },
   ];
   const nodeY = nodes.map((n) => addFlatPlatform(n.x, n.z, 2.4));
   for (let i = 0; i < nodes.length; i++) {
@@ -616,6 +874,13 @@ function addBridge(x0, z0, y0, x1, z1, y1) {
     addBridge(a.x, a.z, nodeY[i], b.x, b.z, nodeY[(i + 1) % nodes.length]);
   }
 }
+
+buildPlatformLoop(0, 34);            // original -- north of the treehouse
+buildPlatformLoop(55, -40, 13, 13);  // southeast, near Supersonic's corner
+buildPlatformLoop(-55, 45, 13, 11);  // northwest, near Hot Cheeto's corner
+buildPlatformLoop(40, 50, 12, 12);   // northeast, near Peanut's corner
+buildPlatformLoop(-45, -45, 14, 14); // southwest
+buildPlatformLoop(20, -70, 11, 13);  // far south
 
 /* ---------------- jump pads ---------------- */
 
@@ -632,6 +897,110 @@ const jumpPads = [
   scene.add(glow);
   return { x, z, r: 1.3, h };
 });
+
+/* ---------------- Badland (desert town, northeast corner) ---------------- */
+
+const sandMat = new THREE.MeshStandardMaterial({ color: 0xd2b48c, roughness: 1, map: makeGrainTexture({ size: 150, dark: 150, light: 255, repeat: 30, blotch: 2 }) });
+const cactusMat = new THREE.MeshStandardMaterial({ color: 0x3f7d4f, roughness: 0.9 });
+
+{
+  const sand = new THREE.Mesh(new THREE.PlaneGeometry(BADLAND_HALF * 2, BADLAND_HALF * 2), sandMat);
+  sand.rotation.x = -Math.PI / 2;
+  sand.position.set(BADLAND_X, 0.03, BADLAND_Z);
+  scene.add(sand);
+}
+
+// A wooden perimeter wall around the whole town -- Badland is its own
+// separate section, not just an open patch of sand you wander into. The
+// only way in is a hole in the south wall, facing back toward the forest.
+const BADLAND_WALL_H = 4.5;
+const BADLAND_HOLE_HALF_W = 2.5;
+function badlandWallBox(x0, x1, y0, y1, z0, z1) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0), woodDarkMat);
+  mesh.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+  scene.add(mesh);
+  boxColliders.push(new THREE.Box3(new THREE.Vector3(x0, y0, z0), new THREE.Vector3(x1, y1, z1)));
+}
+{
+  const bMinX = BADLAND_X - BADLAND_HALF, bMaxX = BADLAND_X + BADLAND_HALF;
+  const bMinZ = BADLAND_Z - BADLAND_HALF, bMaxZ = BADLAND_Z + BADLAND_HALF;
+  const wallT = 0.6;
+  badlandWallBox(bMinX, bMaxX, 0, BADLAND_WALL_H, bMaxZ - wallT, bMaxZ); // north
+  badlandWallBox(bMinX, bMinX + wallT, 0, BADLAND_WALL_H, bMinZ, bMaxZ); // west
+  badlandWallBox(bMaxX - wallT, bMaxX, 0, BADLAND_WALL_H, bMinZ, bMaxZ); // east
+  // South wall, split around the hole.
+  badlandWallBox(bMinX, BADLAND_X - BADLAND_HOLE_HALF_W, 0, BADLAND_WALL_H, bMinZ, bMinZ + wallT);
+  badlandWallBox(BADLAND_X + BADLAND_HOLE_HALF_W, bMaxX, 0, BADLAND_WALL_H, bMinZ, bMinZ + wallT);
+  const lintel = new THREE.Mesh(new THREE.BoxGeometry(BADLAND_HOLE_HALF_W * 2, 1.2, wallT), woodDarkMat);
+  lintel.position.set(BADLAND_X, BADLAND_WALL_H - 0.6, bMinZ + wallT / 2);
+  scene.add(lintel);
+}
+
+// Hollow false-front buildings -- walls + a doorway + a roof you can see
+// under but never collide with (no ceiling anywhere else in this game
+// either), so walking in is as simple as walking in.
+function buildWesternBuilding(cx, cz, halfW, halfD) {
+  const minX = cx - halfW, maxX = cx + halfW, minZ = cz - halfD, maxZ = cz + halfD;
+  const wallT = 0.3, wallH = 4.2, doorHalfW = 1.3;
+  function wall(x0, x1, z0, z1) {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, wallH, z1 - z0), woodDarkMat);
+    mesh.position.set((x0 + x1) / 2, wallH / 2, (z0 + z1) / 2);
+    scene.add(mesh);
+    boxColliders.push(new THREE.Box3(new THREE.Vector3(x0, 0, z0), new THREE.Vector3(x1, wallH, z1)));
+  }
+  wall(minX, maxX, maxZ - wallT, maxZ); // north (back) wall
+  wall(minX, minX + wallT, minZ, maxZ); // west wall
+  wall(maxX - wallT, maxX, minZ, maxZ); // east wall
+  wall(minX, cx - doorHalfW, minZ, minZ + wallT); // south wall, west of the door
+  wall(cx + doorHalfW, maxX, minZ, minZ + wallT); // south wall, east of the door
+  const lintel = new THREE.Mesh(new THREE.BoxGeometry(doorHalfW * 2, 1.2, wallT), woodDarkMat);
+  lintel.position.set(cx, wallH - 0.6, minZ + wallT / 2);
+  scene.add(lintel);
+
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(halfW * 2 + 0.5, 0.2, halfD * 2 + 0.5), woodDarkMat);
+  roof.position.set(cx, wallH + 0.1, cz);
+  scene.add(roof); // visual only -- no collider, so the room underneath isn't sealed
+
+  const floor = new THREE.Mesh(new THREE.BoxGeometry(halfW * 2 - wallT * 2, 0.15, halfD * 2 - wallT * 2), woodMat);
+  floor.position.set(cx, 0.08, cz);
+  scene.add(floor);
+}
+
+buildWesternBuilding(BADLAND_X - 20, BADLAND_Z - 10, 6, 5);
+buildWesternBuilding(BADLAND_X + 2, BADLAND_Z - 18, 7, 6);
+buildWesternBuilding(BADLAND_X + 22, BADLAND_Z - 8, 5.5, 5);
+
+function makeCactus(x, z) {
+  const h = groundHeight(x, z);
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.26, 2.2, 8), cactusMat);
+  trunk.position.set(x, h + 1.1, z);
+  scene.add(trunk);
+  addCircleCollider(x, z, 0.3);
+  if (rand() < 0.7) {
+    const side = rand() < 0.5 ? -1 : 1;
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 1.0, 6), cactusMat);
+    arm.position.set(x + side * 0.3, h + 1.6, z);
+    arm.rotation.z = side * 0.5;
+    scene.add(arm);
+  }
+}
+let cactiPlaced = 0;
+while (cactiPlaced < 22) {
+  const x = BADLAND_X + (rand() - 0.5) * BADLAND_HALF * 1.8;
+  const z = BADLAND_Z + (rand() - 0.5) * BADLAND_HALF * 1.8;
+  makeCactus(x, z);
+  cactiPlaced++;
+}
+
+function badlandPoint() {
+  const x = BADLAND_X + (rand() - 0.5) * BADLAND_HALF * 1.6;
+  const z = BADLAND_Z + (rand() - 0.5) * BADLAND_HALF * 1.6;
+  return new THREE.Vector3(x, 0, z);
+}
+function clampToBadland(pos) {
+  pos.x = THREE.MathUtils.clamp(pos.x, BADLAND_X - BADLAND_HALF, BADLAND_X + BADLAND_HALF);
+  pos.z = THREE.MathUtils.clamp(pos.z, BADLAND_Z - BADLAND_HALF, BADLAND_Z + BADLAND_HALF);
+}
 
 /* ---------------- monsters ---------------- */
 
@@ -662,21 +1031,91 @@ function headingTo(dx, dz) {
   return Math.atan2(-dx, -dz); // matches Object3D's default -Z-forward convention
 }
 
+// Moving at full speed while needing a big turn is exactly what makes a
+// turn-rate-limited chaser settle into a stable orbit around a target it
+// can never quite curl in on (that orbit's radius is speed/turnRate, and
+// if that's bigger than catchR, a catch becomes geometrically impossible
+// -- this was a real bug, not just a balance choice). Slowing down while
+// the heading error is large shrinks that radius so it can actually close
+// the last stretch once it lines up, while a target that keeps circling
+// to stay perpendicular still works as an escape, same as before.
+function turnSpeedFactor(heading, targetHeading) {
+  let diff = targetHeading - heading;
+  diff = ((diff + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+  return THREE.MathUtils.clamp(Math.cos(diff), 0.25, 1);
+}
+
+const ROAM_RADIUS = 14;
+const ROAM_SPEED_FACTOR = 0.35; // a slow idle wander, well under full chase speed
+
+// Picks a point within `radius` of home, ambles toward it at a fraction of
+// chase speed (same turn-rate steering as a real chase, just slower), and
+// picks a new one once it arrives or a timer runs out. Used whenever a
+// monster isn't alert, so "stays near home until it notices you" now
+// means an actual area, not a single frozen point.
+function tickRoam(m, dt, homePos, chaseSpeed, turnRate, radius = ROAM_RADIUS) {
+  if (m.roamTarget === undefined) { m.roamTarget = homePos.clone(); m.roamTimer = 0; }
+  m.roamTimer -= dt;
+  const dx0 = m.roamTarget.x - m.group.position.x, dz0 = m.roamTarget.z - m.group.position.z;
+  if (m.roamTimer <= 0 || dx0 * dx0 + dz0 * dz0 < 1) {
+    const a = Math.random() * Math.PI * 2;
+    const r = Math.random() * radius;
+    m.roamTarget = new THREE.Vector3(homePos.x + Math.cos(a) * r, 0, homePos.z + Math.sin(a) * r);
+    m.roamTimer = 4 + Math.random() * 4;
+  }
+  const dx = m.roamTarget.x - m.group.position.x, dz = m.roamTarget.z - m.group.position.z;
+  if (Math.hypot(dx, dz) > 0.1) {
+    const targetHeading = headingTo(dx, dz);
+    const speedFactor = turnSpeedFactor(m.heading, targetHeading);
+    m.heading = turnToward(m.heading, targetHeading, turnRate, dt);
+    const roamSpeed = chaseSpeed * ROAM_SPEED_FACTOR;
+    m.group.position.x += -Math.sin(m.heading) * roamSpeed * speedFactor * dt;
+    m.group.position.z += -Math.cos(m.heading) * roamSpeed * speedFactor * dt;
+    animateRunCycle(m, 2.5, 0.03, 0.15);
+  }
+}
+
 // A simple running cycle for legless creatures: a bounce (feet they don't
 // have still need to look like they're covering ground) plus an arm swing
 // for whichever ones have arms. Rate/amp are tuned per monster so each
 // reads differently -- Supersonic quick and light, Hot Cheeto heavy and
 // slow, Peanut light and fast.
-function animateRunCycle(m, rate, bobAmp, armSwingAmp = 0) {
+function animateRunCycle(m, rate, bobAmp, armSwingAmp = 0, canJump = false) {
   const t = performance.now() / 1000;
   const phase = t * rate;
-  m.group.position.y += Math.abs(Math.sin(phase)) * bobAmp;
+  // Stashed on the monster rather than applied to position.y directly --
+  // every tick function reassigns position.y from groundHeight() right
+  // after calling this, which would otherwise wipe the bob/jump out the
+  // instant it's added. Each tick function adds m.bobOffset back in once,
+  // after that reassignment.
+  let yOffset = Math.abs(Math.sin(phase)) * bobAmp;
+  // A real jump while chasing -- not just the small run-cycle bounce --
+  // on a repeating cycle offset per-instance (via the object's own id) so
+  // a pack of the same monster doesn't all leap in lockstep.
+  if (canJump) {
+    const cycle = 3; // seconds
+    const jumpT = ((t * 0.4 + m.group.id * 0.173) % cycle + cycle) % cycle;
+    if (jumpT < 0.5) yOffset += Math.sin((jumpT / 0.5) * Math.PI) * 1.3;
+  }
+  m.bobOffset = yOffset;
   const pivots = m.group.userData.armPivots;
   if (pivots && pivots.length) {
     const swing = Math.sin(phase * 2) * armSwingAmp;
     pivots[0].rotation.x = swing;
     pivots[1].rotation.x = -swing;
+    // Elbows swing a beat behind the shoulder, and only ever forward
+    // (clamped to 0) -- a real joint bending, not a shoulder-only pendulum.
+    const elbows = m.group.userData.elbowPivots;
+    if (elbows && elbows.length) {
+      const elbowSwing = Math.sin(phase * 2 + 0.8) * armSwingAmp * 0.6;
+      elbows[0].rotation.x = Math.max(0, elbowSwing);
+      elbows[1].rotation.x = Math.max(0, -elbowSwing);
+    }
   }
+  // A small head bob/twist -- works even on armless monsters (Peanut),
+  // since it's keyed off the same phase rather than the arm swing itself.
+  const head = m.group.userData.head;
+  if (head) head.rotation.y = Math.sin(phase * 2) * 0.08;
 }
 
 const supersonic = {
@@ -688,10 +1127,15 @@ scene.add(supersonic.group);
 supersonic.group.position.copy(supersonic.route[0]);
 
 // 1.2x the player's own top speed — genuinely faster than you can run once
-// it's alert, so outrunning it in a straight line never works. But it
-// turns almost instantly (SUPERSONIC_TURN_RATE), so juking it is hard too.
+// it's alert, so outrunning it in a straight line never works. It used to
+// turn almost instantly; now it's kinda bad at it (same register as
+// Supersonic's old self vs. Hot Cheeto's new one) -- circling around it
+// works, same as Hot Cheeto.
 const SUPERSONIC_SPEED = RUN_SPEED * 1.2;
-const SUPERSONIC_TURN_RATE = 9.0; // rad/sec
+const SUPERSONIC_TURN_RATE = 2.5; // rad/sec
+// It's also short -- no legs, torso tapering straight down -- so a jump
+// timed right actually clears its back instead of just failing to help.
+const SUPERSONIC_HOP_CLEARANCE = 1.75;
 
 function tickSupersonic(dt, playerPos) {
   const m = supersonic;
@@ -708,19 +1152,26 @@ function tickSupersonic(dt, playerPos) {
   else if (m.alertTimer > 0) m.alertTimer -= dt;
   else m.alert = false;
 
-  // Stays put until alert -- no patrol wandering. Moves in the direction
-  // it's actually FACING, not straight at you -- turning is what limits it.
+  // Roams near home until alert -- moves in the direction it's actually
+  // FACING, not straight at you -- turning is what limits it.
   if (m.alert && dist > 0.01) {
-    m.heading = turnToward(m.heading, headingTo(toPlayer.x, toPlayer.z), SUPERSONIC_TURN_RATE, dt);
-    m.group.position.x += -Math.sin(m.heading) * SUPERSONIC_SPEED * dt;
-    m.group.position.z += -Math.cos(m.heading) * SUPERSONIC_SPEED * dt;
+    const targetHeading = headingTo(toPlayer.x, toPlayer.z);
+    const speedFactor = turnSpeedFactor(m.heading, targetHeading);
+    m.heading = turnToward(m.heading, targetHeading, SUPERSONIC_TURN_RATE, dt);
+    m.group.position.x += -Math.sin(m.heading) * SUPERSONIC_SPEED * speedFactor * dt;
+    m.group.position.z += -Math.cos(m.heading) * SUPERSONIC_SPEED * speedFactor * dt;
+    if (m.alert) animateRunCycle(m, 14, 0.08, 0.55, true);
+  } else {
+    tickRoam(m, dt, m.route[0], SUPERSONIC_SPEED, SUPERSONIC_TURN_RATE);
   }
   clampToSafeZone(m.group.position);
-  m.group.position.y = groundHeight(m.group.position.x, m.group.position.z) + (m.group.userData.hoverHeight || 0);
+  m.group.position.y = groundHeight(m.group.position.x, m.group.position.z) + (m.group.userData.hoverHeight || 0) + (m.bobOffset || 0);
   m.group.rotation.y = m.heading;
-  if (m.alert) animateRunCycle(m, 14, 0.08, 0.55);
   updateSupersonicMusic(dist);
-  return { dist, danger: m.alert ? Math.max(0, 1 - dist / 9) : 0, catchR: m.catchR, type: 'supersonic' };
+  return {
+    dist, danger: m.alert ? Math.max(0, 1 - dist / 9) : 0, catchR: m.catchR, type: 'supersonic', instance: m,
+    hopY: m.group.position.y + SUPERSONIC_HOP_CLEARANCE, // feet above this clear its back entirely
+  };
 }
 
 const hotCheeto = {
@@ -749,17 +1200,21 @@ function tickHotCheeto(dt, playerPos) {
   else if (m.alertTimer > 0) m.alertTimer -= dt;
   else m.alert = false;
 
-  // Stays put until alert -- no patrol wandering.
+  // Roams near home until alert.
   if (m.alert && dist > 0.01) {
-    m.heading = turnToward(m.heading, headingTo(toPlayer.x, toPlayer.z), HOTCHEETO_TURN_RATE, dt);
-    m.group.position.x += -Math.sin(m.heading) * SUPERSONIC_SPEED * dt;
-    m.group.position.z += -Math.cos(m.heading) * SUPERSONIC_SPEED * dt;
+    const targetHeading = headingTo(toPlayer.x, toPlayer.z);
+    const speedFactor = turnSpeedFactor(m.heading, targetHeading);
+    m.heading = turnToward(m.heading, targetHeading, HOTCHEETO_TURN_RATE, dt);
+    m.group.position.x += -Math.sin(m.heading) * SUPERSONIC_SPEED * speedFactor * dt;
+    m.group.position.z += -Math.cos(m.heading) * SUPERSONIC_SPEED * speedFactor * dt;
+    animateRunCycle(m, 4, 0.35, 0.4, true);
+  } else {
+    tickRoam(m, dt, m.route[0], SUPERSONIC_SPEED, HOTCHEETO_TURN_RATE);
   }
   clampToSafeZone(m.group.position);
-  m.group.position.y = groundHeight(m.group.position.x, m.group.position.z) + (m.group.userData.hoverHeight || 0);
+  m.group.position.y = groundHeight(m.group.position.x, m.group.position.z) + (m.group.userData.hoverHeight || 0) + (m.bobOffset || 0);
   m.group.rotation.y = m.heading;
-  if (m.alert) animateRunCycle(m, 4, 0.35, 0.4);
-  return { dist, danger: m.alert ? Math.max(0, 1 - dist / 12) : 0, catchR: m.catchR, type: 'hotcheeto' };
+  return { dist, danger: m.alert ? Math.max(0, 1 - dist / 12) : 0, catchR: m.catchR, type: 'hotcheeto', instance: m };
 }
 
 const peanut = {
@@ -770,10 +1225,10 @@ const peanut = {
 scene.add(peanut.group);
 peanut.group.position.copy(peanut.route[0]);
 
-// Slightly slower than you (0.98x) but turns on a dime (even faster than
-// Supersonic) -- can't win a straight chase, but it corners perfectly, so
-// don't expect to lose it by weaving.
-const PEANUT_SPEED = RUN_SPEED * 0.98;
+// Clearly slower than you, but turns on a dime (even faster than
+// Supersonic) -- it'll never win a straight chase, but it corners
+// perfectly, so don't expect to lose it by weaving either.
+const PEANUT_SPEED = RUN_SPEED * 0.85;
 const PEANUT_TURN_RATE = 12.0; // rad/sec
 
 function tickPeanut(dt, playerPos) {
@@ -789,16 +1244,75 @@ function tickPeanut(dt, playerPos) {
   else m.alert = false;
 
   if (m.alert && dist > 0.01) {
-    m.heading = turnToward(m.heading, headingTo(toPlayer.x, toPlayer.z), PEANUT_TURN_RATE, dt);
-    m.group.position.x += -Math.sin(m.heading) * PEANUT_SPEED * dt;
-    m.group.position.z += -Math.cos(m.heading) * PEANUT_SPEED * dt;
+    const targetHeading = headingTo(toPlayer.x, toPlayer.z);
+    const speedFactor = turnSpeedFactor(m.heading, targetHeading);
+    m.heading = turnToward(m.heading, targetHeading, PEANUT_TURN_RATE, dt);
+    m.group.position.x += -Math.sin(m.heading) * PEANUT_SPEED * speedFactor * dt;
+    m.group.position.z += -Math.cos(m.heading) * PEANUT_SPEED * speedFactor * dt;
+    animateRunCycle(m, 16, 0.1, 0, true);
+  } else {
+    tickRoam(m, dt, m.route[0], PEANUT_SPEED, PEANUT_TURN_RATE);
   }
   clampToSafeZone(m.group.position);
-  m.group.position.y = groundHeight(m.group.position.x, m.group.position.z) + (m.group.userData.hoverHeight || 0);
+  m.group.position.y = groundHeight(m.group.position.x, m.group.position.z) + (m.group.userData.hoverHeight || 0) + (m.bobOffset || 0);
   m.group.rotation.y = m.heading;
-  if (m.alert) animateRunCycle(m, 16, 0.1, 0);
-  return { dist, danger: m.alert ? Math.max(0, 1 - dist / 9) : 0, catchR: m.catchR, type: 'peanut' };
+  return { dist, danger: m.alert ? Math.max(0, 1 - dist / 9) : 0, catchR: m.catchR, type: 'peanut', instance: m };
 }
+
+/* ---------------- Badland cast: Lizard, Gunslinger, three Outlaws ---------------- */
+/* One shared tick function instead of three near-identical ones -- only
+ * the numbers (speed, turn rate, alert ranges, catchR) differ per type,
+ * same as the forest's own monsters, just not duplicated three more times. */
+
+function tickGenericMonster(m, dt, playerPos, speed, turnRate, type, seenRange, seenCos, alertRange, danger, zoneClamp) {
+  const toPlayer = new THREE.Vector3(playerPos.x - m.group.position.x, 0, playerPos.z - m.group.position.z);
+  const dist = toPlayer.length();
+  const camForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+  const dirToM = new THREE.Vector3().subVectors(m.group.position, playerPos).normalize();
+  const seen = dist < seenRange && camForward.dot(dirToM) > seenCos;
+
+  if (dist < alertRange || seen) { m.alert = true; m.alertTimer = 4; }
+  else if (m.alertTimer > 0) m.alertTimer -= dt;
+  else m.alert = false;
+
+  if (m.alert && dist > 0.01) {
+    const targetHeading = headingTo(toPlayer.x, toPlayer.z);
+    const speedFactor = turnSpeedFactor(m.heading, targetHeading);
+    m.heading = turnToward(m.heading, targetHeading, turnRate, dt);
+    m.group.position.x += -Math.sin(m.heading) * speed * speedFactor * dt;
+    m.group.position.z += -Math.cos(m.heading) * speed * speedFactor * dt;
+    animateRunCycle(m, 6, 0.12, 0.3, true);
+  } else {
+    tickRoam(m, dt, m.route[0], speed, turnRate, 12);
+  }
+  clampToSafeZone(m.group.position);
+  zoneClamp(m.group.position);
+  m.group.position.y = groundHeight(m.group.position.x, m.group.position.z) + (m.group.userData.hoverHeight || 0) + (m.bobOffset || 0);
+  m.group.rotation.y = m.heading;
+  return { dist, danger: m.alert ? Math.max(0, 1 - dist / danger) : 0, catchR: m.catchR, type, instance: m };
+}
+
+function makeBadlandMonster(make, catchR) {
+  const spot = badlandPoint();
+  const m = { group: make(), route: [spot], idx: 0, alert: false, alertTimer: 0, catchR, heading: 0 };
+  scene.add(m.group);
+  m.group.position.copy(spot);
+  m.group.position.y = groundHeight(spot.x, spot.z) + (m.group.userData.hoverHeight || 0);
+  return m;
+}
+
+const LIZARD_SPEED = RUN_SPEED * 1.02, LIZARD_TURN_RATE = 2.0;
+const lizard = makeBadlandMonster(createLizardModel, 2.2);
+
+const GUNSLINGER_SPEED = RUN_SPEED * 0.9, GUNSLINGER_TURN_RATE = 3.0;
+const gunslinger = makeBadlandMonster(createGunslingerModel, 1.6);
+
+const OUTLAW_SPEED = RUN_SPEED * 0.7, OUTLAW_TURN_RATE = 4.0;
+const outlaws = [makeBadlandMonster(createOutlawModel, 1.0), makeBadlandMonster(createOutlawModel, 1.0), makeBadlandMonster(createOutlawModel, 1.0)];
+
+function tickLizard(dt, p) { return tickGenericMonster(lizard, dt, p, LIZARD_SPEED, LIZARD_TURN_RATE, 'lizard', 22, 0.86, 7, 9, clampToBadland); }
+function tickGunslinger(dt, p) { return tickGenericMonster(gunslinger, dt, p, GUNSLINGER_SPEED, GUNSLINGER_TURN_RATE, 'gunslinger', 20, 0.88, 6, 9, clampToBadland); }
+function tickOutlaw(m, dt, p) { return tickGenericMonster(m, dt, p, OUTLAW_SPEED, OUTLAW_TURN_RATE, 'outlaw', 18, 0.88, 6, 9, clampToBadland); }
 
 /* ---------------- audio ---------------- */
 /* Everything here is generated live with oscillators/noise buffers, same
@@ -926,6 +1440,28 @@ function playScare(type) {
     g.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
     osc.connect(g).connect(master);
     osc.start(now); osc.stop(now + 0.22);
+  } else if (type === 'lizard' || type === 'gunslinger' || type === 'outlaw') {
+    // A quick, sharp hit -- distinct per type via pitch alone.
+    const freq = type === 'lizard' ? 180 : type === 'gunslinger' ? 260 : 320;
+    const osc = ctx.createOscillator();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(freq, now);
+    osc.frequency.exponentialRampToValueAtTime(freq * 0.3, now + 0.25);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.6, now);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.3);
+    osc.connect(g).connect(master);
+    osc.start(now); osc.stop(now + 0.3);
+
+    const buf = ctx.createBuffer(1, ctx.sampleRate * 0.15, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+    const noise = ctx.createBufferSource();
+    noise.buffer = buf;
+    const ng = ctx.createGain();
+    ng.gain.value = 0.5;
+    noise.connect(ng).connect(master);
+    noise.start(now);
   }
 }
 
@@ -1001,6 +1537,9 @@ document.addEventListener('keydown', (e) => {
   if (e.code === 'Escape' && fallbackLook) {
     fallbackLook = false;
     blocker.style.display = 'flex';
+  }
+  if (e.code === 'KeyE' && camera.position.distanceTo(bestiaryCenter) < 3.2) {
+    showBestiaryPage(bestiaryPageIndex + 1);
   }
 });
 
@@ -1193,6 +1732,7 @@ function movePlayer(dt) {
 
 const vignette = document.getElementById('dread-vignette');
 const jumpscareEl = document.getElementById('jumpscare-flash');
+const interactHint = document.getElementById('interact-hint');
 
 function resetAfterCatch() {
   camera.position.copy(SPAWN);
@@ -1204,10 +1744,21 @@ function resetAfterCatch() {
   hotCheeto.alert = false; hotCheeto.alertTimer = 0;
   peanut.group.position.copy(peanut.route[0]);
   peanut.alert = false; peanut.alertTimer = 0;
+  lizard.group.position.copy(lizard.route[0]);
+  lizard.alert = false; lizard.alertTimer = 0; lizard.roamTimer = 0;
+  gunslinger.group.position.copy(gunslinger.route[0]);
+  gunslinger.alert = false; gunslinger.alertTimer = 0; gunslinger.roamTimer = 0;
+  for (const m of outlaws) {
+    m.group.position.copy(m.route[0]);
+    m.alert = false; m.alertTimer = 0; m.roamTimer = 0;
+  }
 }
 
 const monstersByType = { supersonic, hotcheeto: hotCheeto, peanut };
-const SCARE_DURATION = { supersonic: 0.8, hotcheeto: 0.9, peanut: 0.6 };
+const SCARE_DURATION = {
+  supersonic: 0.8, hotcheeto: 0.9, peanut: 0.6,
+  lizard: 0.7, gunslinger: 0.65, outlaw: 0.6,
+};
 
 let scareActive = false;
 
@@ -1219,12 +1770,12 @@ let scareStart = 0;
 let scareCamBase = new THREE.Vector3();
 let scareCamDir = new THREE.Vector3();
 
-function triggerJumpscare(type) {
+function triggerJumpscare(type, instance) {
   if (scareActive) return;
   scareActive = true;
   scareType = type;
   scareStart = performance.now();
-  const m = monstersByType[type];
+  const m = instance || monstersByType[type]; // statue has 5 instances -- needs the specific one that caught you
 
   scareCamBase.copy(camera.position);
   scareCamDir.set(0, 0, -1).applyQuaternion(camera.quaternion);
@@ -1296,11 +1847,24 @@ function animate() {
   } else if (isLocked() || fallbackLook) {
     movePlayer(dt);
 
-    const results = [tickSupersonic(dt, camera.position), tickHotCheeto(dt, camera.position), tickPeanut(dt, camera.position)];
+    interactHint.classList.toggle('show', camera.position.distanceTo(bestiaryCenter) < 3.2);
+
+    const results = [
+      tickSupersonic(dt, camera.position), tickHotCheeto(dt, camera.position),
+      tickPeanut(dt, camera.position),
+      tickLizard(dt, camera.position), tickGunslinger(dt, camera.position),
+      ...outlaws.map((m) => tickOutlaw(m, dt, camera.position)),
+    ];
     const danger = Math.max(...results.map((r) => r.danger));
     vignette.style.opacity = String(danger);
-    const caught = results.find((r) => r.dist < r.catchR);
-    if (caught) triggerJumpscare(caught.type);
+    const caught = results.find((r) => {
+      if (r.dist >= r.catchR) return false;
+      // Supersonic's short -- clear its back with a well-timed jump and it
+      // doesn't count, even if you're still within catch range horizontally.
+      if (r.hopY !== undefined && camera.position.y - EYE_H > r.hopY) return false;
+      return true;
+    });
+    if (caught) triggerJumpscare(caught.type, caught.instance);
   }
 
   renderer.render(scene, camera);

@@ -23,59 +23,88 @@ npx serve .
 
 ## The world
 
-There's one map, and it's all connected — no level select, no loading
-screens between areas. You spawn on a **treehouse deck**, built up on stilts
-around a big tree. That deck is a safe zone: nothing that hunts at night can
-cross onto it or come within 20 units of its center. A ramp off the south
-side of the deck is the only way down, into one continuous forest bounded by
-a perimeter wall, with giant rolling hills, oversized bare trees (real
-climbable branches), a loop of connected elevated platforms and bridges
-north of the treehouse, glowing jump pads, and autumn clutter — pumpkins,
-leaf piles, scarecrows.
+There's one connected ground — no level select, no loading screens — but
+two distinct maps on it. You spawn on a **treehouse deck**, built up on
+stilts around a big tree. That deck, and a walled yard around its base, is a
+safe zone: nothing that hunts at night can cross onto it or come within 20
+units of its center. A **wooden stockade wall**, sharpened logs carved to a
+point along the top, rings the yard, with four open gates (one at each
+compass point — the south one's right where the ramp down from the deck
+lands) so leaving never means walking the fence looking for a way out.
+
+Past the wall: **the forest** — giant rolling hills, oversized bare trees
+(real climbable branches), several loops of connected elevated platforms and
+bridges, glowing jump pads, and autumn clutter (pumpkins, leaf piles,
+scarecrows) scattered the whole way out to a perimeter wall. Hidden in the
+northeast corner, behind its own wooden perimeter wall, is **Badland**, a
+desert town reached through a single hole in that wall, with hollow,
+walk-in western buildings and cactus scrub. It isn't marked or hinted at on
+the way in — finding it is the point.
 
 A small alcove on the deck (the **bestiary room**) holds miniature, slowly
-turning models of the things loose in the forest, labelled by name. It's
-purely informational — nothing in there can catch you.
+turning models of the things loose out there, labelled by name, on
+pedestals that don't move. Which models are *on* them does: standing close
+and pressing **E** flips to the next map's roster, forest first. It's
+purely informational either way — nothing in that room can catch you.
 
 ## Controls
 
 `W` `A` `S` `D` to move, mouse to look, **Space** to jump, **Shift** to
-sprint. Click the start screen to lock the pointer; `Esc` releases it.
-Walking onto one of the teal jump pads launches you hard into the air.
+sprint, **E** to switch the bestiary's page when you're standing near it.
+Click the start screen to lock the pointer; `Esc` releases it. Walking onto
+one of the teal jump pads launches you hard into the air.
 
 ## Objective
 
-There isn't one. This is free roam — explore the forest, find the hills,
+There isn't one. This is free roam — explore the forest, the hidden maps,
 the jump pads, the autumn clutter, at your own pace. Getting caught just
 resets you (and whatever caught you) back to the treehouse deck; there's
 nothing to lose and nothing to win.
 
 ## What's out there
 
+Nothing patrols anymore — everything below roams a loose area around its
+own spot until it notices you, then gives chase; lose it and it wanders
+back to roaming near home, not back to standing frozen in one spot.
+
+### This forest
+
 **Supersonic** — a chimp with no legs, hovering instead of standing on
-anything, neon blue and stretched tall. It stays put wherever it spawned
-until you get close or it sees you — it isn't patrolling the whole forest
-looking for you. Once alert, it's genuinely faster than you can run (1.2x
-your own top speed), so outrunning it in a straight line never works. A
-faint arpeggio plays and gets louder the closer it is, even before it's
-actively hunting you — your only real warning. Catches you by grabbing you
-and screaming in your face.
+anything, neon blue and stretched tall. Once alert, it's genuinely faster
+than you can run (1.2x your own top speed) and it's kinda bad at turning,
+so outrunning it in a straight line never works but circling around it
+does. It's also short enough that a well-timed jump clears its back
+entirely. A faint arpeggio plays and gets louder the closer it is, even
+before it's actively hunting you — your only real warning. Catches you by
+grabbing you and screaming in your face.
 
 **Hot Cheeto** — the same no-legs chimp shape as Supersonic, scaled up 4x:
-maroon, with glowing neon red eyes, hovering out in the northwest corner of
-the forest. Same top speed as Supersonic, same "stays put until alert"
-behavior, but its sheer size makes it easier to spot from further away. It
-also turns slowly (unlike Supersonic) — a straight sprint still won't
-outrun it, but circling around it actually works. Its jumpscare is it
-picking you up and putting you in its mouth.
+maroon, with glowing neon red eyes. Same top speed as Supersonic, turns
+slowly — a straight sprint still won't outrun it, but circling around it
+works. Its jumpscare is it picking you up and putting you in its mouth.
 
-**Peanut** — light brown, no arms, hovering out in the northeast corner.
-Slightly *slower* than you (0.98x your top speed) but turns faster than
-anything else out there — it can't catch you in a straight line, but don't
-expect to lose it by weaving, either. Its jumpscare is a quick, sharp tackle.
+**Peanut** — light brown, no arms. Clearly slower than you but turns faster
+than anything else out there — it can't catch you in a straight line, but
+don't expect to lose it by weaving either. Its jumpscare is a quick, sharp
+tackle.
 
-All three are capped at a 20-unit radius from the treehouse — once you're
-back near home, you're safe, mid-chase or not.
+### Badland (hidden, northeast)
+
+A desert town behind its own wooden perimeter wall — sand, cactus scrub,
+hollow false-front buildings you can actually walk into. A single hole in
+the south side of that wall is the only way in.
+
+**Lizard** — 2x your size, a skull where its head should be, a tail. 1.02x
+your speed.
+
+**Gunslinger** — 1.2x your size, cowboy hat. 0.9x your speed.
+
+**Outlaws** — three of them, your own size, bandanas and cowboy hats. 0.7x
+your speed.
+
+Every monster is capped at a 20-unit radius from the treehouse, and the
+ones in Badland can't wander (or be chased) out of their own map at all —
+once you're back near home, you're safe, mid-chase or not.
 
 ## Lessons carried over from Desolate Apes (goofy-horror)
 
