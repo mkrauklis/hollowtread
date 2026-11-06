@@ -24,29 +24,33 @@ npx serve .
 ## The world
 
 There's one connected ground — no level select, no loading screens — but
-two distinct maps on it. You spawn on a **treehouse deck**, built up on
-stilts around a big tree. That deck, and a walled yard around its base, is a
-safe zone: nothing that hunts at night can cross onto it or come within 20
-units of its center. A **wooden stockade wall**, sharpened logs carved to a
-point along the top, rings the yard, with four open gates (one at each
-compass point — the south one's right where the ramp down from the deck
-lands) so leaving never means walking the fence looking for a way out.
+three distinct map areas on it. You spawn on a **treehouse deck**, built up
+on stilts around a big tree. That deck, and a walled yard around its base,
+is a safe zone: nothing that hunts at night can cross onto it or come
+within 20 units of its center. A **wooden stockade wall**, sharpened logs
+carved to a point along the top, rings the yard, with four open gates (one
+at each compass point — the south one's right where the ramp down from the
+deck lands) so leaving never means walking the fence looking for a way out.
 
 Past the wall: **the forest** — giant rolling hills, oversized bare trees
 (real climbable branches), several loops of connected elevated platforms and
 bridges, glowing jump pads, and autumn clutter (pumpkins, leaf piles,
-scarecrows) scattered the whole way out to a perimeter wall that rings the
-whole forest. That wall isn't fully sealed: a single hole on its east side
-leads out to **Badland**, a desert town that doesn't share the forest's
-ground at all — it sits entirely past that wall, behind its own perimeter
-wall with a matching hole a few steps further in, hollow walk-in western
-buildings, and cactus scrub. Neither hole is marked or hinted at from the
-forest side — finding the gap in the wall is the point.
+scarecrows) scattered out toward a perimeter wall that rings the whole
+forest. Tucked into its southwest corner, blending into the same ground
+rather than walled off, is **the Jungle** — small hills, dense broad-leafed
+canopy, and two stone temples, each with a windowless back chamber (a real
+dungeon, not just a bigger room) down a corridor past the main entrance.
+The forest's own perimeter wall isn't fully sealed either: a single hole on
+its east side leads out to **Badland**, a desert town that doesn't share
+the forest's ground at all — it sits entirely past that wall, behind its
+own perimeter wall with a matching hole a few steps further in, hollow
+walk-in western buildings, and cactus scrub. Nothing about the Jungle or
+either Badland hole is marked or hinted at — finding them is the point.
 
 A small alcove on the deck (the **bestiary room**) holds miniature, slowly
 turning models of the things loose out there, labelled by name, on
 pedestals that don't move. Which models are *on* them does: standing close
-and pressing **E** flips to the next map's roster, forest first. It's
+and pressing **E** cycles to the next area's roster, forest first. It's
 purely informational either way — nothing in that room can catch you.
 
 ## Controls
@@ -106,9 +110,24 @@ your speed.
 **Outlaws** — three of them, your own size, bandanas and cowboy hats. 0.7x
 your speed.
 
+### The Jungle (hidden, forest's southwest corner)
+
+**Stalker** — a chimp whose whole body has been stretched 3x upwards into
+something tall and thin, near-black with pale glowing eyes. It can spot
+you from much farther off than anything else out there, and once it has,
+it's genuinely fast (1.5x your speed) — but it can't follow you into
+either temple or the dungeon behind one; reaching a doorway is an instant,
+total out.
+
+**Wanderer** — three of them, dark grey chimps with no face at all (no
+eyes, no mouth, nothing looking back). Slower than you (0.75x your speed),
+and unlike Stalker, nothing stops one from following you through a temple
+doorway and all the way back into the dungeon chamber behind it.
+
 Every monster is capped at a 20-unit radius from the treehouse, and the
-ones in Badland can't wander (or be chased) out of their own map at all —
-once you're back near home, you're safe, mid-chase or not.
+ones in Badland (or the Jungle) can't wander, or be chased, out of their
+own area at all — once you're back near home, you're safe, mid-chase or
+not.
 
 ## Lessons carried over from Desolate Apes (goofy-horror)
 

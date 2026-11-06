@@ -59,6 +59,18 @@ const BADLAND_HOLE_HALF_W = 2.5; // shared by both the boundary wall's hole and 
 const BADLAND_X = WALL_R + 1 + BADLAND_HALF; // flush against the boundary wall's outer face
 const BADLAND_Z = 0;
 
+// Jungle: unlike Badland, this one stays on the forest's own ground --
+// it's a themed pocket of the same connected terrain (small hills, dense
+// trees, a couple of temples), not a sealed-off separate section, so it
+// doesn't need its own perimeter wall or entrance hole. Tucked into the
+// southwest corner specifically because that's the one quadrant nothing
+// else already uses: every hill, the regular tree scatter, every forest
+// monster's home, and every platform loop all stay within roughly
+// x > -70 or z > -60, so a center out at (-90, -90) with a wide margin to
+// the boundary wall (at -119) is genuinely empty ground, not another
+// place something else already lives.
+const JUNGLE_X = -90, JUNGLE_Z = -90, JUNGLE_HALF = 28;
+
 /* ---------------- deterministic scatter (no Math.random so the forest is stable) ---------------- */
 
 function mulberry32(seed) {
@@ -177,6 +189,14 @@ const hills = [
   { x: -30, z: 80, amp: 22, r: 26 },
   { x: 65, z: 58, amp: 18, r: 24 },
   { x: -62, z: -12, amp: 13, r: 20 },
+  // Jungle's own small hills -- gentler bumps than the forest's big ones
+  // above (amp 4-6 here vs. 13-22 there), scattered through the Jungle
+  // zone itself (JUNGLE_X/Z, far enough southwest that none of these
+  // reach back toward anything else).
+  { x: -75, z: -100, amp: 5, r: 10 },
+  { x: -105, z: -95, amp: 6, r: 11 },
+  { x: -90, z: -70, amp: 4, r: 9 },
+  { x: -108, z: -75, amp: 5, r: 9 },
 ];
 
 function baseHillHeight(x, z) {
@@ -187,6 +207,15 @@ function baseHillHeight(x, z) {
   }
   return h;
 }
+
+// Small rectangular patches forced flat (y=0) regardless of any hill
+// bump that happens to fall under them -- used for the floor of each
+// Jungle temple/dungeon, registered when that temple is actually built
+// (further down the file, well before groundHeight() is ever called for
+// real at runtime -- this array only needs to be populated before the
+// first *call*, not before this function is *defined*).
+const flatZones = []; // { minX, maxX, minZ, maxZ }
+function registerFlatZone(minX, maxX, minZ, maxZ) { flatZones.push({ minX, maxX, minZ, maxZ }); }
 
 function groundHeight(x, z) {
   // Ramp runs along -z (south face of the platform, toward the open forest).
@@ -200,6 +229,9 @@ function groundHeight(x, z) {
   // Badland: flat desert, no hills.
   if (Math.abs(x - BADLAND_X) <= BADLAND_HALF && Math.abs(z - BADLAND_Z) <= BADLAND_HALF) {
     return 0;
+  }
+  for (const fz of flatZones) {
+    if (x >= fz.minX && x <= fz.maxX && z >= fz.minZ && z <= fz.maxZ) return 0;
   }
   return baseHillHeight(x, z);
 }
@@ -456,6 +488,7 @@ function createChimpModel({
   bodyColor, bodyEmissive = 0x000000, bodyEmissiveIntensity = 0,
   eyeColor, eyeEmissiveIntensity = 2.5,
   torsoLen = 1.0, headScale = 1, armLen = 0.5, roughness = 0.9, arms = true,
+  faceDetails = true, // false skips muzzle/eyes/brow/nostril/pupil/mouth -- a blank head
 }) {
   const g = new THREE.Group();
   const mat = new THREE.MeshStandardMaterial({
@@ -477,11 +510,16 @@ function createChimpModel({
   head.position.y = headY;
   g.add(head);
 
-  // Muzzle + ears are what actually read as "chimp" instead of "blob".
-  const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.17 * headScale, 6, 5), mat);
-  muzzle.scale.set(1, 0.75, 1.2);
-  muzzle.position.set(0, headY - 0.1 * headScale, 0.32 * headScale);
-  g.add(muzzle);
+  // Muzzle + ears are what actually read as "chimp" instead of "blob" --
+  // the muzzle is skipped below with the rest of the face for a blank-head
+  // monster, but ears stay either way (they're part of the head's own
+  // silhouette, not a facial feature).
+  if (faceDetails) {
+    const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.17 * headScale, 6, 5), mat);
+    muzzle.scale.set(1, 0.75, 1.2);
+    muzzle.position.set(0, headY - 0.1 * headScale, 0.32 * headScale);
+    g.add(muzzle);
+  }
 
   for (const side of [-1, 1]) {
     const ear = new THREE.Mesh(new THREE.SphereGeometry(0.1 * headScale, 6, 5), mat);
@@ -535,33 +573,37 @@ function createChimpModel({
 
   // Pushed out past the head sphere's own radius (0.38*headScale) so they
   // actually protrude and read as eyes instead of being buried inside it.
-  const eyeMat = new THREE.MeshStandardMaterial({ color: eyeColor, emissive: eyeColor, emissiveIntensity: eyeEmissiveIntensity });
-  for (const side of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.065 * headScale, 7, 6), eyeMat);
-    eye.position.set(side * 0.17 * headScale, headY + 0.03 * headScale, 0.37 * headScale);
-    g.add(eye);
+  // Skipped along with the rest of the face below for a blank-head
+  // monster -- no eyes, no glow, nothing looking back at you at all.
+  if (faceDetails) {
+    const eyeMat = new THREE.MeshStandardMaterial({ color: eyeColor, emissive: eyeColor, emissiveIntensity: eyeEmissiveIntensity });
+    for (const side of [-1, 1]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.065 * headScale, 7, 6), eyeMat);
+      eye.position.set(side * 0.17 * headScale, headY + 0.03 * headScale, 0.37 * headScale);
+      g.add(eye);
+    }
+
+    // Brow ridges, nostrils, a mouth line, and pupils -- the glowing eyes
+    // alone read as a blank, blind mask; these few extra low-poly details
+    // are what actually makes it look like a face looking back at you.
+    for (const side of [-1, 1]) {
+      const brow = new THREE.Mesh(new THREE.BoxGeometry(0.16 * headScale, 0.045 * headScale, 0.09 * headScale), faceDetailMat);
+      brow.position.set(side * 0.17 * headScale, headY + 0.11 * headScale, 0.35 * headScale);
+      brow.rotation.z = side * 0.15;
+      g.add(brow);
+
+      const nostril = new THREE.Mesh(new THREE.SphereGeometry(0.03 * headScale, 5, 4), faceDetailMat);
+      nostril.position.set(side * 0.06 * headScale, headY - 0.14 * headScale, 0.44 * headScale);
+      g.add(nostril);
+
+      const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.032 * headScale, 5, 4), faceDetailMat);
+      pupil.position.set(side * 0.17 * headScale, headY + 0.03 * headScale, 0.41 * headScale);
+      g.add(pupil);
+    }
+    const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.17 * headScale, 0.03 * headScale, 0.05 * headScale), faceDetailMat);
+    mouth.position.set(0, headY - 0.24 * headScale, 0.41 * headScale);
+    g.add(mouth);
   }
-
-  // Brow ridges, nostrils, a mouth line, and pupils -- the glowing eyes
-  // alone read as a blank, blind mask; these few extra low-poly details
-  // are what actually makes it look like a face looking back at you.
-  for (const side of [-1, 1]) {
-    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.16 * headScale, 0.045 * headScale, 0.09 * headScale), faceDetailMat);
-    brow.position.set(side * 0.17 * headScale, headY + 0.11 * headScale, 0.35 * headScale);
-    brow.rotation.z = side * 0.15;
-    g.add(brow);
-
-    const nostril = new THREE.Mesh(new THREE.SphereGeometry(0.03 * headScale, 5, 4), faceDetailMat);
-    nostril.position.set(side * 0.06 * headScale, headY - 0.14 * headScale, 0.44 * headScale);
-    g.add(nostril);
-
-    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.032 * headScale, 5, 4), faceDetailMat);
-    pupil.position.set(side * 0.17 * headScale, headY + 0.03 * headScale, 0.41 * headScale);
-    g.add(pupil);
-  }
-  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.17 * headScale, 0.03 * headScale, 0.05 * headScale), faceDetailMat);
-  mouth.position.set(0, headY - 0.24 * headScale, 0.41 * headScale);
-  g.add(mouth);
 
   g.userData.hoverHeight = 0.15; // feet (or lack of them) float this far off the ground
   return g;
@@ -591,6 +633,29 @@ function createPeanutModel() {
   return createChimpModel({
     bodyColor: 0xc9a06b, eyeColor: 0x3a2a14, eyeEmissiveIntensity: 1.2,
     torsoLen: 1.0, headScale: 1.05, roughness: 0.85, arms: false,
+  });
+}
+
+/* ---------------- Jungle: Stalker + Wanderer (same chimp factory again) ---------------- */
+
+function createStalkerModel() {
+  // "Whole body stretched 3x upwards" -- torsoLen is exactly that knob
+  // (Supersonic uses 2.4 for its own "stretched" look; this goes further).
+  // Near-black with pale glowing eyes, no other color on it at all -- it's
+  // meant to read as a shape at the edge of sight long before it's close.
+  return createChimpModel({
+    bodyColor: 0x05070a, eyeColor: 0xe4ffe8, eyeEmissiveIntensity: 3.2,
+    torsoLen: 3.0, headScale: 0.65, armLen: 0.55, roughness: 0.85,
+  });
+}
+
+function createWandererModel() {
+  // Dark grey, no face at all -- faceDetails: false skips muzzle, eyes,
+  // brow, nostril, and mouth, leaving a blank head (ears only).
+  return createChimpModel({
+    bodyColor: 0x3a3a3d, eyeColor: 0x3a3a3d, eyeEmissiveIntensity: 0,
+    torsoLen: 1.0, headScale: 1.0, armLen: 0.5, roughness: 0.95,
+    faceDetails: false,
   });
 }
 
@@ -716,6 +781,10 @@ const bestiaryPages = [
       { name: 'Lizard', make: createLizardModel },
       { name: 'Gunslinger', make: createGunslingerModel },
       { name: 'Outlaw', make: createOutlawModel },
+    ] },
+  { title: 'JUNGLE', monsters: [
+      { name: 'Stalker', make: createStalkerModel },
+      { name: 'Wanderer', make: createWandererModel },
     ] },
 ];
 const BESTIARY_SLOT_X = [-5.4, -4.0, -2.6];
@@ -1052,6 +1121,169 @@ function clampToBadland(pos) {
   pos.z = THREE.MathUtils.clamp(pos.z, BADLAND_Z - BADLAND_HALF, BADLAND_Z + BADLAND_HALF);
 }
 
+/* ---------------- Jungle (small hills + dense trees + temples, southwest) ---------------- */
+
+const jungleLeafMat = new THREE.MeshStandardMaterial({ color: 0x234d1a, roughness: 1, map: makeGrainTexture({ dark: 110, light: 255, repeat: 6, blotch: 2 }) });
+const jungleTrunkMat = new THREE.MeshStandardMaterial({ color: 0x241a10, roughness: 1, map: makeGrainTexture({ dark: 90, light: 210, repeat: 8, blotch: 3 }) });
+const templeStoneMat = new THREE.MeshStandardMaterial({ color: 0x5a5648, roughness: 1, map: makeGrainTexture({ dark: 90, light: 200, repeat: 20, blotch: 3 }) });
+
+// Temples: a stepped stone exterior with a single south-facing doorway
+// into a main room, then a corridor, then a windowless back chamber --
+// the "dungeon" the main room alone doesn't cover. The whole interior
+// footprint (room + corridor + chamber) is registered as a flat zone
+// (see groundHeight() / registerFlatZone() above) and given its own
+// floor slab, so the floor reads level even where a nearby hill bulges
+// up -- the same trick Badland's sand plane uses for its whole zone,
+// just scoped to one building here instead.
+const templeBounds = []; // { minX, maxX, minZ, maxZ } -- Stalker can never enter any of these
+
+function buildTemple(cx, cz) {
+  const wallT = 0.5, wallH = 4.5, doorHalfW = 1.3;
+  const halfW = 6, halfD = 6; // main room
+  const corridorHalfW = 1.1, corridorLen = 6;
+  const chHalfW = 4, chHalfD = 4; // back chamber (the dungeon proper)
+
+  const minX = cx - halfW, maxX = cx + halfW, minZ = cz - halfD, maxZ = cz + halfD;
+  const corZ0 = maxZ, corZ1 = maxZ + corridorLen;
+  const chMinX = cx - chHalfW, chMaxX = cx + chHalfW, chMinZ = corZ1, chMaxZ = corZ1 + chHalfD * 2;
+
+  function wall(x0, x1, z0, z1, h = wallH) {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, h, z1 - z0), templeStoneMat);
+    mesh.position.set((x0 + x1) / 2, h / 2, (z0 + z1) / 2);
+    scene.add(mesh);
+    boxColliders.push(new THREE.Box3(new THREE.Vector3(x0, 0, z0), new THREE.Vector3(x1, h, z1)));
+  }
+
+  // Main room: south wall carries the only outside-facing door; north
+  // wall has its own opening straight into the corridor.
+  wall(minX, cx - doorHalfW, minZ, minZ + wallT);
+  wall(cx + doorHalfW, maxX, minZ, minZ + wallT);
+  wall(minX, minX + wallT, minZ, maxZ);
+  wall(maxX - wallT, maxX, minZ, maxZ);
+  wall(minX, cx - corridorHalfW, maxZ - wallT, maxZ);
+  wall(cx + corridorHalfW, maxX, maxZ - wallT, maxZ);
+  const doorLintel = new THREE.Mesh(new THREE.BoxGeometry(doorHalfW * 2, 1.2, wallT), templeStoneMat);
+  doorLintel.position.set(cx, wallH - 0.6, minZ + wallT / 2);
+  scene.add(doorLintel);
+
+  // Corridor leading back into the dungeon chamber.
+  wall(cx - corridorHalfW - wallT, cx - corridorHalfW, corZ0, corZ1);
+  wall(cx + corridorHalfW, cx + corridorHalfW + wallT, corZ0, corZ1);
+
+  // Back chamber: fully enclosed, no second exit -- every dungeon here is
+  // a there-and-back trip, not a loop.
+  wall(chMinX, chMaxX, chMaxZ - wallT, chMaxZ);
+  wall(chMinX, chMinX + wallT, chMinZ, chMaxZ);
+  wall(chMaxX - wallT, chMaxX, chMinZ, chMaxZ);
+
+  // Tiered stepped-pyramid roof over the main room -- visual only, no
+  // collider, same "no ceiling anywhere" rule every other building here
+  // follows (so walking in is just walking in).
+  for (let t = 0; t < 3; t++) {
+    const s = 1 - t * 0.28;
+    const tier = new THREE.Mesh(new THREE.BoxGeometry((halfW * 2 + 1) * s, 1.1, (halfD * 2 + 1) * s), templeStoneMat);
+    tier.position.set(cx, wallH + 0.1 + t * 1.1, cz);
+    scene.add(tier);
+  }
+
+  // Floor slabs, flat regardless of nearby hills.
+  registerFlatZone(Math.min(minX, chMinX), Math.max(maxX, chMaxX), minZ, chMaxZ);
+  const mainFloor = new THREE.Mesh(new THREE.BoxGeometry(halfW * 2 - wallT * 2, 0.15, halfD * 2 - wallT * 2), templeStoneMat);
+  mainFloor.position.set(cx, 0.08, cz);
+  scene.add(mainFloor);
+  const corFloor = new THREE.Mesh(new THREE.BoxGeometry(corridorHalfW * 2, 0.15, corridorLen), templeStoneMat);
+  corFloor.position.set(cx, 0.08, (corZ0 + corZ1) / 2);
+  scene.add(corFloor);
+  const chFloor = new THREE.Mesh(new THREE.BoxGeometry(chHalfW * 2 - wallT * 2, 0.15, chHalfD * 2 - wallT * 2), templeStoneMat);
+  chFloor.position.set(cx, 0.08, (chMinZ + chMaxZ) / 2);
+  scene.add(chFloor);
+
+  // A torch in the back chamber -- the only light back there otherwise.
+  const torch = new THREE.PointLight(0xff8a3d, 1.3, 9, 2);
+  torch.position.set(cx, 2.2, (chMinZ + chMaxZ) / 2);
+  scene.add(torch);
+
+  templeBounds.push({ minX: Math.min(minX, chMinX), maxX: Math.max(maxX, chMaxX), minZ, maxZ: chMaxZ });
+}
+
+buildTemple(-100, -100);
+buildTemple(-78, -78);
+
+// Stalker can see from afar and chase, but can never follow you through a
+// temple doorway -- pushes its position back out to just outside whatever
+// temple+dungeon box it would otherwise be standing inside.
+function clampStalkerFromTemples(pos) {
+  for (const b of templeBounds) {
+    if (pos.x > b.minX && pos.x < b.maxX && pos.z > b.minZ && pos.z < b.maxZ) {
+      const dLeft = pos.x - b.minX, dRight = b.maxX - pos.x;
+      const dBack = pos.z - b.minZ, dFront = b.maxZ - pos.z;
+      const m = Math.min(dLeft, dRight, dBack, dFront);
+      if (m === dLeft) pos.x = b.minX - 0.6;
+      else if (m === dRight) pos.x = b.maxX + 0.6;
+      else if (m === dBack) pos.z = b.minZ - 0.6;
+      else pos.z = b.maxZ + 0.6;
+    }
+  }
+}
+
+function insideAnyTemple(x, z) {
+  for (const b of templeBounds) {
+    if (x > b.minX - 1 && x < b.maxX + 1 && z > b.minZ - 1 && z < b.maxZ + 1) return true;
+  }
+  return false;
+}
+
+// Dense jungle canopy -- layered, broader leaf clusters and a lighter
+// green than the forest's own bare trees, so this patch of ground reads
+// as a different kind of place at a glance, not just "more trees".
+function makeJungleTree(x, z) {
+  const h = groundHeight(x, z);
+  const trunkH = 3.5 + rand() * 2;
+  const r = 0.28 + rand() * 0.15;
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.75, r, trunkH, 7), jungleTrunkMat);
+  trunk.position.set(x, h + trunkH / 2, z);
+  scene.add(trunk);
+  addCircleCollider(x, z, r + 0.2);
+  for (const [ox, oy, oz, rad] of [
+    [0, trunkH + 0.4, 0, 1.3 + rand() * 0.4],
+    [0.6, trunkH + 0.1, 0.3, 0.9 + rand() * 0.3],
+    [-0.5, trunkH + 0.3, -0.4, 0.9 + rand() * 0.3],
+  ]) {
+    const leaf = new THREE.Mesh(new THREE.SphereGeometry(rad, 8, 7), jungleLeafMat);
+    leaf.position.set(x + ox, h + oy, z + oz);
+    scene.add(leaf);
+  }
+}
+let jungleTreesPlaced = 0;
+while (jungleTreesPlaced < 55) {
+  const x = JUNGLE_X + (rand() - 0.5) * JUNGLE_HALF * 1.6;
+  const z = JUNGLE_Z + (rand() - 0.5) * JUNGLE_HALF * 1.6;
+  if (insideAnyTemple(x, z)) continue;
+  makeJungleTree(x, z);
+  jungleTreesPlaced++;
+}
+
+function junglePoint() {
+  let x, z, tries = 0;
+  do {
+    x = JUNGLE_X + (rand() - 0.5) * JUNGLE_HALF * 1.6;
+    z = JUNGLE_Z + (rand() - 0.5) * JUNGLE_HALF * 1.6;
+    tries++;
+  } while (insideAnyTemple(x, z) && tries < 10);
+  return new THREE.Vector3(x, 0, z);
+}
+// A wider margin than JUNGLE_HALF itself -- the temples' own back
+// chambers reach a bit past that soft radius, and both monsters still
+// need to be able to roam all the way out to them.
+function clampToJungle(pos) {
+  pos.x = THREE.MathUtils.clamp(pos.x, JUNGLE_X - JUNGLE_HALF - 10, JUNGLE_X + JUNGLE_HALF + 10);
+  pos.z = THREE.MathUtils.clamp(pos.z, JUNGLE_Z - JUNGLE_HALF - 10, JUNGLE_Z + JUNGLE_HALF + 10);
+}
+function clampStalkerZone(pos) {
+  clampToJungle(pos);
+  clampStalkerFromTemples(pos);
+}
+
 /* ---------------- monsters ---------------- */
 
 function clampToSafeZone(pos) {
@@ -1364,6 +1596,44 @@ function tickLizard(dt, p) { return tickGenericMonster(lizard, dt, p, LIZARD_SPE
 function tickGunslinger(dt, p) { return tickGenericMonster(gunslinger, dt, p, GUNSLINGER_SPEED, GUNSLINGER_TURN_RATE, 'gunslinger', 20, 0.88, 6, 9, clampToBadland); }
 function tickOutlaw(m, dt, p) { return tickGenericMonster(m, dt, p, OUTLAW_SPEED, OUTLAW_TURN_RATE, 'outlaw', 18, 0.88, 6, 9, clampToBadland); }
 
+/* ---------------- Jungle cast: Stalker + three Wanderers ---------------- */
+/* Same tickGenericMonster/zoneClamp pattern as Badland's cast -- Stalker's
+ * only real difference is which zoneClamp it gets (clampStalkerZone also
+ * pushes it out of every temple/dungeon box, on top of the usual Jungle
+ * bounds; Wanderer just gets clampToJungle, so it's never blocked from
+ * going anywhere Jungle's own ground reaches, dungeons included). */
+
+function makeJungleMonster(make, catchR) {
+  const spot = junglePoint();
+  const m = { group: make(), route: [spot], idx: 0, alert: false, alertTimer: 0, catchR, heading: 0 };
+  scene.add(m.group);
+  m.group.position.copy(spot);
+  m.group.position.y = groundHeight(spot.x, spot.z) + (m.group.userData.hoverHeight || 0);
+  return m;
+}
+
+// 1.5x the player's own speed, and it can spot you from much farther off
+// than anything else out there (seenRange 45 vs. everyone else's 16-24) --
+// the whole point is that outrunning it only works if you saw it first.
+const STALKER_SPEED = RUN_SPEED * 1.5, STALKER_TURN_RATE = 2.2;
+const stalker = makeJungleMonster(createStalkerModel, 1.3);
+// Its own spawn point is picked the same way every roam target is (see
+// junglePoint()), so it can land inside a temple/dungeon box just like
+// any other roam target can -- push it back out once, the same way every
+// later tick already does every frame.
+clampStalkerFromTemples(stalker.group.position);
+stalker.group.position.y = groundHeight(stalker.group.position.x, stalker.group.position.z) + (stalker.group.userData.hoverHeight || 0);
+
+const WANDERER_SPEED = RUN_SPEED * 0.75, WANDERER_TURN_RATE = 2.6;
+const wanderers = [
+  makeJungleMonster(createWandererModel, 1.0),
+  makeJungleMonster(createWandererModel, 1.0),
+  makeJungleMonster(createWandererModel, 1.0),
+];
+
+function tickStalker(dt, p) { return tickGenericMonster(stalker, dt, p, STALKER_SPEED, STALKER_TURN_RATE, 'stalker', 45, 0.8, 10, 11, clampStalkerZone); }
+function tickWanderer(m, dt, p) { return tickGenericMonster(m, dt, p, WANDERER_SPEED, WANDERER_TURN_RATE, 'wanderer', 16, 0.85, 6, 8, clampToJungle); }
+
 /* ---------------- audio ---------------- */
 /* Everything here is generated live with oscillators/noise buffers, same
  * "no asset files" rule as the rest of the project — no mp3s, no fetches. */
@@ -1512,6 +1782,33 @@ function playScare(type) {
     ng.gain.value = 0.5;
     noise.connect(ng).connect(master);
     noise.start(now);
+  } else if (type === 'stalker') {
+    // A low screech that rises hard then cuts -- something tall and
+    // wrong, closing fast.
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(90, now);
+    osc.frequency.exponentialRampToValueAtTime(900, now + 0.35);
+    osc.frequency.exponentialRampToValueAtTime(70, now + 0.7);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(0.75, now + 0.1);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.75);
+    osc.connect(g).connect(master);
+    osc.start(now); osc.stop(now + 0.75);
+  } else if (type === 'wanderer') {
+    // A flat, breathy moan -- no mouth to shape it, so it stays one dull
+    // tone instead of anything expressive.
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(110, now);
+    osc.frequency.linearRampToValueAtTime(85, now + 0.5);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(0.55, now + 0.08);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.55);
+    osc.connect(g).connect(master);
+    osc.start(now); osc.stop(now + 0.55);
   }
 }
 
@@ -1802,12 +2099,20 @@ function resetAfterCatch() {
     m.group.position.copy(m.route[0]);
     m.alert = false; m.alertTimer = 0; m.roamTimer = 0;
   }
+  stalker.group.position.copy(stalker.route[0]);
+  clampStalkerFromTemples(stalker.group.position);
+  stalker.alert = false; stalker.alertTimer = 0; stalker.roamTimer = 0;
+  for (const m of wanderers) {
+    m.group.position.copy(m.route[0]);
+    m.alert = false; m.alertTimer = 0; m.roamTimer = 0;
+  }
 }
 
 const monstersByType = { supersonic, hotcheeto: hotCheeto, peanut };
 const SCARE_DURATION = {
   supersonic: 0.8, hotcheeto: 0.9, peanut: 0.6,
   lizard: 0.7, gunslinger: 0.65, outlaw: 0.6,
+  stalker: 0.75, wanderer: 0.55,
 };
 
 let scareActive = false;
@@ -1904,6 +2209,8 @@ function animate() {
       tickPeanut(dt, camera.position),
       tickLizard(dt, camera.position), tickGunslinger(dt, camera.position),
       ...outlaws.map((m) => tickOutlaw(m, dt, camera.position)),
+      tickStalker(dt, camera.position),
+      ...wanderers.map((m) => tickWanderer(m, dt, camera.position)),
     ];
     const danger = Math.max(...results.map((r) => r.danger));
     vignette.style.opacity = String(danger);
