@@ -36,16 +36,16 @@ Past the wall: **the forest** — giant rolling hills, oversized bare trees
 (real climbable branches), several loops of connected elevated platforms and
 bridges, glowing jump pads, and autumn clutter (pumpkins, leaf piles,
 scarecrows) scattered out toward a perimeter wall that rings the whole
-forest. Tucked into its southwest corner, blending into the same ground
-rather than walled off, is **the Jungle** — small hills, dense broad-leafed
-canopy, and two stone temples, each with a windowless back chamber (a real
-dungeon, not just a bigger room) down a corridor past the main entrance.
-The forest's own perimeter wall isn't fully sealed either: a single hole on
-its east side leads out to **Badland**, a desert town that doesn't share
-the forest's ground at all — it sits entirely past that wall, behind its
-own perimeter wall with a matching hole a few steps further in, hollow
-walk-in western buildings, and cactus scrub. Nothing about the Jungle or
-either Badland hole is marked or hinted at — finding them is the point.
+forest. That wall isn't fully sealed — two single holes, on opposite sides,
+each lead out to a section that doesn't share the forest's own ground at
+all. On the east side: **Badland**, a desert town behind its own perimeter
+wall with a matching hole a few steps past the forest's, hollow walk-in
+western buildings, and cactus scrub. On the west side: **the Jungle**,
+behind its own mossy stone wall the same way — small hills, dense
+broad-leafed canopy, and two stone temples, each with a windowless back
+chamber (a real dungeon, not just a bigger room) down a corridor past the
+main entrance. Neither hole is marked or hinted at from the forest side —
+finding the gap in the wall is the point, for both of them.
 
 A small alcove on the deck (the **bestiary room**) holds miniature, slowly
 turning models of the things loose out there, labelled by name, on
@@ -110,7 +110,12 @@ your speed.
 **Outlaws** — three of them, your own size, bandanas and cowboy hats. 0.7x
 your speed.
 
-### The Jungle (hidden, forest's southwest corner)
+### The Jungle (hidden, past the forest's own west wall)
+
+Like Badland, a section that doesn't share the forest's ground — reached
+by finding the one hole in the forest's own outer perimeter wall on its
+west side, then the matching hole in the Jungle's own mossy stone wall a
+few steps past it. Small hills, dense canopy, and two stone temples.
 
 **Stalker** — a chimp whose whole body has been stretched 3x upwards into
 something tall and thin, near-black with pale glowing eyes. It can spot

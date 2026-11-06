@@ -59,17 +59,19 @@ const BADLAND_HOLE_HALF_W = 2.5; // shared by both the boundary wall's hole and 
 const BADLAND_X = WALL_R + 1 + BADLAND_HALF; // flush against the boundary wall's outer face
 const BADLAND_Z = 0;
 
-// Jungle: unlike Badland, this one stays on the forest's own ground --
-// it's a themed pocket of the same connected terrain (small hills, dense
-// trees, a couple of temples), not a sealed-off separate section, so it
-// doesn't need its own perimeter wall or entrance hole. Tucked into the
-// southwest corner specifically because that's the one quadrant nothing
-// else already uses: every hill, the regular tree scatter, every forest
-// monster's home, and every platform loop all stay within roughly
-// x > -70 or z > -60, so a center out at (-90, -90) with a wide margin to
-// the boundary wall (at -119) is genuinely empty ground, not another
-// place something else already lives.
-const JUNGLE_X = -90, JUNGLE_Z = -90, JUNGLE_HALF = 28;
+// Jungle: same idea as Badland now -- its own separate section entirely
+// past the world's outer boundary wall, reached through a hole cut into
+// that wall (see the boundary wall's own block below, and Jungle's own
+// block further down -- both holes line up at JUNGLE_Z), not a themed
+// pocket of the same forest ground. Put on the WEST side specifically so
+// it doesn't share a wall or a hole with Badland (which already owns the
+// east side). Unlike Badland's flat desert, Jungle keeps its own small
+// rolling hills inside -- it gets its own hilly ground mesh further down
+// rather than a flat plane, since it's now well past GROUND_EXTENT too.
+const JUNGLE_HALF = 35;
+const JUNGLE_HOLE_HALF_W = 2.5; // shared by both the boundary wall's hole and Jungle's own
+const JUNGLE_X = -(WALL_R + 1 + JUNGLE_HALF); // flush against the boundary wall's outer face
+const JUNGLE_Z = 0;
 
 /* ---------------- deterministic scatter (no Math.random so the forest is stable) ---------------- */
 
@@ -190,13 +192,13 @@ const hills = [
   { x: 65, z: 58, amp: 18, r: 24 },
   { x: -62, z: -12, amp: 13, r: 20 },
   // Jungle's own small hills -- gentler bumps than the forest's big ones
-  // above (amp 4-6 here vs. 13-22 there), scattered through the Jungle
-  // zone itself (JUNGLE_X/Z, far enough southwest that none of these
-  // reach back toward anything else).
-  { x: -75, z: -100, amp: 5, r: 10 },
-  { x: -105, z: -95, amp: 6, r: 11 },
-  { x: -90, z: -70, amp: 4, r: 9 },
-  { x: -108, z: -75, amp: 5, r: 9 },
+  // above (amp 4-6 here vs. 13-22 there), scattered through Jungle's own
+  // zone (offsets from JUNGLE_X/Z, which is now well past the boundary
+  // wall -- see JUNGLE_X's own comment above).
+  { x: JUNGLE_X - 15, z: JUNGLE_Z - 10, amp: 5, r: 10 },
+  { x: JUNGLE_X - 22, z: JUNGLE_Z + 12, amp: 6, r: 11 },
+  { x: JUNGLE_X + 8, z: JUNGLE_Z - 18, amp: 4, r: 9 },
+  { x: JUNGLE_X - 5, z: JUNGLE_Z + 20, amp: 5, r: 9 },
 ];
 
 function baseHillHeight(x, z) {
@@ -296,7 +298,6 @@ function collidesAt(x, z) {
     scene.add(mesh);
     boxColliders.push(new THREE.Box3(new THREE.Vector3(x0, 0, z0), new THREE.Vector3(x1, 12, z1)));
   }
-  boundaryWall(-WALL_R - 1, -WALL_R + 1, -WALL_R - 1, WALL_R + 1); // west
   boundaryWall(-WALL_R - 1, WALL_R + 1, -WALL_R - 1, -WALL_R + 1); // south
   boundaryWall(-WALL_R - 1, WALL_R + 1, WALL_R - 1, WALL_R + 1);   // north
 
@@ -315,6 +316,22 @@ function collidesAt(x, z) {
     boxColliders.push(new THREE.Box3(
       new THREE.Vector3(WALL_R - 1, holeH, BADLAND_Z - BADLAND_HOLE_HALF_W),
       new THREE.Vector3(WALL_R + 1, 12, BADLAND_Z + BADLAND_HOLE_HALF_W)
+    ));
+  }
+
+  // West wall: same deal, split around a hole at JUNGLE_Z -- the only way
+  // out to Jungle, which sits just past this same wall on the other side.
+  boundaryWall(-WALL_R - 1, -WALL_R + 1, -WALL_R - 1, JUNGLE_Z - JUNGLE_HOLE_HALF_W);
+  boundaryWall(-WALL_R - 1, -WALL_R + 1, JUNGLE_Z + JUNGLE_HOLE_HALF_W, WALL_R + 1);
+  {
+    const holeH = 4.5;
+    const lintelH = 12 - holeH;
+    const lintel = new THREE.Mesh(new THREE.BoxGeometry(2, lintelH, JUNGLE_HOLE_HALF_W * 2), wallMat2);
+    lintel.position.set(-WALL_R, holeH + lintelH / 2, JUNGLE_Z);
+    scene.add(lintel);
+    boxColliders.push(new THREE.Box3(
+      new THREE.Vector3(-WALL_R - 1, holeH, JUNGLE_Z - JUNGLE_HOLE_HALF_W),
+      new THREE.Vector3(-WALL_R + 1, 12, JUNGLE_Z + JUNGLE_HOLE_HALF_W)
     ));
   }
 }
@@ -1126,6 +1143,53 @@ function clampToBadland(pos) {
 const jungleLeafMat = new THREE.MeshStandardMaterial({ color: 0x234d1a, roughness: 1, map: makeGrainTexture({ dark: 110, light: 255, repeat: 6, blotch: 2 }) });
 const jungleTrunkMat = new THREE.MeshStandardMaterial({ color: 0x241a10, roughness: 1, map: makeGrainTexture({ dark: 90, light: 210, repeat: 8, blotch: 3 }) });
 const templeStoneMat = new THREE.MeshStandardMaterial({ color: 0x5a5648, roughness: 1, map: makeGrainTexture({ dark: 90, light: 200, repeat: 20, blotch: 3 }) });
+const jungleWallMat = new THREE.MeshStandardMaterial({ color: 0x3f4a35, roughness: 1, map: makeGrainTexture({ dark: 70, light: 170, repeat: 25, blotch: 3 }) });
+
+// Jungle's own ground -- past GROUND_EXTENT just like Badland's sand
+// plane is, but hilly instead of flat (the small hills registered above
+// still apply out here), so it needs real per-vertex displacement from
+// the same baseHillHeight() the main terrain mesh uses, not a single
+// flat plane.
+{
+  const segs = 48;
+  const jGeo = new THREE.PlaneGeometry(JUNGLE_HALF * 2, JUNGLE_HALF * 2, segs, segs);
+  jGeo.rotateX(-Math.PI / 2);
+  const pos = jGeo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    pos.setY(i, baseHillHeight(pos.getX(i) + JUNGLE_X, pos.getZ(i) + JUNGLE_Z));
+  }
+  pos.needsUpdate = true;
+  jGeo.computeVertexNormals();
+  const jGround = new THREE.Mesh(jGeo, groundMat);
+  jGround.position.set(JUNGLE_X, 0, JUNGLE_Z);
+  scene.add(jGround);
+}
+
+// A mossy stone perimeter wall around the whole zone, same idea as
+// Badland's wooden one -- entrance is a hole in the east wall, flush
+// against the boundary wall's own hole a few units away on the other
+// side of the gap.
+const JUNGLE_WALL_H = 5.0;
+function jungleWallBox(x0, x1, y0, y1, z0, z1) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0), jungleWallMat);
+  mesh.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+  scene.add(mesh);
+  boxColliders.push(new THREE.Box3(new THREE.Vector3(x0, y0, z0), new THREE.Vector3(x1, y1, z1)));
+}
+{
+  const jMinX = JUNGLE_X - JUNGLE_HALF, jMaxX = JUNGLE_X + JUNGLE_HALF;
+  const jMinZ = JUNGLE_Z - JUNGLE_HALF, jMaxZ = JUNGLE_Z + JUNGLE_HALF;
+  const wallT = 0.6;
+  jungleWallBox(jMinX, jMaxX, 0, JUNGLE_WALL_H, jMaxZ - wallT, jMaxZ); // north
+  jungleWallBox(jMinX, jMaxX, 0, JUNGLE_WALL_H, jMinZ, jMinZ + wallT); // south
+  jungleWallBox(jMinX, jMinX + wallT, 0, JUNGLE_WALL_H, jMinZ, jMaxZ); // west (dead end)
+  // East wall, split around the hole.
+  jungleWallBox(jMaxX - wallT, jMaxX, 0, JUNGLE_WALL_H, jMinZ, JUNGLE_Z - JUNGLE_HOLE_HALF_W);
+  jungleWallBox(jMaxX - wallT, jMaxX, 0, JUNGLE_WALL_H, JUNGLE_Z + JUNGLE_HOLE_HALF_W, jMaxZ);
+  const lintel = new THREE.Mesh(new THREE.BoxGeometry(wallT, 1.2, JUNGLE_HOLE_HALF_W * 2), jungleWallMat);
+  lintel.position.set(jMaxX - wallT / 2, JUNGLE_WALL_H - 0.6, JUNGLE_Z);
+  scene.add(lintel);
+}
 
 // Temples: a stepped stone exterior with a single south-facing doorway
 // into a main room, then a corridor, then a windowless back chamber --
@@ -1206,8 +1270,8 @@ function buildTemple(cx, cz) {
   templeBounds.push({ minX: Math.min(minX, chMinX), maxX: Math.max(maxX, chMaxX), minZ, maxZ: chMaxZ });
 }
 
-buildTemple(-100, -100);
-buildTemple(-78, -78);
+buildTemple(JUNGLE_X - 12, JUNGLE_Z - 10);
+buildTemple(JUNGLE_X + 4, JUNGLE_Z + 6);
 
 // Stalker can see from afar and chase, but can never follow you through a
 // temple doorway -- pushes its position back out to just outside whatever
@@ -1255,7 +1319,7 @@ function makeJungleTree(x, z) {
   }
 }
 let jungleTreesPlaced = 0;
-while (jungleTreesPlaced < 55) {
+while (jungleTreesPlaced < 75) {
   const x = JUNGLE_X + (rand() - 0.5) * JUNGLE_HALF * 1.6;
   const z = JUNGLE_Z + (rand() - 0.5) * JUNGLE_HALF * 1.6;
   if (insideAnyTemple(x, z)) continue;
@@ -1272,12 +1336,9 @@ function junglePoint() {
   } while (insideAnyTemple(x, z) && tries < 10);
   return new THREE.Vector3(x, 0, z);
 }
-// A wider margin than JUNGLE_HALF itself -- the temples' own back
-// chambers reach a bit past that soft radius, and both monsters still
-// need to be able to roam all the way out to them.
 function clampToJungle(pos) {
-  pos.x = THREE.MathUtils.clamp(pos.x, JUNGLE_X - JUNGLE_HALF - 10, JUNGLE_X + JUNGLE_HALF + 10);
-  pos.z = THREE.MathUtils.clamp(pos.z, JUNGLE_Z - JUNGLE_HALF - 10, JUNGLE_Z + JUNGLE_HALF + 10);
+  pos.x = THREE.MathUtils.clamp(pos.x, JUNGLE_X - JUNGLE_HALF, JUNGLE_X + JUNGLE_HALF);
+  pos.z = THREE.MathUtils.clamp(pos.z, JUNGLE_Z - JUNGLE_HALF, JUNGLE_Z + JUNGLE_HALF);
 }
 function clampStalkerZone(pos) {
   clampToJungle(pos);
