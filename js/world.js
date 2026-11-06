@@ -119,7 +119,7 @@ const moon = new THREE.DirectionalLight(0x8fa3c9, 0.55);
 moon.position.set(40, 70, -30);
 scene.add(moon);
 
-const flashlight = new THREE.SpotLight(0xfff1cf, 6.5, 26, Math.PI / 6.5, 0.45, 1.3);
+const flashlight = new THREE.SpotLight(0xfff1cf, 8.5, 40, Math.PI / 4.3, 0.5, 1.2);
 camera.add(flashlight);
 flashlight.target.position.set(0, 0, -1);
 camera.add(flashlight.target);
