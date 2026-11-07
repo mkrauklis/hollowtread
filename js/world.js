@@ -54,7 +54,7 @@ const WALL_R = 120;
 // the forest is actually empty space reserved for it. Putting it past the
 // wall entirely sidesteps that class of bug for good: nothing else is
 // ever placed out here, so there's nothing left to collide with.
-const BADLAND_HALF = 40;
+const BADLAND_HALF = 100; // 2.5x the original 40 -- safe to just grow since nothing else is ever out here
 const BADLAND_HOLE_HALF_W = 2.5; // shared by both the boundary wall's hole and Badland's own
 // A winding tunnel (random turns, see buildWindingTunnel() further down)
 // now fills the gap between the two holes instead of them sitting flush
@@ -72,10 +72,34 @@ const BADLAND_Z = 0;
 // east side). Unlike Badland's flat desert, Jungle keeps its own small
 // rolling hills inside -- it gets its own hilly ground mesh further down
 // rather than a flat plane, since it's now well past GROUND_EXTENT too.
-const JUNGLE_HALF = 35;
+const JUNGLE_HALF = 88; // 2.5x the original 35, same reasoning as Badland's
 const JUNGLE_HOLE_HALF_W = 2.5; // shared by both the boundary wall's hole and Jungle's own
 const JUNGLE_X = -(WALL_R + 1 + TUNNEL_LEN + JUNGLE_HALF);
 const JUNGLE_Z = 0;
+
+// City: reached a completely different way -- a hole in the treehouse
+// deck itself, with a ladder down (see the deck's own block further
+// down), not a hole in the world's boundary wall. The ladder only drops
+// you to ground level right under the treehouse; from there a corridor
+// (same buildWindingTunnel()) leads out to the building itself, which
+// sits well south of the forest's own tree/hill/platform footprint (all
+// of which stays within roughly |x|<=70, -60<=z<=80, except two platform
+// loops near z=-31..-83) -- wide and shallow rather than square so it
+// clears those loops by sitting entirely south of z=-85, not by
+// out-running them in x.
+// LADDER_Z = 0 is deliberate, not arbitrary: the corridor down from it
+// has to cross the spawn stockade wall's own collision ring (radius
+// SPAWN_WALL_R = 19 around the origin), and the only gaps in that ring
+// are its 4 gates -- this one lines up with the west gate (x=-19, z=0)
+// rather than the south gate, since the south gate's own approach is
+// already the ramp's footprint (x in [-1.6,1.6], z in [-18,-6]), which
+// would otherwise collide with the corridor the same way Badland/Jungle
+// once collided with things already living where they were first placed.
+const LADDER_X = -3, LADDER_Z = 0, LADDER_HOLE_HALF = 0.7;
+const GATE_CROSS_X = -30; // past the ring (radius 19) through the west gate
+const CITY_X = GATE_CROSS_X, CITY_Z = -98;
+const CITY_HALF_X = 70, CITY_HALF_Z = 11;
+const CITY_HOLE_HALF_W = 2.2;
 
 /* ---------------- deterministic scatter (no Math.random so the forest is stable) ---------------- */
 
@@ -101,9 +125,11 @@ scene.fog = new THREE.FogExp2(0x000000, 0.028); // matches the sky so the fade-o
 const SKY_FOREST = new THREE.Color(0x000000);
 const SKY_BADLAND = new THREE.Color(0x4a1f06);
 const SKY_JUNGLE = new THREE.Color(0x060a1c);
+const SKY_CITY = new THREE.Color(0x12151a);
 function skyTargetFor(x, z) {
   if (Math.abs(x - BADLAND_X) <= BADLAND_HALF && Math.abs(z - BADLAND_Z) <= BADLAND_HALF) return SKY_BADLAND;
   if (Math.abs(x - JUNGLE_X) <= JUNGLE_HALF && Math.abs(z - JUNGLE_Z) <= JUNGLE_HALF) return SKY_JUNGLE;
+  if (Math.abs(x - CITY_X) <= CITY_HALF_X && Math.abs(z - CITY_Z) <= CITY_HALF_Z) return SKY_CITY;
   return SKY_FOREST;
 }
 
@@ -256,6 +282,13 @@ const flatZones = []; // { minX, maxX, minZ, maxZ }
 function registerFlatZone(minX, maxX, minZ, maxZ) { flatZones.push({ minX, maxX, minZ, maxZ }); }
 
 function groundHeight(x, z) {
+  // The ladder hole -- checked before the deck's own flat-platform check
+  // below, so this one small patch of the deck reports ground level (0)
+  // instead of the deck height, and walking onto it without climbing the
+  // ladder means falling straight through.
+  if (Math.abs(x - LADDER_X) <= LADDER_HOLE_HALF && Math.abs(z - LADDER_Z) <= LADDER_HOLE_HALF) {
+    return 0;
+  }
   // Ramp runs along -z (south face of the platform, toward the open forest).
   if (Math.abs(x) <= RAMP_HALF_W && z <= -RAMP_Z0 && z >= -RAMP_Z1) {
     const t = (-z - RAMP_Z0) / (RAMP_Z1 - RAMP_Z0); // 0 at platform edge, 1 at ground
@@ -266,6 +299,10 @@ function groundHeight(x, z) {
   }
   // Badland: flat desert, no hills.
   if (Math.abs(x - BADLAND_X) <= BADLAND_HALF && Math.abs(z - BADLAND_Z) <= BADLAND_HALF) {
+    return 0;
+  }
+  // City: flat floor, same deal.
+  if (Math.abs(x - CITY_X) <= CITY_HALF_X && Math.abs(z - CITY_Z) <= CITY_HALF_Z) {
     return 0;
   }
   for (const fz of flatZones) {
@@ -340,7 +377,12 @@ function collidesAt(x, z) {
   // East wall: split around a hole at BADLAND_Z -- the only way out to
   // Badland, which sits just past this same wall. A lintel caps the
   // opening at a normal doorway height instead of leaving the full
-  // 12-unit wall height open.
+  // 12-unit wall height open -- visual only, same as every other lintel
+  // in this file. collidesAt() only ever checks x/z, never y, so a
+  // collider here (even one meant to float above head height) would
+  // block the doorway at every height, not just above it -- a real bug
+  // this shipped with once already (the "invisible barrier" in front of
+  // this hole was exactly this).
   boundaryWall(WALL_R - 1, WALL_R + 1, -WALL_R - 1, BADLAND_Z - BADLAND_HOLE_HALF_W);
   boundaryWall(WALL_R - 1, WALL_R + 1, BADLAND_Z + BADLAND_HOLE_HALF_W, WALL_R + 1);
   {
@@ -349,10 +391,6 @@ function collidesAt(x, z) {
     const lintel = new THREE.Mesh(new THREE.BoxGeometry(2, lintelH, BADLAND_HOLE_HALF_W * 2), wallMat2);
     lintel.position.set(WALL_R, holeH + lintelH / 2, BADLAND_Z);
     scene.add(lintel);
-    boxColliders.push(new THREE.Box3(
-      new THREE.Vector3(WALL_R - 1, holeH, BADLAND_Z - BADLAND_HOLE_HALF_W),
-      new THREE.Vector3(WALL_R + 1, 12, BADLAND_Z + BADLAND_HOLE_HALF_W)
-    ));
   }
 
   // West wall: same deal, split around a hole at JUNGLE_Z -- the only way
@@ -365,10 +403,6 @@ function collidesAt(x, z) {
     const lintel = new THREE.Mesh(new THREE.BoxGeometry(2, lintelH, JUNGLE_HOLE_HALF_W * 2), wallMat2);
     lintel.position.set(-WALL_R, holeH + lintelH / 2, JUNGLE_Z);
     scene.add(lintel);
-    boxColliders.push(new THREE.Box3(
-      new THREE.Vector3(-WALL_R - 1, holeH, JUNGLE_Z - JUNGLE_HOLE_HALF_W),
-      new THREE.Vector3(-WALL_R + 1, 12, JUNGLE_Z + JUNGLE_HOLE_HALF_W)
-    ));
   }
 }
 
@@ -394,12 +428,38 @@ buildEntranceSign(-WALL_R + 1.05, JUNGLE_Z, 1, 'JUNGLE', '#9fe8c9');
 // the first, so the path reaches the exact end point regardless of how
 // the jogs land -- no maze-solving needed, just pick random jogs and let
 // the last leg close the gap.
-function buildWindingTunnel(x0, z0, x1, z1, holeHalfW, wallH, mat) {
-  const dx = x1 - x0, dz = z1 - z0;
-  const dist = Math.hypot(dx, dz);
-  const fx = dx / dist, fz = dz / dist; // forward unit vector
-  const rx = -fz, rz = fx;              // right unit vector (90deg rotate)
+//
+// Two real bugs lived here before this version: (1) the ceiling got its
+// own collider "above head height" -- but collidesAt() only ever checks
+// x/z, never y, so that collider blocked the *entire corridor* at every
+// height, including the floor, which read as an invisible wall right at
+// the entrance. (2) each straight leg only covered its own exact span,
+// which left a real gap -- missing floor, walls, and ceiling alike --
+// at every turn, wide enough to see or fall through. Ceilings are now
+// visual-only, and every turn gets an explicit junction() room sized to
+// the full corridor width with solid walls on every side except the two
+// the corridor actually continues through.
+// Shared by buildWindingTunnel() and any one-off elbow joint built outside
+// it (City's connector needs one of its own -- see below): the primitives
+// for a corridor's straight legs and its 90-degree turn rooms.
+function makeCorridorBuilder(holeHalfW, wallH, mat) {
   const wallT = 0.5;
+
+  function wallBox(bx0, bx1, bz0, bz1) {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(bx1 - bx0, wallH, bz1 - bz0), mat);
+    mesh.position.set((bx0 + bx1) / 2, wallH / 2, (bz0 + bz1) / 2);
+    scene.add(mesh);
+    boxColliders.push(new THREE.Box3(new THREE.Vector3(bx0, 0, bz0), new THREE.Vector3(bx1, wallH, bz1)));
+  }
+  function floorCeil(minX, maxX, minZ, maxZ) {
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(maxX - minX, 0.15, maxZ - minZ), mat);
+    floor.position.set((minX + maxX) / 2, 0.08, (minZ + maxZ) / 2);
+    scene.add(floor);
+    registerFlatZone(minX, maxX, minZ, maxZ);
+    const ceil = new THREE.Mesh(new THREE.BoxGeometry(maxX - minX, 0.2, maxZ - minZ), mat);
+    ceil.position.set((minX + maxX) / 2, wallH, (minZ + maxZ) / 2);
+    scene.add(ceil); // visual only -- collidesAt() has no y-axis, a collider here would block the floor too
+  }
 
   function segment(p0, p1) {
     const sx = p1.x - p0.x, sz = p1.z - p0.z;
@@ -409,51 +469,61 @@ function buildWindingTunnel(x0, z0, x1, z1, holeHalfW, wallH, mat) {
     const minZ = Math.min(p0.z, p1.z), maxZ = Math.max(p0.z, p1.z);
     if (alongX) {
       const cz = p0.z;
-      for (const sign of [-1, 1]) {
-        const wall = new THREE.Mesh(new THREE.BoxGeometry(maxX - minX + wallT * 2, wallH, wallT), mat);
-        wall.position.set((minX + maxX) / 2, wallH / 2, cz + sign * (holeHalfW + wallT / 2));
-        scene.add(wall);
-        const z0b = sign < 0 ? cz - holeHalfW - wallT : cz + holeHalfW;
-        boxColliders.push(new THREE.Box3(new THREE.Vector3(minX - wallT, 0, z0b), new THREE.Vector3(maxX + wallT, wallH, z0b + wallT)));
-      }
-      const floor = new THREE.Mesh(new THREE.BoxGeometry(maxX - minX + wallT * 2, 0.15, holeHalfW * 2), mat);
-      floor.position.set((minX + maxX) / 2, 0.08, cz);
-      scene.add(floor);
-      registerFlatZone(minX - wallT, maxX + wallT, cz - holeHalfW - wallT, cz + holeHalfW + wallT);
-      const ceil = new THREE.Mesh(new THREE.BoxGeometry(maxX - minX + wallT * 2, 0.2, holeHalfW * 2 + wallT * 2), mat);
-      ceil.position.set((minX + maxX) / 2, wallH, cz);
-      scene.add(ceil);
-      boxColliders.push(new THREE.Box3(new THREE.Vector3(minX - wallT, wallH, cz - holeHalfW - wallT), new THREE.Vector3(maxX + wallT, wallH + 0.3, cz + holeHalfW + wallT)));
+      wallBox(minX, maxX, cz - holeHalfW - wallT, cz - holeHalfW);
+      wallBox(minX, maxX, cz + holeHalfW, cz + holeHalfW + wallT);
+      floorCeil(minX, maxX, cz - holeHalfW, cz + holeHalfW);
     } else {
       const cx = p0.x;
-      for (const sign of [-1, 1]) {
-        const wall = new THREE.Mesh(new THREE.BoxGeometry(wallT, wallH, maxZ - minZ + wallT * 2), mat);
-        wall.position.set(cx + sign * (holeHalfW + wallT / 2), wallH / 2, (minZ + maxZ) / 2);
-        scene.add(wall);
-        const x0b = sign < 0 ? cx - holeHalfW - wallT : cx + holeHalfW;
-        boxColliders.push(new THREE.Box3(new THREE.Vector3(x0b, 0, minZ - wallT), new THREE.Vector3(x0b + wallT, wallH, maxZ + wallT)));
-      }
-      const floor = new THREE.Mesh(new THREE.BoxGeometry(holeHalfW * 2, 0.15, maxZ - minZ + wallT * 2), mat);
-      floor.position.set(cx, 0.08, (minZ + maxZ) / 2);
-      scene.add(floor);
-      registerFlatZone(cx - holeHalfW - wallT, cx + holeHalfW + wallT, minZ - wallT, maxZ + wallT);
-      const ceil = new THREE.Mesh(new THREE.BoxGeometry(holeHalfW * 2 + wallT * 2, 0.2, maxZ - minZ + wallT * 2), mat);
-      ceil.position.set(cx, wallH, (minZ + maxZ) / 2);
-      scene.add(ceil);
-      boxColliders.push(new THREE.Box3(new THREE.Vector3(cx - holeHalfW - wallT, wallH, minZ - wallT), new THREE.Vector3(cx + holeHalfW + wallT, wallH + 0.3, maxZ + wallT)));
+      wallBox(cx - holeHalfW - wallT, cx - holeHalfW, minZ, maxZ);
+      wallBox(cx + holeHalfW, cx + holeHalfW + wallT, minZ, maxZ);
+      floorCeil(cx - holeHalfW, cx + holeHalfW, minZ, maxZ);
     }
   }
 
-  const L1 = dist * (0.2 + rand() * 0.12);
-  const L2 = dist * (0.2 + rand() * 0.12);
+  // A square "room" at each turn, solid on every side except the two
+  // directions (unit vectors, always axis-aligned here) a corridor
+  // actually continues through.
+  function junction(p, openDirs) {
+    const minX = p.x - holeHalfW, maxX = p.x + holeHalfW;
+    const minZ = p.z - holeHalfW, maxZ = p.z + holeHalfW;
+    const isOpen = (ddx, ddz) => openDirs.some((d) => d.x === ddx && d.z === ddz);
+    if (!isOpen(-1, 0)) wallBox(minX - wallT, minX, minZ - wallT, maxZ + wallT);
+    if (!isOpen(1, 0)) wallBox(maxX, maxX + wallT, minZ - wallT, maxZ + wallT);
+    if (!isOpen(0, -1)) wallBox(minX - wallT, maxX + wallT, minZ - wallT, minZ);
+    if (!isOpen(0, 1)) wallBox(minX - wallT, maxX + wallT, maxZ, maxZ + wallT);
+    floorCeil(minX - wallT, maxX + wallT, minZ - wallT, maxZ + wallT);
+  }
+
+  return { segment, junction };
+}
+
+function buildWindingTunnel(x0, z0, x1, z1, holeHalfW, wallH, mat) {
+  const dx = x1 - x0, dz = z1 - z0;
+  const dist = Math.hypot(dx, dz);
+  const fx = dx / dist, fz = dz / dist; // forward unit vector
+  const rx = -fz, rz = fx;              // right unit vector (90deg rotate)
+  const { segment, junction } = makeCorridorBuilder(holeHalfW, wallH, mat);
+
+  // >=0.3 each (and <0.5 combined) so City's corridor -- which has to
+  // clear the spawn stockade wall's collision ring (radius 19) before its
+  // first jog, or the jog could clip back into it -- always does, since
+  // its own L1 alone (0.3 * ~90) already exceeds 19 well before any
+  // lateral movement happens.
+  const L1 = dist * (0.3 + rand() * 0.1);
+  const L2 = dist * (0.3 + rand() * 0.1);
   const jogMag = 5 + rand() * 4;
   const side = rand() < 0.5 ? 1 : -1;
 
+  const fwd = { x: fx, z: fz };
+  const back = { x: -fx, z: -fz };
+  const right = { x: rx * side, z: rz * side };
+  const left = { x: -rx * side, z: -rz * side };
+
   const p0 = { x: x0, z: z0 };
-  const p1 = { x: x0 + fx * L1, z: z0 + fz * L1 };
-  const p2 = { x: p1.x + rx * jogMag * side, z: p1.z + rz * jogMag * side };
-  const p3 = { x: p2.x + fx * L2, z: p2.z + fz * L2 };
-  const p4 = { x: p3.x - rx * jogMag * side, z: p3.z - rz * jogMag * side };
+  const p1 = { x: x0 + fwd.x * L1, z: z0 + fwd.z * L1 };
+  const p2 = { x: p1.x + right.x * jogMag, z: p1.z + right.z * jogMag };
+  const p3 = { x: p2.x + fwd.x * L2, z: p2.z + fwd.z * L2 };
+  const p4 = { x: p3.x + left.x * jogMag, z: p3.z + left.z * jogMag };
   const p5 = { x: x1, z: z1 };
 
   segment(p0, p1);
@@ -461,6 +531,11 @@ function buildWindingTunnel(x0, z0, x1, z1, holeHalfW, wallH, mat) {
   segment(p2, p3);
   segment(p3, p4);
   segment(p4, p5);
+
+  junction(p1, [back, right]);
+  junction(p2, [left, fwd]);
+  junction(p3, [back, left]);
+  junction(p4, [right, fwd]);
 }
 
 /* ---------------- spawn perimeter: wooden stockade wall ---------------- */
@@ -596,6 +671,34 @@ for (const [ox, oy, oz, r] of [[-4, PLATFORM_H + 5, -4, 4.2], [-1, PLATFORM_H + 
     scene.add(post);
   }
   addCircleCollider(-4, -4, ringR - 0.3);
+}
+
+// The hole down to City: a dark square cut into the deck (groundHeight()
+// already makes this patch fall through to ground level) framed with a
+// low curb, plus a real ladder -- two rails and a run of rungs -- spanning
+// the full drop. Climbing is handled in movePlayer() itself.
+{
+  const holeMat = new THREE.MeshStandardMaterial({ color: 0x050504, roughness: 1 });
+  const hole = new THREE.Mesh(new THREE.BoxGeometry(LADDER_HOLE_HALF * 2, 0.06, LADDER_HOLE_HALF * 2), holeMat);
+  hole.position.set(LADDER_X, PLATFORM_H - 0.02, LADDER_Z);
+  scene.add(hole);
+  const curb = new THREE.Mesh(new THREE.BoxGeometry(LADDER_HOLE_HALF * 2 + 0.3, 0.1, LADDER_HOLE_HALF * 2 + 0.3), woodDarkMat);
+  curb.position.set(LADDER_X, PLATFORM_H + 0.02, LADDER_Z);
+  scene.add(curb);
+
+  const railX = LADDER_HOLE_HALF - 0.1;
+  for (const side of [-1, 1]) {
+    const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, PLATFORM_H, 6), woodDarkMat);
+    rail.position.set(LADDER_X + side * railX, PLATFORM_H / 2, LADDER_Z);
+    scene.add(rail);
+  }
+  const rungCount = Math.floor(PLATFORM_H / 0.35);
+  for (let i = 0; i < rungCount; i++) {
+    const rung = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, railX * 2, 6), woodDarkMat);
+    rung.rotation.z = Math.PI / 2;
+    rung.position.set(LADDER_X, 0.2 + i * 0.35, LADDER_Z);
+    scene.add(rung);
+  }
 }
 
 // Railing around the open deck (every edge except the ramp gap on -z).
@@ -822,6 +925,20 @@ function createWandererModel() {
   });
 }
 
+function createMonumentModel() {
+  // Heavy, concrete-grey, barely-visible eyes -- reads as a statue first
+  // and a creature second. Scaled up 1.8x for a genuinely monumental
+  // presence; it hardly ever needs to actually move fast, so there's no
+  // cost to it looking like it shouldn't be able to.
+  const g = createChimpModel({
+    bodyColor: 0x55534c, eyeColor: 0x8a8278, eyeEmissiveIntensity: 0.4,
+    torsoLen: 1.3, headScale: 1.1, armLen: 0.6, roughness: 1,
+  });
+  g.scale.setScalar(1.8);
+  g.userData.hoverHeight *= 1.8;
+  return g;
+}
+
 /* ---------------- Badland: desert-town cast (props bolted onto the same
  * chimp factory) ---------------- */
 /* headY/torsoY duplicate createChimpModel's own internal math rather than
@@ -949,6 +1066,9 @@ const bestiaryPages = [
       { name: 'Stalker', make: createStalkerModel },
       { name: 'Wanderer', make: createWandererModel },
     ] },
+  { title: 'CITY', monsters: [
+      { name: 'Monument', make: createMonumentModel },
+    ] },
 ];
 const BESTIARY_SLOT_X = [-5.4, -4.0, -2.6];
 const BESTIARY_Z = 4;
@@ -1022,7 +1142,7 @@ const DESK_X = 3, DESK_Z = 3;
   const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.3), screenMat);
   screen.position.set(DESK_X, topY + 0.265, DESK_Z - 0.15 + 0.26);
   scene.add(screen);
-  const screenGlow = new THREE.PointLight(0x2fd69a, 0.6, 3, 2);
+  const screenGlow = new THREE.PointLight(0x2fd69a, 1.4, 6, 2);
   screenGlow.position.set(DESK_X, topY + 0.4, DESK_Z);
   scene.add(screenGlow);
   // Keyboard, out front where you'd actually reach to press it.
@@ -1613,6 +1733,168 @@ function clampStalkerZone(pos) {
   clampStalkerFromTemples(pos);
 }
 
+/* ---------------- City (one long building, reached via the deck's ladder) ---------------- */
+
+const cityWallMat = new THREE.MeshStandardMaterial({ color: 0x3c3f42, roughness: 1, map: makeGrainTexture({ dark: 60, light: 160, repeat: 30, blotch: 4 }) });
+const cityFloorMat = new THREE.MeshStandardMaterial({ color: 0x2a2c2e, roughness: 0.95, map: makeGrainTexture({ dark: 70, light: 170, repeat: 20, blotch: 3 }) });
+const shelfMat = new THREE.MeshStandardMaterial({ color: 0x4a3a28, roughness: 0.9 });
+const lightFixtureMat = new THREE.MeshStandardMaterial({ color: 0xfff6d8, emissive: 0xfff2c0, emissiveIntensity: 1.4 });
+
+// The corridor down from the ladder, in two legs: a short straight one
+// (not randomized -- a jog here risks missing the stockade wall's own
+// gate, only ~4.5 units wide) west from the ladder through that gate,
+// then a winding buildWindingTunnel() south the rest of the way out to
+// the building, same as Badland's/Jungle's.
+{
+  const { segment, junction } = makeCorridorBuilder(CITY_HOLE_HALF_W, 4.5, cityWallMat);
+  segment({ x: LADDER_X, z: LADDER_Z }, { x: GATE_CROSS_X, z: LADDER_Z });
+  junction({ x: GATE_CROSS_X, z: LADDER_Z }, [{ x: 1, z: 0 }, { x: 0, z: -1 }]);
+}
+buildWindingTunnel(GATE_CROSS_X, LADDER_Z, CITY_X, CITY_Z + CITY_HALF_Z, CITY_HOLE_HALF_W, 4.5, cityWallMat);
+
+const CITY_WALL_H = 6.0;
+const cMinX = CITY_X - CITY_HALF_X, cMaxX = CITY_X + CITY_HALF_X;
+const cMinZ = CITY_Z - CITY_HALF_Z, cMaxZ = CITY_Z + CITY_HALF_Z;
+{
+  const wallT = 0.6;
+  // North wall, split around the door the tunnel arrives through.
+  buildRuggedWall(cMinX, CITY_X - CITY_HOLE_HALF_W, cMaxZ - wallT, cMaxZ, CITY_WALL_H, cityWallMat);
+  buildRuggedWall(CITY_X + CITY_HOLE_HALF_W, cMaxX, cMaxZ - wallT, cMaxZ, CITY_WALL_H, cityWallMat);
+  buildRuggedWall(cMinX, cMaxX, cMinZ, cMinZ + wallT, CITY_WALL_H, cityWallMat); // south, dead end
+  buildRuggedWall(cMinX, cMinX + wallT, cMinZ, cMaxZ, CITY_WALL_H, cityWallMat); // west
+  buildRuggedWall(cMaxX - wallT, cMaxX, cMinZ, cMaxZ, CITY_WALL_H, cityWallMat); // east
+
+  const floor = new THREE.Mesh(new THREE.BoxGeometry(cMaxX - cMinX, 0.15, cMaxZ - cMinZ), cityFloorMat);
+  floor.position.set(CITY_X, 0.08, CITY_Z);
+  scene.add(floor);
+}
+
+// Roof over everything except a courtyard cutout left open to the rain --
+// four slabs framing the gap, same technique the Jungle temples use for
+// their own interior/dungeon flat zones.
+const CITY_COURT_HALF_X = 18, CITY_COURT_HALF_Z = 8;
+const cyMinX = CITY_X - CITY_COURT_HALF_X, cyMaxX = CITY_X + CITY_COURT_HALF_X;
+const cyMinZ = CITY_Z - CITY_COURT_HALF_Z, cyMaxZ = CITY_Z + CITY_COURT_HALF_Z;
+function cityRoofSlab(x0, x1, z0, z1) {
+  if (x1 <= x0 || z1 <= z0) return;
+  const slab = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 0.3, z1 - z0), cityWallMat);
+  slab.position.set((x0 + x1) / 2, CITY_WALL_H + 0.15, (z0 + z1) / 2);
+  scene.add(slab); // visual only -- no ceiling in this game ever collides
+}
+cityRoofSlab(cMinX, cMaxX, cyMaxZ, cMaxZ);
+cityRoofSlab(cMinX, cMaxX, cMinZ, cyMinZ);
+cityRoofSlab(cMinX, cyMinX, cyMinZ, cyMaxZ);
+cityRoofSlab(cyMaxX, cMaxX, cyMinZ, cyMaxZ);
+
+// Pillars down the length of the hall -- visual rhythm for a long open
+// room, and something for the light fixtures/shelves to anchor to.
+const cityPillars = [];
+for (let px = cMinX + 10; px < cMaxX - 5; px += 14) {
+  if (px > cyMinX - 2 && px < cyMaxX + 2) continue; // leave the courtyard clear
+  for (const pz of [CITY_Z - 7, CITY_Z + 7]) {
+    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.4, CITY_WALL_H, 8), cityWallMat);
+    pillar.position.set(px, CITY_WALL_H / 2, pz);
+    scene.add(pillar);
+    addCircleCollider(px, pz, 0.5);
+    cityPillars.push({ x: px, z: pz });
+
+    // A light fixture and a shelf unit at most pillars.
+    if (rand() < 0.7) {
+      const fixture = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.12, 0.3), lightFixtureMat);
+      fixture.position.set(px, CITY_WALL_H - 0.3, pz);
+      scene.add(fixture);
+      const bulb = new THREE.PointLight(0xfff0c8, 1.1, 14, 2);
+      bulb.position.set(px, CITY_WALL_H - 0.5, pz);
+      scene.add(bulb);
+    }
+    if (rand() < 0.6) {
+      const shelfX = px + (pz < CITY_Z ? 0.5 : -0.5);
+      for (let s = 0; s < 3; s++) {
+        const shelf = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.06, 0.35), shelfMat);
+        shelf.position.set(shelfX, 0.6 + s * 0.6, pz + (pz < CITY_Z ? 0.6 : -0.6));
+        scene.add(shelf);
+      }
+      boxColliders.push(new THREE.Box3(
+        new THREE.Vector3(shelfX - 0.7, 0, pz + (pz < CITY_Z ? 0.3 : -0.9)),
+        new THREE.Vector3(shelfX + 0.7, 1.9, pz + (pz < CITY_Z ? 0.9 : -0.3))
+      ));
+    }
+  }
+}
+
+// Vines everywhere -- draped from the wall tops all along the perimeter.
+for (let i = 0; i < 70; i++) {
+  const side = Math.floor(rand() * 4);
+  let vx, vz;
+  if (side === 0) { vx = cMinX + rand() * (cMaxX - cMinX); vz = cMaxZ - 0.3; }
+  else if (side === 1) { vx = cMinX + rand() * (cMaxX - cMinX); vz = cMinZ + 0.3; }
+  else if (side === 2) { vx = cMinX + 0.3; vz = cMinZ + rand() * (cMaxZ - cMinZ); }
+  else { vx = cMaxX - 0.3; vz = cMinZ + rand() * (cMaxZ - cMinZ); }
+  const vineLen = 1.5 + rand() * 3;
+  const vine = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.05, vineLen, 5), vineMat);
+  vine.position.set(vx, CITY_WALL_H - vineLen / 2, vz);
+  scene.add(vine);
+}
+
+// Rain, falling only over the open courtyard -- it's "outside" even
+// though it's inside the same perimeter wall as everything else.
+const RAIN_COUNT = 260;
+const rainDrops = [];
+const rainMat = new THREE.MeshStandardMaterial({ color: 0xaad4e6, roughness: 0.3, transparent: true, opacity: 0.55 });
+for (let i = 0; i < RAIN_COUNT; i++) {
+  const drop = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.6, 3), rainMat);
+  const x = cyMinX + rand() * (cyMaxX - cyMinX);
+  const z = cyMinZ + rand() * (cyMaxZ - cyMinZ);
+  const y = rand() * CITY_WALL_H;
+  drop.position.set(x, y, z);
+  scene.add(drop);
+  rainDrops.push(drop);
+}
+function tickRain(dt) {
+  const speed = 16;
+  for (const d of rainDrops) {
+    d.position.y -= speed * dt;
+    if (d.position.y < 0) {
+      d.position.y = CITY_WALL_H;
+      d.position.x = cyMinX + rand() * (cyMaxX - cyMinX);
+      d.position.z = cyMinZ + rand() * (cyMaxZ - cyMinZ);
+    }
+  }
+}
+// A quiet rain ambience -- looping filtered noise, same procedural-audio
+// discipline as every other sound in this game.
+let rainNoiseStarted = false;
+function startRainAmbience() {
+  if (rainNoiseStarted) return;
+  const ctx = ensureAudio();
+  if (!ctx) return;
+  rainNoiseStarted = true;
+  const bufLen = ctx.sampleRate * 2;
+  const buf = ctx.createBuffer(1, bufLen, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < bufLen; i++) data[i] = Math.random() * 2 - 1;
+  const noise = ctx.createBufferSource();
+  noise.buffer = buf;
+  noise.loop = true;
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = 1800;
+  const gain = ctx.createGain();
+  gain.gain.value = 0.12;
+  noise.connect(filter).connect(gain).connect(ctx.destination);
+  noise.start();
+}
+
+function cityPoint() {
+  const x = CITY_X + (rand() - 0.5) * CITY_HALF_X * 1.5;
+  const z = CITY_Z + (rand() - 0.5) * CITY_HALF_Z * 1.5;
+  return new THREE.Vector3(x, 0, z);
+}
+function clampToCity(pos) {
+  pos.x = THREE.MathUtils.clamp(pos.x, cMinX + 1, cMaxX - 1);
+  pos.z = THREE.MathUtils.clamp(pos.z, cMinZ + 1, cMaxZ - 1);
+}
+
 /* ---------------- monsters ---------------- */
 
 function clampToSafeZone(pos) {
@@ -1963,6 +2245,25 @@ const wanderers = [
 function tickStalker(dt, p) { return tickGenericMonster(stalker, dt, p, STALKER_SPEED, STALKER_TURN_RATE, 'stalker', 45, 0.8, 10, 11, clampStalkerZone); }
 function tickWanderer(m, dt, p) { return tickGenericMonster(m, dt, p, WANDERER_SPEED, WANDERER_TURN_RATE, 'wanderer', 16, 0.85, 6, 8, clampToJungle); }
 
+/* ---------------- Monument (City) ---------------- */
+/* Walks at 0.2x your speed -- it will basically never catch you by
+ * chasing. The real threat is staring at it: see updateMonumentStare()
+ * in the main loop, which tracks how long it's stayed in your forward
+ * view and turns the screen grey and pixelated the longer you let it. */
+
+const MONUMENT_SPEED = RUN_SPEED * 0.2, MONUMENT_TURN_RATE = 1.0;
+const monumentSpot = cityPoint();
+const monument = {
+  group: createMonumentModel(), route: [monumentSpot], idx: 0,
+  alert: false, alertTimer: 0, catchR: 1.8, heading: 0,
+};
+scene.add(monument.group);
+monument.group.position.copy(monumentSpot);
+clampToCity(monument.group.position);
+monument.group.position.y = groundHeight(monument.group.position.x, monument.group.position.z) + (monument.group.userData.hoverHeight || 0);
+
+function tickMonument(dt, p) { return tickGenericMonster(monument, dt, p, MONUMENT_SPEED, MONUMENT_TURN_RATE, 'monument', 20, 0.86, 5, 10, clampToCity); }
+
 /* ---------------- audio ---------------- */
 /* Everything here is generated live with oscillators/noise buffers, same
  * "no asset files" rule as the rest of the project — no mp3s, no fetches. */
@@ -2138,6 +2439,29 @@ function playScare(type) {
     g.gain.exponentialRampToValueAtTime(0.0001, now + 0.55);
     osc.connect(g).connect(master);
     osc.start(now); osc.stop(now + 0.55);
+  } else if (type === 'monument') {
+    // A deep, droning static-laced tone -- the sound of the screen
+    // itself seeming to give out, not a roar or a scream.
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(55, now);
+    osc.frequency.linearRampToValueAtTime(30, now + 1.0);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(0.5, now + 0.2);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 1.1);
+    osc.connect(g).connect(master);
+    osc.start(now); osc.stop(now + 1.1);
+
+    const buf = ctx.createBuffer(1, ctx.sampleRate * 1.0, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+    const noise = ctx.createBufferSource();
+    noise.buffer = buf;
+    const ng = ctx.createGain();
+    ng.gain.value = 0.3;
+    noise.connect(ng).connect(master);
+    noise.start(now);
   }
 }
 
@@ -2275,7 +2599,7 @@ document.addEventListener('keydown', (e) => {
   if (customizeOpen) return; // typing in the name field shouldn't also trigger game shortcuts
   if (e.code === 'KeyE' && camera.position.distanceTo(bestiaryCenter) < 3.2) {
     showBestiaryPage(bestiaryPageIndex + 1);
-  } else if (e.code === 'KeyE' && camera.position.distanceTo(keyboardCenter) < 2.5) {
+  } else if (e.code === 'KeyE' && camera.position.distanceTo(keyboardCenter) < 3.2) {
     openCustomizePanel();
   }
 });
@@ -2440,23 +2764,40 @@ function movePlayer(dt) {
     if (onGround) { velocity.y = JUMP_V; onGround = false; }
   }
 
-  const footY = pos.y - EYE_H;
-  const supportY = supportHeight(pos.x, pos.z, footY) + EYE_H;
-
-  if (!onGround) {
-    velocity.y += GRAVITY * dt;
-    pos.y += velocity.y * dt;
-    if (pos.y <= supportY) { pos.y = supportY; velocity.y = 0; onGround = true; }
-  } else if (supportY < pos.y - 0.2) {
-    onGround = false; // stepped off a branch/ledge — fall instead of teleporting down
+  // The ladder down to City: while standing in its narrow column, W/S
+  // climbs up/down directly instead of the usual gravity/support flow --
+  // groundHeight() already turns this one patch of the deck into an open
+  // hole (see its own comment), so without this a player here would just
+  // fall straight through rather than being able to climb back up too.
+  const onLadder = Math.abs(pos.x - LADDER_X) <= LADDER_HOLE_HALF + 0.3 &&
+    Math.abs(pos.z - LADDER_Z) <= LADDER_HOLE_HALF + 0.3 &&
+    pos.y > EYE_H - 0.3 && pos.y < PLATFORM_H + EYE_H + 0.3;
+  if (onLadder && (keys.w || keys.s)) {
+    const climbSpeed = 4.5;
+    if (keys.w) pos.y += climbSpeed * dt;
+    if (keys.s) pos.y -= climbSpeed * dt;
+    pos.y = THREE.MathUtils.clamp(pos.y, EYE_H, PLATFORM_H + EYE_H);
+    velocity.y = 0;
+    onGround = pos.y >= PLATFORM_H + EYE_H - 0.01 || pos.y <= EYE_H + 0.01;
   } else {
-    pos.y = supportY;
-    for (const pad of jumpPads) {
-      const dx = pos.x - pad.x, dz = pos.z - pad.z;
-      if (dx * dx + dz * dz < pad.r * pad.r) {
-        velocity.y = PAD_JUMP_V;
-        onGround = false;
-        break;
+    const footY = pos.y - EYE_H;
+    const supportY = supportHeight(pos.x, pos.z, footY) + EYE_H;
+
+    if (!onGround) {
+      velocity.y += GRAVITY * dt;
+      pos.y += velocity.y * dt;
+      if (pos.y <= supportY) { pos.y = supportY; velocity.y = 0; onGround = true; }
+    } else if (supportY < pos.y - 0.2) {
+      onGround = false; // stepped off a branch/ledge — fall instead of teleporting down
+    } else {
+      pos.y = supportY;
+      for (const pad of jumpPads) {
+        const dx = pos.x - pad.x, dz = pos.z - pad.z;
+        if (dx * dx + dz * dz < pad.r * pad.r) {
+          velocity.y = PAD_JUMP_V;
+          onGround = false;
+          break;
+        }
       }
     }
   }
@@ -2497,13 +2838,18 @@ function resetAfterCatch() {
     m.group.position.copy(m.route[0]);
     m.alert = false; m.alertTimer = 0; m.roamTimer = 0;
   }
+  monument.group.position.copy(monument.route[0]);
+  clampToCity(monument.group.position);
+  monument.alert = false; monument.alertTimer = 0; monument.roamTimer = 0;
+  monumentStareTimer = 0;
+  applyStareEffect(0);
 }
 
 const monstersByType = { supersonic, hotcheeto: hotCheeto, peanut };
 const SCARE_DURATION = {
   supersonic: 0.8, hotcheeto: 0.9, peanut: 0.6,
   lizard: 0.7, gunslinger: 0.65, outlaw: 0.6,
-  stalker: 0.75, wanderer: 0.55,
+  stalker: 0.75, wanderer: 0.55, monument: 1.1,
 };
 
 let scareActive = false;
@@ -2541,6 +2887,48 @@ function triggerJumpscare(type, instance) {
     scareActive = false;
     resetAfterCatch();
   }, duration * 1000);
+}
+
+/* ---------------- Monument's stare mechanic ---------------- */
+/* Look at it (roughly centered in your own forward view, within range)
+ * for too long and the screen itself starts to go: grayscale creeping
+ * in, then the actual rendered resolution dropping so the image turns
+ * genuinely blocky, not just filtered. Looking away decays it back down
+ * faster than staring builds it up, so a glance is safe -- it's sustained
+ * eye contact that kills you. */
+
+let monumentStareTimer = 0;
+const MONUMENT_STARE_DEATH = 4.0; // seconds of continuous staring before death
+const MONUMENT_STARE_DECAY = 2.5; // per-second decay once you look away
+let lastPixelScale = 1;
+
+function applyStareEffect(progress) {
+  renderer.domElement.style.filter = progress > 0 ? `grayscale(${Math.round(progress * 100)}%)` : '';
+  const pixelScale = THREE.MathUtils.lerp(1, 0.05, Math.pow(progress, 1.6));
+  if (Math.abs(pixelScale - lastPixelScale) > 0.02) {
+    lastPixelScale = pixelScale;
+    renderer.setPixelRatio(Math.max(0.05, window.devicePixelRatio * pixelScale));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+}
+
+function triggerMonumentDeath() {
+  monumentStareTimer = 0;
+  applyStareEffect(0); // back to full resolution/color before the jumpscare itself plays
+  triggerJumpscare('monument', monument);
+}
+
+function updateMonumentStare(dt) {
+  if (scareActive || customizeOpen) return;
+  const toM = new THREE.Vector3().subVectors(monument.group.position, camera.position);
+  const dist = toM.length();
+  const camForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+  const looking = dist > 0.01 && dist < 40 && camForward.dot(toM.clone().normalize()) > 0.93;
+  monumentStareTimer = looking
+    ? Math.min(monumentStareTimer + dt, MONUMENT_STARE_DEATH)
+    : Math.max(0, monumentStareTimer - dt * MONUMENT_STARE_DECAY);
+  applyStareEffect(monumentStareTimer / MONUMENT_STARE_DEATH);
+  if (monumentStareTimer >= MONUMENT_STARE_DEATH) triggerMonumentDeath();
 }
 
 function updateScareCamera(p, t) {
@@ -2598,8 +2986,11 @@ function animate() {
     scene.background.lerp(skyTarget, skyT);
     scene.fog.color.lerp(skyTarget, skyT);
 
+    tickRain(dt);
+    if (skyTarget === SKY_CITY) startRainAmbience();
+
     const nearBestiary = camera.position.distanceTo(bestiaryCenter) < 3.2;
-    const nearKeyboard = camera.position.distanceTo(keyboardCenter) < 2.5;
+    const nearKeyboard = camera.position.distanceTo(keyboardCenter) < 3.2;
     if (nearBestiary) {
       interactHint.textContent = 'Press E to switch map';
       interactHint.classList.add('show');
@@ -2617,7 +3008,9 @@ function animate() {
       ...outlaws.map((m) => tickOutlaw(m, dt, camera.position)),
       tickStalker(dt, camera.position),
       ...wanderers.map((m) => tickWanderer(m, dt, camera.position)),
+      tickMonument(dt, camera.position),
     ];
+    updateMonumentStare(dt);
     const danger = Math.max(...results.map((r) => r.danger));
     vignette.style.opacity = String(danger);
     const caught = results.find((r) => {
