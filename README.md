@@ -24,7 +24,7 @@ npx serve .
 ## The world
 
 There's one connected ground — no level select, no loading screens — but
-four distinct map areas on it. You spawn on a **treehouse deck**, built up
+three distinct map areas on it. You spawn on a **treehouse deck**, built up
 on stilts around a big tree. That deck, and a walled yard around its base,
 is a safe zone: nothing that hunts at night can cross onto it or come
 within 20 units of its center. A **wooden stockade wall**, sharpened logs
@@ -47,8 +47,9 @@ end of the tunnel, hollow walk-in western buildings, cactus scrub, and air
 that fades to a dark sunrise orange the moment you're actually inside. On
 the west side, behind a sign reading **JUNGLE**: small hills, dense
 broad-leafed canopy strung with hanging vines, and two stone temples, each
-with a windowless back chamber (a real dungeon, not just a bigger room)
-down a corridor past the main entrance — the sky here fades to a dark blue
+with a windowless back chamber (a real dungeon, not just a bigger room,
+and genuinely dark — nothing lights it but your own flashlight) down a
+corridor past the main entrance — the sky here fades to a dark blue
 instead.
 
 A small alcove on the deck (the **bestiary room**) holds miniature, slowly
@@ -62,13 +63,6 @@ glowing on top of it. Stand at the keyboard and press **E** to open a
 panel: a hue slider for the color of your own first-person arms, and a
 name field that shows up under the HOLLOWTREAD logo in the corner. Both
 persist in your browser (`localStorage`) across visits.
-
-A fourth area isn't reached through the boundary wall at all: a dark
-square cut into the deck itself, framed by a real ladder you can climb up
-and down, drops straight to ground level and a corridor out to **the
-City** — one long building, lit by overhead fixtures and lined with
-shelves and hanging vines, with an open-air courtyard in the middle where
-it's actually raining, the only "outside" anywhere inside its own walls.
 
 ## Controls
 
@@ -139,20 +133,6 @@ Jungle's own rugged mossy stone wall at the far end. Small hills, dense
 broad-leafed canopy with vines hanging down out of it, real climbable
 branches on the trees same as the forest's own, and two stone temples. The
 sky fades to a dark blue once you're inside.
-
-### The City (hidden, a ladder down from the deck itself)
-
-One long building reached by climbing down through a hole in the
-treehouse deck, through a corridor, and in its own front door — not past
-the forest's boundary wall at all. Overhead lights, shelves, vines
-everywhere, and a rain-soaked open-air courtyard partway down its length.
-
-**Monument** — heavy, concrete-grey, barely-glowing eyes. It walks at
-0.2x your speed; chasing is not how it gets you. Keep it in your sightline
-too long and the screen itself starts to go: grayscale creeping in, the
-image breaking down into real blocky pixels, and if you don't look away
-in time, it kills you outright. Looking away decays that back down faster
-than staring builds it up — a glance is safe, sustained eye contact isn't.
 
 **Stalker** — a chimp whose whole body has been stretched far upward and
 then scaled up again on top of that, genuinely huge, near-black with pale
