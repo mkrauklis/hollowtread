@@ -24,7 +24,7 @@ npx serve .
 ## The world
 
 There's one connected ground — no level select, no loading screens — but
-three distinct map areas on it. You spawn on a **treehouse deck**, built up
+four distinct map areas on it. You spawn on a **treehouse deck**, built up
 on stilts around a big tree. That deck, and a walled yard around its base,
 is a safe zone: nothing that hunts at night can cross onto it or come
 within 20 units of its center. A **wooden stockade wall**, sharpened logs
@@ -37,20 +37,25 @@ Past the wall: **the forest** — giant rolling hills, oversized bare trees
 bridges, glowing jump pads, and autumn clutter (pumpkins, leaf piles,
 scarecrows) scattered out toward a perimeter wall that rings the whole
 forest. A small sign is mounted above each gap, but nothing points you
-toward either gap in the first place. That wall isn't fully sealed — two
-single holes, on opposite sides, each lead into a winding tunnel (real
-turns, not a straight shot — the exact bends are different every time the
-page loads) that comes out into a section that doesn't share the forest's
-own ground at all. On the east side, behind a sign reading **BADLAND**: a
-desert town behind its own perimeter wall with a matching hole at the far
-end of the tunnel, hollow walk-in western buildings, cactus scrub, and air
-that fades to a dark sunrise orange the moment you're actually inside. On
-the west side, behind a sign reading **JUNGLE**: small hills, dense
-broad-leafed canopy strung with hanging vines, and two stone temples, each
-with a windowless back chamber (a real dungeon, not just a bigger room,
-and genuinely dark — nothing lights it but your own flashlight) down a
-corridor past the main entrance — the sky here fades to a dark blue
-instead.
+toward any of them in the first place. That wall isn't fully sealed —
+three single holes, one on each remaining side, each lead into a winding
+tunnel (real turns, lit and widened into an actual turning bay at each
+one so the bend itself is visible, not a blind corner — the exact path is
+different every time the page loads) that comes out into a section that
+doesn't share the forest's own ground at all. On the east side, behind a
+sign reading **BADLAND**: a desert town behind its own perimeter wall
+with a matching hole at the far end of the tunnel, hollow walk-in western
+buildings, cactus scrub, and air that fades to a dark sunrise orange the
+moment you're actually inside. On the west side, behind a sign reading
+**JUNGLE**: small hills, dense broad-leafed canopy strung with hanging
+vines, and two stone temples, each with a windowless back chamber (a real
+dungeon, not just a bigger room, and genuinely dark — nothing lights it
+but your own flashlight) down a corridor past the main entrance — the sky
+here fades to a dark blue instead. On the north side, behind a sign
+reading **WINTER WONDERLAND**: the biggest of the three by a clear
+margin — snow, thickening fog, a brick path, candy canes everywhere, and
+three gingerbread houses you can walk into — under a pale, overcast-white
+sky instead of the forest's black one.
 
 A small alcove on the deck (the **bestiary room**) holds miniature, slowly
 turning models of the things loose out there, labelled by name, on
@@ -146,10 +151,35 @@ eyes, no mouth, nothing looking back). Slower than you (0.75x your speed),
 and unlike Stalker, nothing stops one from following you through a temple
 doorway and all the way back into the dungeon chamber behind it.
 
+### Winter Wonderland (hidden, past the forest's own north wall)
+
+The biggest of the three sections, reached the same way as the other
+two — through the one hole in the forest's own outer wall on its north
+side, down its own winding tunnel, to a matching hole in Winter
+Wonderland's own perimeter wall. Snow, thick fog, a brick path, candy
+canes scattered everywhere, and three gingerbread houses with icing trim
+you can actually walk into.
+
+**Gingy** — gingerbread brown, no face at all. Slower than you (0.7x your
+speed).
+
+**Crangler** — a chimp whose whole body *and* arms have been stretched 5x
+upward, a red-and-white candy-cane print down its body, glowing red eyes.
+Spots you from much farther off than almost anything else out there.
+
+**Elf** — three of them, red or green costume, pointed hat. The slowest
+thing in the game (0.5x your speed).
+
+**Krampus** — a chimp scaled up 6x, whole body and head together, not
+just stretched: beard, Santa hat, horns, pale blue glowing eyes, dark
+bent claws. The fastest thing in the game (1.5x your speed) — but it can
+never follow you into a gingerbread house; reaching the doorway is an
+instant, total out.
+
 Every monster is capped at a 20-unit radius from the treehouse, and the
-ones in Badland (or the Jungle) can't wander, or be chased, out of their
-own area at all — once you're back near home, you're safe, mid-chase or
-not.
+ones in Badland, the Jungle, or Winter Wonderland can't wander, or be
+chased, out of their own area at all — once you're back near home,
+you're safe, mid-chase or not.
 
 ## Lessons carried over from Desolate Apes (goofy-horror)
 

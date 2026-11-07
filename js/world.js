@@ -77,6 +77,16 @@ const JUNGLE_HOLE_HALF_W = 2.5; // shared by both the boundary wall's hole and J
 const JUNGLE_X = -(WALL_R + 1 + TUNNEL_LEN + JUNGLE_HALF);
 const JUNGLE_Z = 0;
 
+// Winter Wonderland: same architecture again, on the one remaining side
+// (north) -- flat snowy ground (like Badland's flat desert, not Jungle's
+// hilly one), reached the same way through a boundary-wall hole and its
+// own winding tunnel. The biggest of the three by a clear margin, since
+// nothing constrains it any differently than Badland/Jungle were.
+const WINTER_HALF = 120;
+const WINTER_HOLE_HALF_W = 2.5;
+const WINTER_X = 0;
+const WINTER_Z = WALL_R + 1 + TUNNEL_LEN + WINTER_HALF;
+
 /* ---------------- deterministic scatter (no Math.random so the forest is stable) ---------------- */
 
 function mulberry32(seed) {
@@ -101,10 +111,21 @@ scene.fog = new THREE.FogExp2(0x000000, 0.028); // matches the sky so the fade-o
 const SKY_FOREST = new THREE.Color(0x000000);
 const SKY_BADLAND = new THREE.Color(0x4a1f06);
 const SKY_JUNGLE = new THREE.Color(0x060a1c);
+const SKY_WINTER = new THREE.Color(0xc7d2da);
 function skyTargetFor(x, z) {
   if (Math.abs(x - BADLAND_X) <= BADLAND_HALF && Math.abs(z - BADLAND_Z) <= BADLAND_HALF) return SKY_BADLAND;
   if (Math.abs(x - JUNGLE_X) <= JUNGLE_HALF && Math.abs(z - JUNGLE_Z) <= JUNGLE_HALF) return SKY_JUNGLE;
+  if (Math.abs(x - WINTER_X) <= WINTER_HALF && Math.abs(z - WINTER_Z) <= WINTER_HALF) return SKY_WINTER;
   return SKY_FOREST;
+}
+// Winter Wonderland also thickens the fog itself (a real snowy-whiteout
+// haze, not just a color change) -- the other two zones keep the
+// forest's own density.
+const FOG_DENSITY_FOREST = 0.028;
+const FOG_DENSITY_WINTER = 0.065;
+function fogDensityFor(x, z) {
+  if (Math.abs(x - WINTER_X) <= WINTER_HALF && Math.abs(z - WINTER_Z) <= WINTER_HALF) return FOG_DENSITY_WINTER;
+  return FOG_DENSITY_FOREST;
 }
 
 const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.05, 260);
@@ -198,9 +219,14 @@ function makeTextTexture(text, { width = 512, height = 160, bg = '#1a1510', fg =
   ctx.lineWidth = 6;
   ctx.strokeRect(10, 10, width - 20, height - 20);
   ctx.fillStyle = fg;
-  ctx.font = 'bold 72px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
+  let fontSize = 72;
+  while (fontSize > 24) {
+    ctx.font = `bold ${fontSize}px sans-serif`;
+    if (ctx.measureText(text).width <= width - 40) break;
+    fontSize -= 4;
+  }
   ctx.fillText(text, width / 2, height / 2);
   const tex = new THREE.CanvasTexture(canvas);
   return tex;
@@ -208,6 +234,12 @@ function makeTextTexture(text, { width = 512, height = 160, bg = '#1a1510', fg =
 
 const woodMat = new THREE.MeshStandardMaterial({ color: 0x4e3a26, roughness: 0.95, map: makeGrainTexture({ dark: 140, light: 235, repeat: 7, blotch: 4 }) });
 const woodDarkMat = new THREE.MeshStandardMaterial({ color: 0x241b12, roughness: 1, map: makeGrainTexture({ dark: 110, light: 220, repeat: 5, blotch: 3 }) });
+// Every winding tunnel's own walls -- a single shared material, deliberately
+// higher-contrast and coarser-grained than the general-purpose ones above,
+// so the walls themselves read as a distinct, textured surface rather than
+// nearly-flat color in the dark (reused regardless of which map a given
+// tunnel leads to, same as one shared tunnel style for all of them).
+const tunnelWallMat = new THREE.MeshStandardMaterial({ color: 0x2c2520, roughness: 0.95, map: makeGrainTexture({ dark: 40, light: 230, repeat: 10, blotch: 4 }) });
 const leafMat = new THREE.MeshStandardMaterial({ color: 0x15210f, roughness: 1, map: makeGrainTexture({ dark: 120, light: 255, repeat: 6, blotch: 2 }) });
 const groundMat = new THREE.MeshStandardMaterial({ color: 0x24401c, roughness: 1, map: makeGrainTexture({ size: 192, dark: 90, light: 255, repeat: 48, blotch: 2 }) });
 const trunkMat = new THREE.MeshStandardMaterial({ color: 0x1c140c, roughness: 1, map: makeGrainTexture({ dark: 100, light: 230, repeat: 8, blotch: 3 }) });
@@ -352,7 +384,6 @@ function collidesAt(x, z, footY = -Infinity) {
     boxColliders.push(new THREE.Box3(new THREE.Vector3(x0, 0, z0), new THREE.Vector3(x1, 12, z1)));
   }
   boundaryWall(-WALL_R - 1, WALL_R + 1, -WALL_R - 1, -WALL_R + 1); // south
-  boundaryWall(-WALL_R - 1, WALL_R + 1, WALL_R - 1, WALL_R + 1);   // north
 
   // East wall: split around a hole at BADLAND_Z -- the only way out to
   // Badland, which sits just past this same wall. A lintel caps the
@@ -384,21 +415,36 @@ function collidesAt(x, z, footY = -Infinity) {
     lintel.position.set(-WALL_R, holeH + lintelH / 2, JUNGLE_Z);
     scene.add(lintel);
   }
+
+  // North wall: split around a hole at WINTER_X -- the only way out to
+  // Winter Wonderland.
+  boundaryWall(-WALL_R - 1, WINTER_X - WINTER_HOLE_HALF_W, WALL_R - 1, WALL_R + 1);
+  boundaryWall(WINTER_X + WINTER_HOLE_HALF_W, WALL_R + 1, WALL_R - 1, WALL_R + 1);
+  {
+    const holeH = 4.5;
+    const lintelH = 12 - holeH;
+    const lintel = new THREE.Mesh(new THREE.BoxGeometry(WINTER_HOLE_HALF_W * 2, lintelH, 2), wallMat2);
+    lintel.position.set(WINTER_X, holeH + lintelH / 2, WALL_R);
+    scene.add(lintel);
+  }
 }
 
 // A small sign mounted on the wall's forest-facing surface, right above
 // each hole -- the only hint either gap exists at all, labelling it
-// before anyone actually walks through.
-function buildEntranceSign(x, z, normalX, text, fg) {
+// before anyone actually walks through. (normalX, normalZ) is the unit
+// vector the sign's face should point along -- (±1,0) for the east/west
+// walls, (0,±1) for the north one.
+function buildEntranceSign(x, z, normalX, normalZ, text, fg, width = 3.2) {
   const tex = makeTextTexture(text, { fg });
   const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8, side: THREE.DoubleSide });
-  const sign = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 1.0), mat);
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(width, 1.0), mat);
   sign.position.set(x, 5.3, z);
-  sign.rotation.y = normalX > 0 ? Math.PI / 2 : -Math.PI / 2;
+  sign.rotation.y = Math.atan2(normalX, normalZ);
   scene.add(sign);
 }
-buildEntranceSign(WALL_R - 1.05, BADLAND_Z, -1, 'BADLAND', '#e8c77a');
-buildEntranceSign(-WALL_R + 1.05, JUNGLE_Z, 1, 'JUNGLE', '#9fe8c9');
+buildEntranceSign(WALL_R - 1.05, BADLAND_Z, -1, 0, 'BADLAND', '#e8c77a');
+buildEntranceSign(-WALL_R + 1.05, JUNGLE_Z, 1, 0, 'JUNGLE', '#9fe8c9');
+buildEntranceSign(WINTER_X, WALL_R - 1.05, 0, -1, 'WINTER WONDERLAND', '#bfe8ff', 5.2);
 
 // A winding corridor between two points that share either the same x or
 // the same z -- the forest-side boundary wall hole and Badland's/Jungle's
@@ -452,26 +498,38 @@ function makeCorridorBuilder(holeHalfW, wallH, mat) {
       wallBox(minX, maxX, cz - holeHalfW - wallT, cz - holeHalfW);
       wallBox(minX, maxX, cz + holeHalfW, cz + holeHalfW + wallT);
       floorCeil(minX, maxX, cz - holeHalfW, cz + holeHalfW);
+      const light = new THREE.PointLight(0xd8c8a0, 0.8, 16, 2);
+      light.position.set((minX + maxX) / 2, wallH * 0.75, cz);
+      scene.add(light);
     } else {
       const cx = p0.x;
       wallBox(cx - holeHalfW - wallT, cx - holeHalfW, minZ, maxZ);
       wallBox(cx + holeHalfW, cx + holeHalfW + wallT, minZ, maxZ);
       floorCeil(cx - holeHalfW, cx + holeHalfW, minZ, maxZ);
+      const light = new THREE.PointLight(0xd8c8a0, 0.8, 16, 2);
+      light.position.set(cx, wallH * 0.75, (minZ + maxZ) / 2);
+      scene.add(light);
     }
   }
 
-  // A square "room" at each turn, solid on every side except the two
-  // directions (unit vectors, always axis-aligned here) a corridor
-  // actually continues through.
+  // A room at each turn, wider than the corridor itself -- a real turning
+  // bay instead of a blind right-angle pinch you only discover by walking
+  // into it -- lit so the turn is actually visible coming, solid on every
+  // side except the two directions (unit vectors, always axis-aligned
+  // here) a corridor actually continues through.
   function junction(p, openDirs) {
-    const minX = p.x - holeHalfW, maxX = p.x + holeHalfW;
-    const minZ = p.z - holeHalfW, maxZ = p.z + holeHalfW;
+    const jHalf = holeHalfW * 1.8;
+    const minX = p.x - jHalf, maxX = p.x + jHalf;
+    const minZ = p.z - jHalf, maxZ = p.z + jHalf;
     const isOpen = (ddx, ddz) => openDirs.some((d) => d.x === ddx && d.z === ddz);
     if (!isOpen(-1, 0)) wallBox(minX - wallT, minX, minZ - wallT, maxZ + wallT);
     if (!isOpen(1, 0)) wallBox(maxX, maxX + wallT, minZ - wallT, maxZ + wallT);
     if (!isOpen(0, -1)) wallBox(minX - wallT, maxX + wallT, minZ - wallT, minZ);
     if (!isOpen(0, 1)) wallBox(minX - wallT, maxX + wallT, maxZ, maxZ + wallT);
     floorCeil(minX - wallT, maxX + wallT, minZ - wallT, maxZ + wallT);
+    const light = new THREE.PointLight(0xd8c8a0, 1.1, jHalf * 6, 2);
+    light.position.set(p.x, wallH * 0.75, p.z);
+    scene.add(light);
   }
 
   return { segment, junction };
@@ -694,14 +752,14 @@ scene.add(campLight);
 const faceDetailMat = new THREE.MeshStandardMaterial({ color: 0x0c0a08, roughness: 1 });
 
 function createChimpModel({
-  bodyColor, bodyEmissive = 0x000000, bodyEmissiveIntensity = 0,
+  bodyColor, bodyEmissive = 0x000000, bodyEmissiveIntensity = 0, bodyMap = null,
   eyeColor, eyeEmissiveIntensity = 2.5,
   torsoLen = 1.0, headScale = 1, armLen = 0.5, roughness = 0.9, arms = true,
   faceDetails = true, // false skips muzzle/eyes/brow/nostril/pupil/mouth -- a blank head
 }) {
   const g = new THREE.Group();
   const mat = new THREE.MeshStandardMaterial({
-    color: bodyColor, emissive: bodyEmissive, emissiveIntensity: bodyEmissiveIntensity, roughness,
+    color: bodyColor, emissive: bodyEmissive, emissiveIntensity: bodyEmissiveIntensity, roughness, map: bodyMap,
   });
 
   // Torso: a lean ape silhouette (a squashed sphere, not a cone) tapering
@@ -873,6 +931,139 @@ function createWandererModel() {
   });
 }
 
+/* ---------------- Winter Wonderland cast (props bolted onto the same
+ * chimp factory again) ---------------- */
+
+const icingMat = new THREE.MeshStandardMaterial({ color: 0xfaf6ee, roughness: 0.8 });
+const candyRedMat = new THREE.MeshStandardMaterial({ color: 0xb4192a, roughness: 0.6 });
+const candyWhiteMat = new THREE.MeshStandardMaterial({ color: 0xf5f0e6, roughness: 0.6 });
+const elfRedMat = new THREE.MeshStandardMaterial({ color: 0xa41c24, roughness: 0.8 });
+const elfGreenMat = new THREE.MeshStandardMaterial({ color: 0x1f6b35, roughness: 0.8 });
+const krampusPropMat = new THREE.MeshStandardMaterial({ color: 0x1c1a18, roughness: 0.9 });
+const krampusHornMat = new THREE.MeshStandardMaterial({ color: 0x3a2e24, roughness: 0.7 });
+
+function createGingyModel() {
+  // Gingerbread brown, no face at all.
+  return createChimpModel({
+    bodyColor: 0x8b5a2b, eyeColor: 0x8b5a2b, eyeEmissiveIntensity: 0,
+    torsoLen: 1.0, headScale: 1.0, armLen: 0.5, roughness: 0.85,
+    faceDetails: false,
+  });
+}
+
+// A diagonal red/white stripe pattern for Crangler's own "candy cane
+// print" -- same canvas-texture discipline as the grain textures, just a
+// drawn pattern instead of noise.
+function makeStripeTexture() {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#e8e2d4';
+  ctx.fillRect(0, 0, size, size);
+  ctx.strokeStyle = '#c21a2a';
+  ctx.lineWidth = size / 6;
+  for (let i = -size; i < size * 2; i += size / 3) {
+    ctx.beginPath();
+    ctx.moveTo(i, 0);
+    ctx.lineTo(i + size, size);
+    ctx.stroke();
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(2, 2);
+  return tex;
+}
+const candyStripeTex = makeStripeTexture();
+
+function createCranglerModel() {
+  // Whole body AND arms stretched 5x upward -- torsoLen is the body
+  // stretch, armLen the arm stretch, pushed together rather than just
+  // one (Stalker's own stretch only ever touched torsoLen).
+  return createChimpModel({
+    bodyColor: 0xffffff, eyeColor: 0xff1a2a, eyeEmissiveIntensity: 4,
+    bodyMap: candyStripeTex,
+    torsoLen: 5.0, headScale: 0.7, armLen: 2.2, roughness: 0.6,
+  });
+}
+
+function addElfHat(g, headY, headScale, mat) {
+  const hat = new THREE.Mesh(new THREE.ConeGeometry(0.22 * headScale, 0.5 * headScale, 8), mat);
+  hat.position.set(0, headY + 0.55 * headScale, 0);
+  g.add(hat);
+  const trim = new THREE.Mesh(new THREE.TorusGeometry(0.2 * headScale, 0.05 * headScale, 6, 10), icingMat);
+  trim.position.set(0, headY + 0.32 * headScale, 0);
+  trim.rotation.x = Math.PI / 2;
+  g.add(trim);
+}
+function addElfTunic(g, torsoY, mat) {
+  const tunic = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.26, 0.35, 8), mat);
+  tunic.position.set(0, torsoY, 0);
+  g.add(tunic);
+}
+function createElfModel(color) {
+  const mat = color === 'red' ? elfRedMat : elfGreenMat;
+  const torsoLen = 1.0, headScale = 1.0;
+  const g = createChimpModel({
+    bodyColor: 0xc9a06b, eyeColor: 0x3a2a14, eyeEmissiveIntensity: 1.4,
+    torsoLen, headScale, armLen: 0.5, roughness: 0.85,
+  });
+  addElfTunic(g, chimpTorsoY(torsoLen), mat);
+  addElfHat(g, chimpHeadY(torsoLen, headScale), headScale, mat);
+  return g;
+}
+function createElfModelRed() { return createElfModel('red'); }
+function createElfModelGreen() { return createElfModel('green'); }
+
+function addBeard(g, headY, headScale) {
+  const beard = new THREE.Mesh(new THREE.ConeGeometry(0.18 * headScale, 0.4 * headScale, 8), krampusPropMat);
+  beard.position.set(0, headY - 0.3 * headScale, 0.25 * headScale);
+  beard.rotation.x = Math.PI;
+  g.add(beard);
+}
+function addSantaHat(g, headY, headScale) {
+  const hat = new THREE.Mesh(new THREE.ConeGeometry(0.24 * headScale, 0.55 * headScale, 8), elfRedMat);
+  hat.position.set(0.05 * headScale, headY + 0.58 * headScale, 0);
+  g.add(hat);
+  const trim = new THREE.Mesh(new THREE.TorusGeometry(0.22 * headScale, 0.05 * headScale, 6, 10), icingMat);
+  trim.position.set(0, headY + 0.34 * headScale, 0);
+  trim.rotation.x = Math.PI / 2;
+  g.add(trim);
+  const pom = new THREE.Mesh(new THREE.SphereGeometry(0.08 * headScale, 6, 5), icingMat);
+  pom.position.set(0.25 * headScale, headY + 0.85 * headScale, 0);
+  g.add(pom);
+}
+function addHorns(g, headY, headScale) {
+  for (const side of [-1, 1]) {
+    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.06 * headScale, 0.35 * headScale, 6), krampusHornMat);
+    horn.position.set(side * 0.2 * headScale, headY + 0.5 * headScale, -0.1 * headScale);
+    horn.rotation.z = side * -0.4;
+    horn.rotation.x = -0.3;
+    g.add(horn);
+  }
+}
+function createKrampusModel() {
+  // Whole body, arms, AND head all scaled up together, uniformly, 6x --
+  // unlike Stalker's own stretch (torsoLen only), this one keeps normal
+  // proportions and scales the entire finished model instead.
+  const torsoLen = 1.0, headScale = 1.0;
+  const g = createChimpModel({
+    bodyColor: 0x4a2a1a, eyeColor: 0x7ad8ff, eyeEmissiveIntensity: 3.5,
+    torsoLen, headScale, armLen: 0.6, roughness: 0.8,
+  });
+  addBeard(g, chimpHeadY(torsoLen, headScale), headScale);
+  addSantaHat(g, chimpHeadY(torsoLen, headScale), headScale);
+  addHorns(g, chimpHeadY(torsoLen, headScale), headScale);
+  // Bent claws -- just darker, slightly bigger hands than the factory's own.
+  for (const elbow of g.userData.elbowPivots) {
+    const hand = elbow.children[elbow.children.length - 1];
+    if (hand) { hand.material = krampusPropMat; hand.scale.setScalar(1.4); }
+  }
+  g.scale.setScalar(6);
+  g.userData.hoverHeight *= 6;
+  return g;
+}
+
 /* ---------------- Badland: desert-town cast (props bolted onto the same
  * chimp factory) ---------------- */
 /* headY/torsoY duplicate createChimpModel's own internal math rather than
@@ -1000,8 +1191,14 @@ const bestiaryPages = [
       { name: 'Stalker', make: createStalkerModel },
       { name: 'Wanderer', make: createWandererModel },
     ] },
+  { title: 'WINTERLAND', monsters: [
+      { name: 'Gingy', make: createGingyModel },
+      { name: 'Crangler', make: createCranglerModel },
+      { name: 'Elf', make: createElfModelRed },
+      { name: 'Krampus', make: createKrampusModel },
+    ] },
 ];
-const BESTIARY_SLOT_X = [-5.4, -4.0, -2.6];
+const BESTIARY_SLOT_X = [-5.9, -4.8, -3.7, -2.6];
 const BESTIARY_Z = 4;
 
 for (const x of BESTIARY_SLOT_X) {
@@ -1351,7 +1548,7 @@ function badlandWallBox(x0, x1, y0, y1, z0, z1) {
 
 // The winding tunnel connecting the forest's own boundary-wall hole to
 // this one.
-buildWindingTunnel(WALL_R + 1, BADLAND_Z, BADLAND_X - BADLAND_HALF, BADLAND_Z, BADLAND_HOLE_HALF_W, 4.5, woodDarkMat);
+buildWindingTunnel(WALL_R + 1, BADLAND_Z, BADLAND_X - BADLAND_HALF, BADLAND_Z, BADLAND_HOLE_HALF_W, 4.5, tunnelWallMat);
 
 // Hollow false-front buildings -- walls + a doorway + a roof you can see
 // under but never collide with (no ceiling anywhere else in this game
@@ -1426,26 +1623,6 @@ const jungleTrunkMat = new THREE.MeshStandardMaterial({ color: 0x241a10, roughne
 const templeStoneMat = new THREE.MeshStandardMaterial({ color: 0x5a5648, roughness: 1, map: makeGrainTexture({ dark: 90, light: 200, repeat: 20, blotch: 3 }) });
 const jungleWallMat = new THREE.MeshStandardMaterial({ color: 0x3f4a35, roughness: 1, map: makeGrainTexture({ dark: 70, light: 170, repeat: 25, blotch: 3 }) });
 
-// Jungle's own ground -- past GROUND_EXTENT just like Badland's sand
-// plane is, but hilly instead of flat (the small hills registered above
-// still apply out here), so it needs real per-vertex displacement from
-// the same baseHillHeight() the main terrain mesh uses, not a single
-// flat plane.
-{
-  const segs = 48;
-  const jGeo = new THREE.PlaneGeometry(JUNGLE_HALF * 2, JUNGLE_HALF * 2, segs, segs);
-  jGeo.rotateX(-Math.PI / 2);
-  const pos = jGeo.attributes.position;
-  for (let i = 0; i < pos.count; i++) {
-    pos.setY(i, baseHillHeight(pos.getX(i) + JUNGLE_X, pos.getZ(i) + JUNGLE_Z));
-  }
-  pos.needsUpdate = true;
-  jGeo.computeVertexNormals();
-  const jGround = new THREE.Mesh(jGeo, groundMat);
-  jGround.position.set(JUNGLE_X, 0, JUNGLE_Z);
-  scene.add(jGround);
-}
-
 // A mossy stone perimeter wall around the whole zone, same idea as
 // Badland's wooden one -- entrance is a hole in the east wall, flush
 // against the boundary wall's own hole a few units away on the other
@@ -1471,7 +1648,7 @@ function jungleWallBox(x0, x1, y0, y1, z0, z1) {
 
 // The winding tunnel connecting the forest's own boundary-wall hole to
 // this one.
-buildWindingTunnel(-(WALL_R + 1), JUNGLE_Z, JUNGLE_X + JUNGLE_HALF, JUNGLE_Z, JUNGLE_HOLE_HALF_W, 4.5, jungleWallMat);
+buildWindingTunnel(-(WALL_R + 1), JUNGLE_Z, JUNGLE_X + JUNGLE_HALF, JUNGLE_Z, JUNGLE_HOLE_HALF_W, 4.5, tunnelWallMat);
 
 // Temples: a stepped stone exterior with a single south-facing doorway
 // into a main room, then a corridor, then a windowless back chamber --
@@ -1559,6 +1736,36 @@ function buildTemple(cx, cz) {
 
 buildTemple(JUNGLE_X - 12, JUNGLE_Z - 10);
 buildTemple(JUNGLE_X + 4, JUNGLE_Z + 6);
+
+// Jungle's own ground -- past GROUND_EXTENT just like Badland's sand
+// plane is, but hilly instead of flat (the small hills registered above
+// still apply out here), so it needs real per-vertex displacement from
+// the same baseHillHeight() the main terrain mesh uses, not a single
+// flat plane. Built *after* the temples specifically so their bounds are
+// already known: any vertex inside one is forced flat, the same way
+// registerFlatZone() already keeps the gameplay floor height flat there
+// -- without this, the grass terrain mesh itself (a separate, pre-baked
+// geometry flatZones never touches) still showed through the dungeon's
+// own stone floor as real, walkable grass.
+{
+  const segs = 48;
+  const jGeo = new THREE.PlaneGeometry(JUNGLE_HALF * 2, JUNGLE_HALF * 2, segs, segs);
+  jGeo.rotateX(-Math.PI / 2);
+  const pos = jGeo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const vx = pos.getX(i) + JUNGLE_X, vz = pos.getZ(i) + JUNGLE_Z;
+    let inTemple = false;
+    for (const b of templeBounds) {
+      if (vx >= b.minX - 1 && vx <= b.maxX + 1 && vz >= b.minZ - 1 && vz <= b.maxZ + 1) { inTemple = true; break; }
+    }
+    pos.setY(i, inTemple ? 0 : baseHillHeight(vx, vz));
+  }
+  pos.needsUpdate = true;
+  jGeo.computeVertexNormals();
+  const jGround = new THREE.Mesh(jGeo, groundMat);
+  jGround.position.set(JUNGLE_X, 0, JUNGLE_Z);
+  scene.add(jGround);
+}
 
 // Stalker can see from afar and chase, but can never follow you through a
 // temple doorway -- pushes its position back out to just outside whatever
@@ -1667,6 +1874,143 @@ function clampToJungle(pos) {
 function clampStalkerZone(pos) {
   clampToJungle(pos);
   clampStalkerFromTemples(pos);
+}
+
+/* ---------------- Winter Wonderland (snow, brick paths, gingerbread houses, north) ---------------- */
+
+const snowMat = new THREE.MeshStandardMaterial({ color: 0xeef3f7, roughness: 0.9, map: makeGrainTexture({ size: 150, dark: 210, light: 255, repeat: 35, blotch: 2 }) });
+const brickMat = new THREE.MeshStandardMaterial({ color: 0x8a3a2a, roughness: 0.9, map: makeGrainTexture({ dark: 90, light: 200, repeat: 18, blotch: 3 }) });
+const gingerMat = new THREE.MeshStandardMaterial({ color: 0x6b3a1a, roughness: 0.9, map: makeGrainTexture({ dark: 80, light: 190, repeat: 12, blotch: 3 }) });
+const winterWallMat = new THREE.MeshStandardMaterial({ color: 0xd8e4ea, roughness: 0.85, map: makeGrainTexture({ dark: 160, light: 250, repeat: 20, blotch: 3 }) });
+
+// The corridor down from the forest's own north gate, same technique as
+// Badland's/Jungle's.
+buildWindingTunnel(WINTER_X, WALL_R + 1, WINTER_X, WINTER_Z - WINTER_HALF, WINTER_HOLE_HALF_W, 4.5, tunnelWallMat);
+
+const WINTER_WALL_H = 9.0;
+const wMinX = WINTER_X - WINTER_HALF, wMaxX = WINTER_X + WINTER_HALF;
+const wMinZ = WINTER_Z - WINTER_HALF, wMaxZ = WINTER_Z + WINTER_HALF;
+{
+  const wallT = 0.6;
+  // South wall, split around the door the tunnel arrives through.
+  buildRuggedWall(wMinX, WINTER_X - WINTER_HOLE_HALF_W, wMinZ, wMinZ + wallT, WINTER_WALL_H, winterWallMat);
+  buildRuggedWall(WINTER_X + WINTER_HOLE_HALF_W, wMaxX, wMinZ, wMinZ + wallT, WINTER_WALL_H, winterWallMat);
+  buildRuggedWall(wMinX, wMaxX, wMaxZ - wallT, wMaxZ, WINTER_WALL_H, winterWallMat); // north, dead end
+  buildRuggedWall(wMinX, wMinX + wallT, wMinZ, wMaxZ, WINTER_WALL_H, winterWallMat); // west
+  buildRuggedWall(wMaxX - wallT, wMaxX, wMinZ, wMaxZ, WINTER_WALL_H, winterWallMat); // east
+  const lintel = new THREE.Mesh(new THREE.BoxGeometry(WINTER_HOLE_HALF_W * 2, 1.2, wallT), winterWallMat);
+  lintel.position.set(WINTER_X, WINTER_WALL_H - 0.6, wMinZ + wallT / 2);
+  scene.add(lintel);
+}
+
+const snowGround = new THREE.Mesh(new THREE.PlaneGeometry(WINTER_HALF * 2, WINTER_HALF * 2), snowMat);
+snowGround.rotation.x = -Math.PI / 2;
+snowGround.position.set(WINTER_X, 0.03, WINTER_Z);
+scene.add(snowGround);
+
+// A brick path straight up from the entrance toward the middle of the map.
+{
+  const path = new THREE.Mesh(new THREE.PlaneGeometry(4, WINTER_HALF * 1.2), brickMat);
+  path.rotation.x = -Math.PI / 2;
+  path.position.set(WINTER_X, 0.04, WINTER_Z - WINTER_HALF * 0.35);
+  scene.add(path);
+}
+
+function makeCandyCane(x, z) {
+  const h = groundHeight(x, z);
+  const poleH = 1.8;
+  for (let s = 0; s < 6; s++) {
+    const seg = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, poleH / 6, 6), s % 2 === 0 ? candyRedMat : candyWhiteMat);
+    seg.position.set(x, h + (s + 0.5) * (poleH / 6), z);
+    scene.add(seg);
+  }
+  const hook = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.1, 6, 10, Math.PI), candyRedMat);
+  hook.position.set(x, h + poleH, z);
+  hook.rotation.z = Math.PI;
+  scene.add(hook);
+  addCircleCollider(x, z, 0.15);
+}
+let canesPlaced = 0;
+while (canesPlaced < 40) {
+  const x = WINTER_X + (rand() - 0.5) * WINTER_HALF * 1.7;
+  const z = WINTER_Z + (rand() - 0.5) * WINTER_HALF * 1.7;
+  makeCandyCane(x, z);
+  canesPlaced++;
+}
+
+const winterHouseBounds = []; // { minX, maxX, minZ, maxZ } -- Krampus can never enter any of these
+
+function buildGingerbreadHouse(cx, cz, halfW, halfD) {
+  const minX = cx - halfW, maxX = cx + halfW, minZ = cz - halfD, maxZ = cz + halfD;
+  const wallT = 0.3, wallH = 4.0, doorHalfW = 1.3;
+  function wall(x0, x1, z0, z1) {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, wallH, z1 - z0), gingerMat);
+    mesh.position.set((x0 + x1) / 2, wallH / 2, (z0 + z1) / 2);
+    scene.add(mesh);
+    boxColliders.push(new THREE.Box3(new THREE.Vector3(x0, 0, z0), new THREE.Vector3(x1, wallH, z1)));
+  }
+  wall(minX, maxX, maxZ - wallT, maxZ); // back
+  wall(minX, minX + wallT, minZ, maxZ); // west
+  wall(maxX - wallT, maxX, minZ, maxZ); // east
+  wall(minX, cx - doorHalfW, minZ, minZ + wallT); // south, west of door
+  wall(cx + doorHalfW, maxX, minZ, minZ + wallT); // south, east of door
+  const doorLintel = new THREE.Mesh(new THREE.BoxGeometry(doorHalfW * 2, 1.0, wallT), icingMat);
+  doorLintel.position.set(cx, wallH - 0.5, minZ + wallT / 2);
+  scene.add(doorLintel);
+
+  // A peaked, icing-trimmed roof -- visual only, no collider, same "no
+  // ceiling" rule every other building here follows.
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.max(halfW, halfD) * 1.5, 2.4, 4), icingMat);
+  roof.rotation.y = Math.PI / 4;
+  roof.position.set(cx, wallH + 1.2, cz);
+  scene.add(roof);
+  const trim = new THREE.Mesh(new THREE.BoxGeometry(halfW * 2 + 0.3, 0.2, halfD * 2 + 0.3), icingMat);
+  trim.position.set(cx, wallH + 0.1, cz);
+  scene.add(trim);
+  for (let i = 0; i < 4; i++) {
+    const candy = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 7), i % 2 === 0 ? candyRedMat : candyWhiteMat);
+    candy.position.set(minX + 0.6 + i * ((maxX - minX - 1.2) / 3), wallH - 1, maxZ - 0.1);
+    scene.add(candy);
+  }
+
+  const floor = new THREE.Mesh(new THREE.BoxGeometry(halfW * 2 - wallT * 2, 0.15, halfD * 2 - wallT * 2), gingerMat);
+  floor.position.set(cx, 0.08, cz);
+  scene.add(floor);
+  registerFlatZone(minX, maxX, minZ, maxZ);
+
+  winterHouseBounds.push({ minX, maxX, minZ, maxZ });
+}
+buildGingerbreadHouse(WINTER_X - 18, WINTER_Z - 10, 5, 4.5);
+buildGingerbreadHouse(WINTER_X + 16, WINTER_Z - 6, 5.5, 5);
+buildGingerbreadHouse(WINTER_X, WINTER_Z + 20, 6, 5);
+
+function winterPoint() {
+  const x = WINTER_X + (rand() - 0.5) * WINTER_HALF * 1.6;
+  const z = WINTER_Z + (rand() - 0.5) * WINTER_HALF * 1.6;
+  return new THREE.Vector3(x, 0, z);
+}
+function clampToWinter(pos) {
+  pos.x = THREE.MathUtils.clamp(pos.x, wMinX, wMaxX);
+  pos.z = THREE.MathUtils.clamp(pos.z, wMinZ, wMaxZ);
+}
+// Krampus can never enter a gingerbread house -- same push-to-nearest-edge
+// trick Stalker's own temple exclusion uses.
+function clampKrampusFromHouses(pos) {
+  for (const b of winterHouseBounds) {
+    if (pos.x > b.minX && pos.x < b.maxX && pos.z > b.minZ && pos.z < b.maxZ) {
+      const dLeft = pos.x - b.minX, dRight = b.maxX - pos.x;
+      const dBack = pos.z - b.minZ, dFront = b.maxZ - pos.z;
+      const m = Math.min(dLeft, dRight, dBack, dFront);
+      if (m === dLeft) pos.x = b.minX - 0.6;
+      else if (m === dRight) pos.x = b.maxX + 0.6;
+      else if (m === dBack) pos.z = b.minZ - 0.6;
+      else pos.z = b.maxZ + 0.6;
+    }
+  }
+}
+function clampKrampusZone(pos) {
+  clampToWinter(pos);
+  clampKrampusFromHouses(pos);
 }
 
 /* ---------------- monsters ---------------- */
@@ -2054,6 +2398,43 @@ function tickStalker(dt, p) {
 }
 function tickWanderer(m, dt, p) { return tickGenericMonster(m, dt, p, WANDERER_SPEED, WANDERER_TURN_RATE, 'wanderer', 16, 0.85, 6, 8, clampToJungle); }
 
+/* ---------------- Winter Wonderland cast: Gingy, Crangler, 3 Elves, Krampus ---------------- */
+
+function makeWinterMonster(make, catchR) {
+  const spot = winterPoint();
+  const m = { group: make(), route: [spot], idx: 0, alert: false, alertTimer: 0, catchR, heading: 0 };
+  scene.add(m.group);
+  m.group.position.copy(spot);
+  m.group.position.y = groundHeight(spot.x, spot.z) + (m.group.userData.hoverHeight || 0);
+  return m;
+}
+
+const GINGY_SPEED = RUN_SPEED * 0.7, GINGY_TURN_RATE = 2.8;
+const gingy = makeWinterMonster(createGingyModel, 1.0);
+
+// Whole body + arms stretched 5x, so it can spot you from much farther
+// off than most things out there -- same "seenRange matters more than
+// speed" idea as Stalker's own design.
+const CRANGLER_SPEED = RUN_SPEED * 1.1, CRANGLER_TURN_RATE = 2.0;
+const crangler = makeWinterMonster(createCranglerModel, 1.6);
+
+const ELF_SPEED = RUN_SPEED * 0.5, ELF_TURN_RATE = 3.2;
+const elves = [
+  makeWinterMonster(createElfModelRed, 1.0),
+  makeWinterMonster(createElfModelGreen, 1.0),
+  makeWinterMonster(createElfModelRed, 1.0),
+];
+
+const KRAMPUS_SPEED = RUN_SPEED * 1.5, KRAMPUS_TURN_RATE = 2.0;
+const krampus = makeWinterMonster(createKrampusModel, 2.6); // 6x the model, so a bigger forgiving hitbox to match
+clampKrampusFromHouses(krampus.group.position);
+krampus.group.position.y = groundHeight(krampus.group.position.x, krampus.group.position.z) + (krampus.group.userData.hoverHeight || 0);
+
+function tickGingy(dt, p) { return tickGenericMonster(gingy, dt, p, GINGY_SPEED, GINGY_TURN_RATE, 'gingy', 16, 0.85, 6, 8, clampToWinter); }
+function tickCrangler(dt, p) { return tickGenericMonster(crangler, dt, p, CRANGLER_SPEED, CRANGLER_TURN_RATE, 'crangler', 42, 0.82, 9, 10, clampToWinter); }
+function tickElf(m, dt, p) { return tickGenericMonster(m, dt, p, ELF_SPEED, ELF_TURN_RATE, 'elf', 15, 0.86, 5, 7, clampToWinter); }
+function tickKrampus(dt, p) { return tickGenericMonster(krampus, dt, p, KRAMPUS_SPEED, KRAMPUS_TURN_RATE, 'krampus', 22, 0.86, 7, 11, clampKrampusZone); }
+
 /* ---------------- audio ---------------- */
 /* Everything here is generated live with oscillators/noise buffers, same
  * "no asset files" rule as the rest of the project — no mp3s, no fetches. */
@@ -2257,6 +2638,73 @@ function playScare(type) {
     g.gain.exponentialRampToValueAtTime(0.0001, now + 0.55);
     osc.connect(g).connect(master);
     osc.start(now); osc.stop(now + 0.55);
+  } else if (type === 'gingy') {
+    // A dry, crumbling snap -- cookie breaking, not flesh.
+    const buf = ctx.createBuffer(1, ctx.sampleRate * 0.2, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+    const noise = ctx.createBufferSource();
+    noise.buffer = buf;
+    const ng = ctx.createGain();
+    ng.gain.value = 0.6;
+    noise.connect(ng).connect(master);
+    noise.start(now);
+    const osc = ctx.createOscillator();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(320, now);
+    osc.frequency.exponentialRampToValueAtTime(80, now + 0.2);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.4, now);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.2);
+    osc.connect(g).connect(master);
+    osc.start(now); osc.stop(now + 0.2);
+  } else if (type === 'crangler') {
+    // A high, warped carousel-music shriek -- cheerful pitch, wrong register.
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(1100, now);
+    osc.frequency.exponentialRampToValueAtTime(2200, now + 0.25);
+    osc.frequency.exponentialRampToValueAtTime(300, now + 0.7);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(0.6, now + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.75);
+    osc.connect(g).connect(master);
+    osc.start(now); osc.stop(now + 0.75);
+  } else if (type === 'elf') {
+    // A quick, high-pitched jingle-bell-adjacent chime, then a thud.
+    for (const freq of [1500, 1900, 1300]) {
+      const osc = ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.value = freq;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.35, now);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
+      osc.connect(g).connect(master);
+      osc.start(now); osc.stop(now + 0.25);
+    }
+  } else if (type === 'krampus') {
+    // A huge, guttural roar -- low and long, the biggest sound in the game.
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(70, now);
+    osc.frequency.exponentialRampToValueAtTime(35, now + 0.9);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(0.9, now + 0.15);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 1.0);
+    osc.connect(g).connect(master);
+    osc.start(now); osc.stop(now + 1.0);
+
+    const buf = ctx.createBuffer(1, ctx.sampleRate * 0.9, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+    const noise = ctx.createBufferSource();
+    noise.buffer = buf;
+    const ng = ctx.createGain();
+    ng.gain.value = 0.4;
+    noise.connect(ng).connect(master);
+    noise.start(now);
   }
 }
 
@@ -2616,6 +3064,17 @@ function resetAfterCatch() {
     m.group.position.copy(m.route[0]);
     m.alert = false; m.alertTimer = 0; m.roamTimer = 0;
   }
+  gingy.group.position.copy(gingy.route[0]);
+  gingy.alert = false; gingy.alertTimer = 0; gingy.roamTimer = 0;
+  crangler.group.position.copy(crangler.route[0]);
+  crangler.alert = false; crangler.alertTimer = 0; crangler.roamTimer = 0;
+  for (const m of elves) {
+    m.group.position.copy(m.route[0]);
+    m.alert = false; m.alertTimer = 0; m.roamTimer = 0;
+  }
+  krampus.group.position.copy(krampus.route[0]);
+  clampKrampusFromHouses(krampus.group.position);
+  krampus.alert = false; krampus.alertTimer = 0; krampus.roamTimer = 0;
 }
 
 const monstersByType = { supersonic, hotcheeto: hotCheeto, peanut };
@@ -2623,6 +3082,7 @@ const SCARE_DURATION = {
   supersonic: 0.8, hotcheeto: 0.9, peanut: 0.6,
   lizard: 0.7, gunslinger: 0.65, outlaw: 0.6,
   stalker: 0.75, wanderer: 0.55,
+  gingy: 0.6, crangler: 0.8, elf: 0.55, krampus: 0.9,
 };
 
 let scareActive = false;
@@ -2716,6 +3176,7 @@ function animate() {
     const skyT = Math.min(dt * 1.2, 1);
     scene.background.lerp(skyTarget, skyT);
     scene.fog.color.lerp(skyTarget, skyT);
+    scene.fog.density = THREE.MathUtils.lerp(scene.fog.density, fogDensityFor(camera.position.x, camera.position.z), skyT);
 
     const nearBestiary = camera.position.distanceTo(bestiaryCenter) < 3.2;
     const nearKeyboard = camera.position.distanceTo(keyboardCenter) < 3.2;
@@ -2736,6 +3197,9 @@ function animate() {
       ...outlaws.map((m) => tickOutlaw(m, dt, camera.position)),
       tickStalker(dt, camera.position),
       ...wanderers.map((m) => tickWanderer(m, dt, camera.position)),
+      tickGingy(dt, camera.position), tickCrangler(dt, camera.position),
+      ...elves.map((m) => tickElf(m, dt, camera.position)),
+      tickKrampus(dt, camera.position),
     ];
     const danger = Math.max(...results.map((r) => r.danger));
     vignette.style.opacity = String(danger);

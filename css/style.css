@@ -313,7 +313,7 @@ canvas.game-canvas {
 @keyframes scare-flash-hotcheeto { 0% { opacity: 0; } 15% { opacity: 0.9; } 40% { opacity: 0.5; } 70% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes scare-flash-peanut { 0% { opacity: 0; } 10% { opacity: 1; } 55% { opacity: 0.2; } 100% { opacity: 0; } }
 @keyframes scare-flash-western { 0% { opacity: 0; } 15% { opacity: 1; } 50% { opacity: 0.25; } 100% { opacity: 0; } }
-@keyframes scare-flash-monument { 0% { opacity: 0; } 20% { opacity: 1; } 60% { opacity: 0.4; } 100% { opacity: 0; } }
+@keyframes scare-flash-krampus { 0% { opacity: 0; } 15% { opacity: 1; } 55% { opacity: 0.35; } 100% { opacity: 0; } }
 
 #jumpscare-flash.scare-supersonic { background: #1ec8ff; animation: scare-flash-supersonic 0.8s ease-in-out; }
 #jumpscare-flash.scare-hotcheeto { background: #5c1220; animation: scare-flash-hotcheeto 0.9s ease-in; }
@@ -321,7 +321,10 @@ canvas.game-canvas {
 #jumpscare-flash.scare-lizard { background: #5a6b3a; animation: scare-flash-western 0.7s ease-in-out; }
 #jumpscare-flash.scare-gunslinger { background: #6b4a2f; animation: scare-flash-western 0.65s ease-in-out; }
 #jumpscare-flash.scare-outlaw { background: #7a1f1f; animation: scare-flash-western 0.6s ease-in-out; }
-#jumpscare-flash.scare-monument { background: #cfcfd6; animation: scare-flash-monument 1.1s ease-in-out; }
+#jumpscare-flash.scare-gingy { background: #6b3a1a; animation: scare-flash-western 0.55s ease-in-out; }
+#jumpscare-flash.scare-crangler { background: #b4192a; animation: scare-flash-supersonic 0.75s ease-in-out; }
+#jumpscare-flash.scare-elf { background: #1f6b35; animation: scare-flash-peanut 0.55s ease-out; }
+#jumpscare-flash.scare-krampus { background: #0a0806; animation: scare-flash-krampus 1.0s ease-in-out; }
 
 /* Touch controls -- hidden entirely unless js/world.js adds .touch-ui to
  * #game-root after feature-detecting touch, so desktop players never see
