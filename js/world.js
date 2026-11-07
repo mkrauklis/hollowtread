@@ -778,16 +778,26 @@ function createChimpModel({
 
   // Torso: a lean ape silhouette (a squashed sphere, not a cone) tapering
   // down to nothing instead of legs. Low segment counts + an oversized
-  // round head is the Gorilla-Tag-ish, simple-low-poly-avatar look.
+  // round head and broad shoulders is the Gorilla-Tag look this factory
+  // is explicitly going for -- a stocky, big-headed, big-handed avatar
+  // rather than a realistic chimp. torsoHalfH (the Y-axis math every
+  // add*() prop helper and chimpHeadY/chimpTorsoY key off) is untouched
+  // by the broader X/Z footprint below, so hats/horns/beards on every
+  // existing monster still land in the same place.
   const torsoScaleY = torsoLen * 0.75;
   const torsoHalfH = 0.32 * torsoScaleY;
   const torso = new THREE.Mesh(new THREE.SphereGeometry(0.32, 7, 6), mat);
-  torso.scale.set(0.95, torsoScaleY, 0.85);
+  torso.scale.set(1.2, torsoScaleY, 1.08);
   torso.position.y = torsoHalfH + 0.15;
   g.add(torso);
 
-  const headY = torso.position.y + torsoHalfH + 0.3 * headScale;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.38 * headScale, 8, 7), mat);
+  // Head radius bumped from the original 0.38 to 0.46 (headScale still
+  // applies on top) -- every other head-relative offset below (muzzle,
+  // ears, eyes, brow, nostril, pupil, mouth) is scaled up by the same
+  // ~1.21 ratio so the face stays in proportion on the now-bigger skull
+  // instead of sinking into it.
+  const headY = torso.position.y + torsoHalfH + 0.34 * headScale;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.46 * headScale, 8, 7), mat);
   head.position.y = headY;
   g.add(head);
 
@@ -796,16 +806,16 @@ function createChimpModel({
   // monster, but ears stay either way (they're part of the head's own
   // silhouette, not a facial feature).
   if (faceDetails) {
-    const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.17 * headScale, 6, 5), mat);
+    const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.205 * headScale, 6, 5), mat);
     muzzle.scale.set(1, 0.75, 1.2);
-    muzzle.position.set(0, headY - 0.1 * headScale, 0.32 * headScale);
+    muzzle.position.set(0, headY - 0.12 * headScale, 0.39 * headScale);
     g.add(muzzle);
   }
 
   for (const side of [-1, 1]) {
-    const ear = new THREE.Mesh(new THREE.SphereGeometry(0.1 * headScale, 6, 5), mat);
+    const ear = new THREE.Mesh(new THREE.SphereGeometry(0.12 * headScale, 6, 5), mat);
     ear.scale.set(0.55, 1, 0.35);
-    ear.position.set(side * 0.34 * headScale, headY + 0.03 * headScale, -0.03);
+    ear.position.set(side * 0.41 * headScale, headY + 0.04 * headScale, -0.03);
     g.add(ear);
   }
 
@@ -821,13 +831,19 @@ function createChimpModel({
     const upperLen = armLen * 0.55, foreLen = armLen * 0.55;
     for (const side of [-1, 1]) {
       const armAngle = side * 0.6;
-      const shoulder = new THREE.Vector3(side * 0.34, shoulderY, 0.05);
+      // Shoulders pushed out to 0.4 (was 0.34) to clear the now-broader
+      // torso footprint above.
+      const shoulder = new THREE.Vector3(side * 0.4, shoulderY, 0.05);
       const pivot = new THREE.Group();
       pivot.position.copy(shoulder);
       g.add(pivot);
 
+      // Thick, Gorilla-Tag-ish arms -- these are the whole point of that
+      // look (the hands are what you actually grab/move with), so they're
+      // noticeably chunkier than a realistic ape's: upper arm 0.1->0.15,
+      // forearm 0.085->0.13, hand 0.1->0.17.
       const upperDir = new THREE.Vector3(Math.sin(armAngle), -Math.cos(armAngle), 0);
-      const upperArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, upperLen, 4, 6), mat);
+      const upperArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.15, upperLen, 4, 6), mat);
       upperArm.rotation.z = armAngle;
       upperArm.position.copy(upperDir.clone().multiplyScalar(upperLen / 2 + 0.05));
       pivot.add(upperArm);
@@ -836,11 +852,11 @@ function createChimpModel({
       elbow.position.copy(upperDir.clone().multiplyScalar(upperLen + 0.08));
       pivot.add(elbow);
 
-      const foreArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.085, foreLen, 4, 6), mat);
+      const foreArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.13, foreLen, 4, 6), mat);
       foreArm.position.y = -foreLen / 2 - 0.05;
       elbow.add(foreArm);
 
-      const hand = new THREE.Mesh(new THREE.SphereGeometry(0.1, 6, 5), mat);
+      const hand = new THREE.Mesh(new THREE.SphereGeometry(0.17, 6, 5), mat);
       hand.position.y = -foreLen - 0.09;
       elbow.add(hand);
 
@@ -852,15 +868,15 @@ function createChimpModel({
   g.userData.elbowPivots = elbowPivots;
   g.userData.head = head; // used for a running head-bob, even on armless monsters
 
-  // Pushed out past the head sphere's own radius (0.38*headScale) so they
+  // Pushed out past the head sphere's own radius (0.46*headScale) so they
   // actually protrude and read as eyes instead of being buried inside it.
   // Skipped along with the rest of the face below for a blank-head
   // monster -- no eyes, no glow, nothing looking back at you at all.
   if (faceDetails) {
     const eyeMat = new THREE.MeshStandardMaterial({ color: eyeColor, emissive: eyeColor, emissiveIntensity: eyeEmissiveIntensity });
     for (const side of [-1, 1]) {
-      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.065 * headScale, 7, 6), eyeMat);
-      eye.position.set(side * 0.17 * headScale, headY + 0.03 * headScale, 0.37 * headScale);
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.079 * headScale, 7, 6), eyeMat);
+      eye.position.set(side * 0.206 * headScale, headY + 0.036 * headScale, 0.448 * headScale);
       g.add(eye);
     }
 
@@ -868,23 +884,23 @@ function createChimpModel({
     // alone read as a blank, blind mask; these few extra low-poly details
     // are what actually makes it look like a face looking back at you.
     for (const side of [-1, 1]) {
-      const brow = new THREE.Mesh(new THREE.BoxGeometry(0.16 * headScale, 0.045 * headScale, 0.09 * headScale), faceDetailMat);
-      brow.position.set(side * 0.17 * headScale, headY + 0.11 * headScale, 0.35 * headScale);
+      const brow = new THREE.Mesh(new THREE.BoxGeometry(0.194 * headScale, 0.054 * headScale, 0.109 * headScale), faceDetailMat);
+      brow.position.set(side * 0.206 * headScale, headY + 0.133 * headScale, 0.424 * headScale);
       brow.rotation.z = side * 0.15;
       g.add(brow);
 
-      const nostril = new THREE.Mesh(new THREE.SphereGeometry(0.03 * headScale, 5, 4), faceDetailMat);
-      nostril.position.set(side * 0.06 * headScale, headY - 0.14 * headScale, 0.44 * headScale);
+      const nostril = new THREE.Mesh(new THREE.SphereGeometry(0.036 * headScale, 5, 4), faceDetailMat);
+      nostril.position.set(side * 0.073 * headScale, headY - 0.169 * headScale, 0.532 * headScale);
       g.add(nostril);
 
       if (pupils) {
-        const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.032 * headScale, 5, 4), faceDetailMat);
-        pupil.position.set(side * 0.17 * headScale, headY + 0.03 * headScale, 0.41 * headScale);
+        const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.039 * headScale, 5, 4), faceDetailMat);
+        pupil.position.set(side * 0.206 * headScale, headY + 0.036 * headScale, 0.496 * headScale);
         g.add(pupil);
       }
     }
-    const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.17 * headScale, 0.03 * headScale, 0.05 * headScale), faceDetailMat);
-    mouth.position.set(0, headY - 0.24 * headScale, 0.41 * headScale);
+    const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.206 * headScale, 0.036 * headScale, 0.061 * headScale), faceDetailMat);
+    mouth.position.set(0, headY - 0.29 * headScale, 0.496 * headScale);
     g.add(mouth);
   }
 
@@ -1101,7 +1117,7 @@ function chimpTorsoY(torsoLen) {
 }
 function chimpHeadY(torsoLen, headScale) {
   const torsoHalfH = 0.32 * (torsoLen * 0.75);
-  return chimpTorsoY(torsoLen) + torsoHalfH + 0.3 * headScale;
+  return chimpTorsoY(torsoLen) + torsoHalfH + 0.34 * headScale;
 }
 
 const westernPropMat = new THREE.MeshStandardMaterial({ color: 0x3a2a1a, roughness: 0.9 });
@@ -2102,6 +2118,215 @@ while (spikesPlaced < 22) {
   if (inHouse) continue;
   makeIceSpike(x, z);
   spikesPlaced++;
+}
+
+// A helper every scatter loop below shares: pick a random spot in Winter
+// Wonderland that isn't inside a gingerbread house (same check the ice
+// spikes use) and isn't already too close to something else this same
+// loop already placed, so props don't stack on top of each other.
+function winterScatterSpot(placed, minSep) {
+  // The brick path runs the same strip `path` (below) covers: centered
+  // on WINTER_X, +-2.5 wide, the length of WINTER_HALF*1.2 starting at
+  // WINTER_Z-WINTER_HALF*0.35. Nothing scattered should land on it --
+  // snowmen/trees/presents block it, and it's supposed to read as the
+  // one guided route through the fog.
+  const pathMinZ = WINTER_Z - WINTER_HALF * 0.35 - WINTER_HALF * 0.6;
+  const pathMaxZ = WINTER_Z - WINTER_HALF * 0.35 + WINTER_HALF * 0.6;
+  for (let tries = 0; tries < 20; tries++) {
+    const x = WINTER_X + (rand() - 0.5) * WINTER_HALF * 1.7;
+    const z = WINTER_Z + (rand() - 0.5) * WINTER_HALF * 1.7;
+    let bad = false;
+    for (const b of winterHouseBounds) {
+      if (x >= b.minX - 1.5 && x <= b.maxX + 1.5 && z >= b.minZ - 1.5 && z <= b.maxZ + 1.5) { bad = true; break; }
+    }
+    if (!bad && Math.abs(x - WINTER_X) < 2.5 && z >= pathMinZ && z <= pathMaxZ) bad = true;
+    if (!bad) for (const p of placed) {
+      if ((x - p[0]) ** 2 + (z - p[1]) ** 2 < minSep * minSep) { bad = true; break; }
+    }
+    if (!bad) return [x, z];
+  }
+  return null;
+}
+
+// Snowmen -- three stacked, shrinking white spheres, coal eyes/buttons,
+// a carrot nose, and stick arms. Pure decoration (no collider -- same
+// "small scenery doesn't block you" rule the candy canes break on
+// purpose for their pole, but a snowman's rounded body doesn't need to).
+const coalMat = new THREE.MeshStandardMaterial({ color: 0x0c0a08, roughness: 0.8 });
+const carrotMat = new THREE.MeshStandardMaterial({ color: 0xd8701f, roughness: 0.7 });
+const stickMat = new THREE.MeshStandardMaterial({ color: 0x3a2a1a, roughness: 0.9 });
+function makeSnowman(x, z) {
+  const h = terrainHeight(x, z);
+  const sizes = [0.55, 0.4, 0.28];
+  let y = h;
+  const centers = [];
+  for (const r of sizes) {
+    y += r;
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 8), snowMat);
+    ball.position.set(x, y, z);
+    scene.add(ball);
+    centers.push(y);
+    y += r * 0.85;
+  }
+  const headY = centers[2];
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.04, 5, 4), coalMat);
+    eye.position.set(x + side * 0.1, headY + 0.05, z + sizes[2] * 0.9);
+    scene.add(eye);
+  }
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.25, 6), carrotMat);
+  nose.rotation.x = Math.PI / 2;
+  nose.position.set(x, headY, z + sizes[2] + 0.1);
+  scene.add(nose);
+  for (let i = 0; i < 3; i++) {
+    const button = new THREE.Mesh(new THREE.SphereGeometry(0.045, 5, 4), coalMat);
+    button.position.set(x, centers[1] + 0.15 - i * 0.18, z + sizes[1] * 0.92);
+    scene.add(button);
+  }
+  for (const side of [-1, 1]) {
+    const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.55, 5), stickMat);
+    stick.position.set(x + side * (sizes[1] + 0.2), centers[1] + 0.1, z);
+    stick.rotation.z = side * 0.9;
+    scene.add(stick);
+  }
+  addCircleCollider(x, z, sizes[0] * 0.9);
+}
+{
+  const placed = [];
+  for (let i = 0; i < 6; i++) {
+    const spot = winterScatterSpot(placed, 8);
+    if (!spot) break;
+    makeSnowman(spot[0], spot[1]);
+    placed.push(spot);
+  }
+}
+
+// Wrapped presents -- simple ribboned boxes, stacked in small clusters
+// near the houses, the way gifts pile up under a tree.
+const presentMats = [candyRedMat, elfGreenMat, candyWhiteMat];
+function makePresent(x, z, size, colorMat) {
+  const h = terrainHeight(x, z);
+  const box = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), colorMat);
+  box.position.set(x, h + size / 2, z);
+  box.rotation.y = rand() * Math.PI;
+  scene.add(box);
+  const ribbonMat = colorMat === candyWhiteMat ? candyRedMat : candyWhiteMat;
+  const ribbonA = new THREE.Mesh(new THREE.BoxGeometry(size * 1.02, size * 0.16, size * 1.02), ribbonMat);
+  ribbonA.position.copy(box.position);
+  ribbonA.rotation.y = box.rotation.y;
+  scene.add(ribbonA);
+  const ribbonB = new THREE.Mesh(new THREE.BoxGeometry(size * 0.16, size * 1.02, size * 0.16), ribbonMat);
+  ribbonB.position.set(x, h + size / 2, z);
+  scene.add(ribbonB);
+  return size;
+}
+{
+  const placed = [];
+  for (let i = 0; i < 5; i++) {
+    const spot = winterScatterSpot(placed, 5);
+    if (!spot) break;
+    const n = 2 + Math.floor(rand() * 3);
+    for (let k = 0; k < n; k++) {
+      const size = 0.35 + rand() * 0.35;
+      makePresent(spot[0] + (rand() - 0.5) * 0.8, spot[1] + (rand() - 0.5) * 0.8, size, presentMats[Math.floor(rand() * presentMats.length)]);
+    }
+    addCircleCollider(spot[0], spot[1], 0.6);
+    placed.push(spot);
+  }
+}
+
+// Snow-dusted pine trees -- three stacked cone tiers over a trunk, a
+// visually distinct silhouette from both the forest's bare giant trees
+// and Jungle's canopy, so Winter Wonderland doesn't read as a reskin.
+const pineMat = new THREE.MeshStandardMaterial({ color: 0x1f4a33, roughness: 0.85, map: makeGrainTexture({ dark: 20, light: 235, repeat: 10, blotch: 3 }) });
+const pineTrunkMat = new THREE.MeshStandardMaterial({ color: 0x3a2a1a, roughness: 0.9 });
+function makePineTree(x, z) {
+  const h = terrainHeight(x, z);
+  const trunkH = 1.0;
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, trunkH, 6), pineTrunkMat);
+  trunk.position.set(x, h + trunkH / 2, z);
+  scene.add(trunk);
+  const tierCount = 3;
+  let y = h + trunkH;
+  let r = 1.5;
+  for (let t = 0; t < tierCount; t++) {
+    const tierH = 1.6 - t * 0.3;
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(r, tierH, 8), pineMat);
+    cone.position.set(x, y + tierH / 2, z);
+    scene.add(cone);
+    y += tierH * 0.65;
+    r *= 0.72;
+  }
+  addCircleCollider(x, z, 0.5);
+}
+{
+  const placed = [];
+  for (let i = 0; i < 16; i++) {
+    const spot = winterScatterSpot(placed, 6);
+    if (!spot) break;
+    makePineTree(spot[0], spot[1]);
+    placed.push(spot);
+  }
+}
+
+// Lamp posts along the brick path -- the only *lit* props out here
+// besides the junction lights back in the tunnel, so the path itself
+// reads as the safe, deliberately-guided route through the fog.
+const lampPostMat = new THREE.MeshStandardMaterial({ color: 0x2a2520, roughness: 0.6, metalness: 0.3 });
+const lampGlassMat = new THREE.MeshStandardMaterial({ color: 0xffe9b0, emissive: 0xffd480, emissiveIntensity: 1.4, roughness: 0.4, transparent: true, opacity: 0.9 });
+function makeLampPost(x, z) {
+  const h = terrainHeight(x, z);
+  const poleH = 2.6;
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, poleH, 6), lampPostMat);
+  pole.position.set(x, h + poleH / 2, z);
+  scene.add(pole);
+  const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 7), lampGlassMat);
+  lamp.position.set(x, h + poleH + 0.1, z);
+  scene.add(lamp);
+  const cap = new THREE.Mesh(new THREE.ConeGeometry(0.26, 0.25, 6), lampPostMat);
+  cap.position.set(x, h + poleH + 0.3, z);
+  scene.add(cap);
+  const light = new THREE.PointLight(0xffd480, 1.2, 14, 2);
+  light.position.set(x, h + poleH + 0.1, z);
+  scene.add(light);
+  addCircleCollider(x, z, 0.12);
+}
+{
+  // Along the same straight path strip the brick road already follows
+  // (see the `path` plane above: centered on WINTER_X, running the
+  // length of WINTER_HALF*1.2 from just past the entrance).
+  const pathZ0 = WINTER_Z - WINTER_HALF * 0.35 - WINTER_HALF * 0.55;
+  const pathZ1 = WINTER_Z - WINTER_HALF * 0.35 + WINTER_HALF * 0.55;
+  const postCount = 6;
+  for (let i = 0; i <= postCount; i++) {
+    const t = i / postCount;
+    const z = THREE.MathUtils.lerp(pathZ0, pathZ1, t);
+    const side = i % 2 === 0 ? -1 : 1;
+    makeLampPost(WINTER_X + side * 2.6, z);
+  }
+}
+
+// A frozen pond -- a flat, dark, semi-reflective disc with a few pale
+// crack lines etched across the top, tucked off to one side away from
+// the houses and the main path.
+const iceMat = new THREE.MeshStandardMaterial({ color: 0x4a7a8a, roughness: 0.15, metalness: 0.2, transparent: true, opacity: 0.85 });
+const iceCrackMat = new THREE.MeshStandardMaterial({ color: 0xd8f0f5, roughness: 0.3, transparent: true, opacity: 0.6 });
+{
+  const px = WINTER_X - 45, pz = WINTER_Z + 35;
+  const ph = terrainHeight(px, pz);
+  const pond = new THREE.Mesh(new THREE.CircleGeometry(9, 24), iceMat);
+  pond.rotation.x = -Math.PI / 2;
+  pond.position.set(px, ph + 0.05, pz);
+  scene.add(pond);
+  for (let i = 0; i < 5; i++) {
+    const a = rand() * Math.PI * 2;
+    const len = 3 + rand() * 4;
+    const crack = new THREE.Mesh(new THREE.PlaneGeometry(0.06, len), iceCrackMat);
+    crack.rotation.x = -Math.PI / 2;
+    crack.rotation.z = a;
+    crack.position.set(px + Math.cos(a) * len * 0.3, ph + 0.07, pz + Math.sin(a) * len * 0.3);
+    scene.add(crack);
+  }
 }
 
 function winterPoint() {

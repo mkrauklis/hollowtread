@@ -53,9 +53,11 @@ dungeon, not just a bigger room, and genuinely dark — nothing lights it
 but your own flashlight) down a corridor past the main entrance — the sky
 here fades to a dark blue instead. On the north side, behind a sign
 reading **WINTER WONDERLAND**: the biggest of the three by a clear
-margin — rolling snow hills, thickening fog, a brick path, candy canes and
-jagged ice spikes everywhere, and three gingerbread houses you can walk
-into — under a pale, overcast-white sky instead of the forest's black one.
+margin — rolling snow hills, thickening fog, a lamp-lit brick path, candy
+canes and jagged ice spikes everywhere, snow-dusted pine trees, snowmen,
+piles of wrapped presents, a frozen pond, and three gingerbread houses you
+can walk into — under a pale, overcast-white sky instead of the forest's
+black one.
 
 A small alcove on the deck (the **bestiary room**) holds miniature, slowly
 turning models of the things loose out there, labelled by name, on
@@ -156,9 +158,11 @@ doorway and all the way back into the dungeon chamber behind it.
 The biggest of the three sections, reached the same way as the other
 two — through the one hole in the forest's own outer wall on its north
 side, down its own winding tunnel, to a matching hole in Winter
-Wonderland's own perimeter wall. Rolling snow hills, thick fog, a brick
-path, candy canes and jagged translucent ice spikes scattered everywhere,
-and three gingerbread houses with icing trim you can actually walk into.
+Wonderland's own perimeter wall. Rolling snow hills, thick fog, a
+lamp-lit brick path, candy canes and jagged translucent ice spikes
+scattered everywhere, snow-dusted pine trees, snowmen, small piles of
+wrapped presents, a frozen pond, and three gingerbread houses with icing
+trim you can actually walk into.
 
 **Gingy** — gingerbread brown, no face at all. Slower than you (0.7x your
 speed).
