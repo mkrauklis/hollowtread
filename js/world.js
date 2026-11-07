@@ -96,7 +96,13 @@ const JUNGLE_Z = 0;
 // would otherwise collide with the corridor the same way Badland/Jungle
 // once collided with things already living where they were first placed.
 const LADDER_X = -3, LADDER_Z = 0, LADDER_HOLE_HALF = 0.7;
-const GATE_CROSS_X = -30; // past the ring (radius 19) through the west gate
+// -22 clears the stockade ring (radius 19) through the west gate, and
+// also happens to sit in the one clear north-south lane between the
+// forest's own southwest platform loop (around x=-59..-31) and its far
+// -south one (x=9..31) -- the whole corridor runs dead straight at this
+// x the rest of the way, specifically so it never risks a random jog
+// clipping either of them, or the hill further west, the way it used to.
+const GATE_CROSS_X = -22;
 const CITY_X = GATE_CROSS_X, CITY_Z = -98;
 const CITY_HALF_X = 70, CITY_HALF_Z = 11;
 const CITY_HOLE_HALF_W = 2.2;
@@ -345,10 +351,20 @@ scene.add(new THREE.Mesh(groundGeo, groundMat));
 
 const circleColliders = []; // { x, z, r }
 const boxColliders = [];    // THREE.Box3
+// Separate from both of the above on purpose: every existing collider stays
+// exactly as height-blind as it's always been (collidesAt below never took
+// a y at all, which was itself a real bug once already -- see
+// buildWindingTunnel's own notes), so adding height awareness everywhere
+// at once would quietly make things hoppable that were never meant to be
+// (building walls, boundary walls, ...). This list alone is checked
+// against the player's own foot height, and only ever holds things
+// deliberately built short enough to clear -- the spawn stockade fence.
+const hoppableColliders = []; // { circle: bool, ...bounds, maxY }
 
 function addCircleCollider(x, z, r) { circleColliders.push({ x, z, r }); }
+function addHoppableCircle(x, z, r, maxY) { hoppableColliders.push({ circle: true, x, z, r, maxY }); }
 
-function collidesAt(x, z) {
+function collidesAt(x, z, footY = -Infinity) {
   for (const c of circleColliders) {
     const dx = x - c.x, dz = z - c.z;
     if (dx * dx + dz * dz < (c.r + PLAYER_R) * (c.r + PLAYER_R)) return true;
@@ -356,6 +372,13 @@ function collidesAt(x, z) {
   for (const b of boxColliders) {
     if (x + PLAYER_R > b.min.x && x - PLAYER_R < b.max.x &&
         z + PLAYER_R > b.min.z && z - PLAYER_R < b.max.z) return true;
+  }
+  for (const h of hoppableColliders) {
+    if (footY >= h.maxY - 0.1) continue; // cleared it
+    if (h.circle) {
+      const dx = x - h.x, dz = z - h.z;
+      if (dx * dx + dz * dz < (h.r + PLAYER_R) * (h.r + PLAYER_R)) return true;
+    }
   }
   return false;
 }
@@ -596,14 +619,15 @@ function buildWindingTunnel(x0, z0, x1, z1, holeHalfW, wallH, mat) {
   // correctly opened the south gate but left an invisible wall at the
   // other three -- they looked open (no wall mesh there) but still
   // blocked movement. nearAnyGate() checks all four, same as the wall
-  // segments above.
+  // segments above. Hoppable, not a plain block: it's a 3-unit fence, and
+  // the player's own jump clears well past that now.
   const COLLIDE_STEPS = 72;
   const collideStep = (Math.PI * 2) / COLLIDE_STEPS;
   for (let i = 0; i < COLLIDE_STEPS; i++) {
     const a0 = i * collideStep;
     const a = a0 > Math.PI ? a0 - Math.PI * 2 : a0;
     if (nearAnyGate(a)) continue;
-    addCircleCollider(SPAWN_WALL_R * Math.sin(a0), -SPAWN_WALL_R * Math.cos(a0), WALL_THICK / 2 + 1.0);
+    addHoppableCircle(SPAWN_WALL_R * Math.sin(a0), -SPAWN_WALL_R * Math.cos(a0), WALL_THICK / 2 + 1.0, WALL_H);
   }
 
   // Each gate's own frame: two posts and a lintel around the hole -- built
@@ -635,12 +659,24 @@ function buildWindingTunnel(x0, z0, x1, z1, holeHalfW, wallH, mat) {
 
 /* ---------------- the treehouse (spawn, safe zone) ---------------- */
 
-const platform = new THREE.Mesh(
-  new THREE.BoxGeometry(PLATFORM_HALF * 2, 0.4, PLATFORM_HALF * 2),
-  woodMat
-);
-platform.position.set(0, PLATFORM_H - 0.2, 0);
-scene.add(platform);
+// The deck floor -- four slabs framing a real gap at the ladder hole
+// (LADDER_X/Z) instead of one solid box with a dark decal floating just
+// under its surface, which still looked and acted completely solid: you
+// can't actually cut a hole in a mesh by painting a dark square near it.
+{
+  const pMinX = -PLATFORM_HALF, pMaxX = PLATFORM_HALF, pMinZ = -PLATFORM_HALF, pMaxZ = PLATFORM_HALF;
+  const lMinX = LADDER_X - LADDER_HOLE_HALF, lMaxX = LADDER_X + LADDER_HOLE_HALF;
+  const lMinZ = LADDER_Z - LADDER_HOLE_HALF, lMaxZ = LADDER_Z + LADDER_HOLE_HALF;
+  function deckSlab(x0, x1, z0, z1) {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 0.4, z1 - z0), woodMat);
+    mesh.position.set((x0 + x1) / 2, PLATFORM_H - 0.2, (z0 + z1) / 2);
+    scene.add(mesh);
+  }
+  deckSlab(pMinX, pMaxX, lMaxZ, pMaxZ);
+  deckSlab(pMinX, pMaxX, pMinZ, lMinZ);
+  deckSlab(pMinX, lMinX, lMinZ, lMaxZ);
+  deckSlab(lMaxX, pMaxX, lMinZ, lMaxZ);
+}
 
 // Four stilts holding the deck up.
 for (const [sx, sz] of [[5, 5], [5, -5], [-5, 5], [-5, -5]]) {
@@ -873,7 +909,7 @@ function createChimpModel({
 function createSupersonicModel() {
   return createChimpModel({
     bodyColor: 0x0f2e40, bodyEmissive: 0x1ec8ff, bodyEmissiveIntensity: 1.3,
-    eyeColor: 0xffffff, eyeEmissiveIntensity: 3.5,
+    eyeColor: 0xffffff, eyeEmissiveIntensity: 4.5,
     torsoLen: 2.4, headScale: 0.75, armLen: 0.6, roughness: 0.5,
   });
 }
@@ -882,7 +918,7 @@ function createHotCheetoModel() {
   // Same base proportions as Supersonic, just scaled up 4x as a whole --
   // keeps it the same "shape", not a different (and re-tuned) silhouette.
   const g = createChimpModel({
-    bodyColor: 0x5c1220, eyeColor: 0xff0033, eyeEmissiveIntensity: 4,
+    bodyColor: 0x5c1220, eyeColor: 0xff0033, eyeEmissiveIntensity: 5,
     torsoLen: 2.4, headScale: 0.75, armLen: 0.6, roughness: 0.75,
   });
   g.scale.setScalar(4);
@@ -892,7 +928,7 @@ function createHotCheetoModel() {
 
 function createPeanutModel() {
   return createChimpModel({
-    bodyColor: 0xc9a06b, eyeColor: 0x3a2a14, eyeEmissiveIntensity: 1.2,
+    bodyColor: 0xc9a06b, eyeColor: 0x3a2a14, eyeEmissiveIntensity: 1.6,
     torsoLen: 1.0, headScale: 1.05, roughness: 0.85, arms: false,
   });
 }
@@ -907,7 +943,7 @@ function createStalkerModel() {
   // all -- it's meant to read as a shape at the edge of sight long
   // before it's close, now a genuinely huge one.
   const g = createChimpModel({
-    bodyColor: 0x05070a, eyeColor: 0xe4ffe8, eyeEmissiveIntensity: 3.2,
+    bodyColor: 0x05070a, eyeColor: 0xe4ffe8, eyeEmissiveIntensity: 4.2,
     torsoLen: 6.0, headScale: 0.65, armLen: 0.55, roughness: 0.85,
   });
   g.scale.setScalar(3);
@@ -931,7 +967,7 @@ function createMonumentModel() {
   // presence; it hardly ever needs to actually move fast, so there's no
   // cost to it looking like it shouldn't be able to.
   const g = createChimpModel({
-    bodyColor: 0x55534c, eyeColor: 0x8a8278, eyeEmissiveIntensity: 0.4,
+    bodyColor: 0x55534c, eyeColor: 0x8a8278, eyeEmissiveIntensity: 0.6,
     torsoLen: 1.3, headScale: 1.1, armLen: 0.6, roughness: 1,
   });
   g.scale.setScalar(1.8);
@@ -996,7 +1032,7 @@ function addTail(g, torsoY, color) {
 function createLizardModel() {
   const torsoLen = 1.0, headScale = 1.0;
   const g = createChimpModel({
-    bodyColor: 0x5a6b3a, eyeColor: 0xd4ff3a, eyeEmissiveIntensity: 2.5,
+    bodyColor: 0x5a6b3a, eyeColor: 0xd4ff3a, eyeEmissiveIntensity: 3.2,
     torsoLen, headScale, armLen: 0.55, roughness: 0.85,
   });
   addSkullHead(g, chimpHeadY(torsoLen, headScale), headScale);
@@ -1009,7 +1045,7 @@ function createLizardModel() {
 function createGunslingerModel() {
   const torsoLen = 1.0, headScale = 1.0;
   const g = createChimpModel({
-    bodyColor: 0x6b4a2f, eyeColor: 0x3a2a14, eyeEmissiveIntensity: 1.2,
+    bodyColor: 0x6b4a2f, eyeColor: 0x3a2a14, eyeEmissiveIntensity: 1.6,
     torsoLen, headScale, armLen: 0.5, roughness: 0.85,
   });
   addCowboyHat(g, chimpHeadY(torsoLen, headScale), headScale);
@@ -1021,7 +1057,7 @@ function createGunslingerModel() {
 function createOutlawModel() {
   const torsoLen = 1.0, headScale = 1.0;
   const g = createChimpModel({
-    bodyColor: 0x4a3a2a, eyeColor: 0x8a1a1a, eyeEmissiveIntensity: 1.5,
+    bodyColor: 0x4a3a2a, eyeColor: 0x8a1a1a, eyeEmissiveIntensity: 2.0,
     torsoLen, headScale, armLen: 0.5, roughness: 0.85,
   });
   const headY = chimpHeadY(torsoLen, headScale);
@@ -1190,11 +1226,21 @@ function makeBranch(x0, y0, z0, x1, y1, z1) {
   });
 }
 
+// The City corridor runs through this stretch of otherwise-ordinary
+// forest ground (leg 1 west through the stockade's own gate, then south
+// with random jogs) -- a generous rectangular buffer around both legs,
+// skipped the same way isInSafeZone() already is below, so a regular
+// tree can't end up placed through the tunnel's own walls the way Jungle
+// once collided with a hill it was never actually clear of.
+function nearCityCorridor(x, z) {
+  return x > -29 && x < 2 && z > -65 && z < 5;
+}
+
 let treesPlaced = 0;
 while (treesPlaced < 70) {
   const x = (rand() - 0.5) * 140;
   const z = (rand() - 0.5) * 140 + 10;
-  if (isInSafeZone(x, z)) continue;
+  if (isInSafeZone(x, z) || nearCityCorridor(x, z)) continue;
   const h = groundHeight(x, z);
   const TREE_SCALE = 2; // trees stand twice as tall/thick as they used to
   const trunkH = (3 + rand() * 2.5) * TREE_SCALE;
@@ -1266,7 +1312,7 @@ function scatterProp(count, make) {
   while (placed < count) {
     const x = (rand() - 0.5) * 150;
     const z = (rand() - 0.5) * 150 + 10;
-    if (isInSafeZone(x, z)) continue;
+    if (isInSafeZone(x, z) || nearCityCorridor(x, z)) continue;
     make(x, z);
     placed++;
   }
@@ -1740,17 +1786,30 @@ const cityFloorMat = new THREE.MeshStandardMaterial({ color: 0x2a2c2e, roughness
 const shelfMat = new THREE.MeshStandardMaterial({ color: 0x4a3a28, roughness: 0.9 });
 const lightFixtureMat = new THREE.MeshStandardMaterial({ color: 0xfff6d8, emissive: 0xfff2c0, emissiveIntensity: 1.4 });
 
-// The corridor down from the ladder, in two legs: a short straight one
-// (not randomized -- a jog here risks missing the stockade wall's own
-// gate, only ~4.5 units wide) west from the ladder through that gate,
-// then a winding buildWindingTunnel() south the rest of the way out to
-// the building, same as Badland's/Jungle's.
+// The corridor down from the ladder, in two straight legs rather than
+// Badland's/Jungle's randomized buildWindingTunnel() -- City's own
+// clear lane is narrow enough (see GATE_CROSS_X's comment) that a random
+// jog risks clipping something nearby, so there's nothing to randomize
+// here: west from the ladder through the stockade wall's own gate, one
+// turn, then straight south the rest of the way to the building.
 {
   const { segment, junction } = makeCorridorBuilder(CITY_HOLE_HALF_W, 4.5, cityWallMat);
   segment({ x: LADDER_X, z: LADDER_Z }, { x: GATE_CROSS_X, z: LADDER_Z });
   junction({ x: GATE_CROSS_X, z: LADDER_Z }, [{ x: 1, z: 0 }, { x: 0, z: -1 }]);
+  segment({ x: GATE_CROSS_X, z: LADDER_Z }, { x: CITY_X, z: CITY_Z + CITY_HALF_Z });
 }
-buildWindingTunnel(GATE_CROSS_X, LADDER_Z, CITY_X, CITY_Z + CITY_HALF_Z, CITY_HOLE_HALF_W, 4.5, cityWallMat);
+// A light every ~15 units -- otherwise this corridor is pitch black
+// beyond flashlight range and reads as an empty void, not a passage.
+for (let cz = LADDER_Z - 8; cz > CITY_Z + CITY_HALF_Z; cz -= 15) {
+  const bulb = new THREE.PointLight(0xcfd4da, 0.9, 13, 2);
+  bulb.position.set(GATE_CROSS_X, 3.2, cz);
+  scene.add(bulb);
+}
+{
+  const bulb = new THREE.PointLight(0xcfd4da, 0.9, 13, 2);
+  bulb.position.set((LADDER_X + GATE_CROSS_X) / 2, 3.2, LADDER_Z);
+  scene.add(bulb);
+}
 
 const CITY_WALL_H = 6.0;
 const cMinX = CITY_X - CITY_HALF_X, cMaxX = CITY_X + CITY_HALF_X;
@@ -1938,6 +1997,22 @@ function turnSpeedFactor(heading, targetHeading) {
   return THREE.MathUtils.clamp(Math.cos(diff), 0.25, 1);
 }
 
+// A well-timed jump clears a monster's back if it's short enough -- same
+// mechanic Supersonic's own SUPERSONIC_HOP_CLEARANCE already proved out,
+// generalized so it applies to anything short rather than just the one
+// monster it was hand-tuned for. Measured once per monster (its own
+// height never changes after that) and capped: past HOP_MAX_HEIGHT it's
+// just not something a jump should ever clear, so no hopY at all.
+const HOP_MAX_HEIGHT = 3.2;
+function hopYFor(m) {
+  if (m.modelHeight === undefined) {
+    const box = new THREE.Box3().setFromObject(m.group);
+    m.modelHeight = box.max.y - box.min.y;
+  }
+  if (m.modelHeight > HOP_MAX_HEIGHT) return undefined;
+  return m.group.position.y + m.modelHeight;
+}
+
 const ROAM_RADIUS = 14;
 const ROAM_SPEED_FACTOR = 0.35; // a slow idle wander, well under full chase speed
 
@@ -2007,8 +2082,23 @@ function animateRunCycle(m, rate, bobAmp, armSwingAmp = 0, canJump = false) {
   }
   // A small head bob/twist -- works even on armless monsters (Peanut),
   // since it's keyed off the same phase rather than the arm swing itself.
+  // On top of it, a sudden, unnatural head-snap on its own irregular
+  // cycle (offset per-instance via the group's own id, so a pack never
+  // twitches in lockstep) -- unsettling even when nothing else about the
+  // animation is moving, which is the point.
   const head = m.group.userData.head;
-  if (head) head.rotation.y = Math.sin(phase * 2) * 0.08;
+  if (head) {
+    head.rotation.y = Math.sin(phase * 2) * 0.08;
+    const twitchCycle = 2.6;
+    const twitchT = ((t * 0.5 + m.group.id * 0.271) % twitchCycle + twitchCycle) % twitchCycle;
+    if (twitchT < 0.08) {
+      const snap = Math.sin((twitchT / 0.08) * Math.PI);
+      head.rotation.y += snap * 0.35;
+      head.rotation.x = Math.sin((twitchT / 0.08) * Math.PI * 3) * 0.1;
+    } else {
+      head.rotation.x = 0;
+    }
+  }
 }
 
 const supersonic = {
@@ -2107,7 +2197,7 @@ function tickHotCheeto(dt, playerPos) {
   clampToSafeZone(m.group.position);
   m.group.position.y = groundHeight(m.group.position.x, m.group.position.z) + (m.group.userData.hoverHeight || 0) + (m.bobOffset || 0);
   m.group.rotation.y = m.heading;
-  return { dist, danger: m.alert ? Math.max(0, 1 - dist / 12) : 0, catchR: m.catchR, type: 'hotcheeto', instance: m };
+  return { dist, danger: m.alert ? Math.max(0, 1 - dist / 12) : 0, catchR: m.catchR, type: 'hotcheeto', instance: m, hopY: hopYFor(m) };
 }
 
 const peanut = {
@@ -2149,7 +2239,7 @@ function tickPeanut(dt, playerPos) {
   clampToSafeZone(m.group.position);
   m.group.position.y = groundHeight(m.group.position.x, m.group.position.z) + (m.group.userData.hoverHeight || 0) + (m.bobOffset || 0);
   m.group.rotation.y = m.heading;
-  return { dist, danger: m.alert ? Math.max(0, 1 - dist / 9) : 0, catchR: m.catchR, type: 'peanut', instance: m };
+  return { dist, danger: m.alert ? Math.max(0, 1 - dist / 9) : 0, catchR: m.catchR, type: 'peanut', instance: m, hopY: hopYFor(m) };
 }
 
 /* ---------------- Badland cast: Lizard, Gunslinger, three Outlaws ---------------- */
@@ -2182,7 +2272,7 @@ function tickGenericMonster(m, dt, playerPos, speed, turnRate, type, seenRange, 
   zoneClamp(m.group.position);
   m.group.position.y = groundHeight(m.group.position.x, m.group.position.z) + (m.group.userData.hoverHeight || 0) + (m.bobOffset || 0);
   m.group.rotation.y = m.heading;
-  return { dist, danger: m.alert ? Math.max(0, 1 - dist / danger) : 0, catchR: m.catchR, type, instance: m };
+  return { dist, danger: m.alert ? Math.max(0, 1 - dist / danger) : 0, catchR: m.catchR, type, instance: m, hopY: hopYFor(m) };
 }
 
 function makeBadlandMonster(make, catchR) {
@@ -2242,7 +2332,11 @@ const wanderers = [
   makeJungleMonster(createWandererModel, 1.0),
 ];
 
-function tickStalker(dt, p) { return tickGenericMonster(stalker, dt, p, STALKER_SPEED, STALKER_TURN_RATE, 'stalker', 45, 0.8, 10, 11, clampStalkerZone); }
+function tickStalker(dt, p) {
+  const r = tickGenericMonster(stalker, dt, p, STALKER_SPEED, STALKER_TURN_RATE, 'stalker', 45, 0.8, 10, 11, clampStalkerZone);
+  updateStalkerMusic(r.dist);
+  return r;
+}
 function tickWanderer(m, dt, p) { return tickGenericMonster(m, dt, p, WANDERER_SPEED, WANDERER_TURN_RATE, 'wanderer', 16, 0.85, 6, 8, clampToJungle); }
 
 /* ---------------- Monument (City) ---------------- */
@@ -2315,6 +2409,34 @@ function updateSupersonicMusic(dist) {
     osc.start(now);
     osc.stop(now + 0.2);
   }
+}
+
+// Stalker's own warning, same idea as Supersonic's arpeggio but a
+// sustained eerie drone instead of a rhythmic one -- two sine waves a
+// close interval apart (106Hz against 100Hz) beat against each other
+// slowly and unsettlingly on their own, with no need for a melody.
+const STALKER_MUSIC_RANGE = 50;
+let stalkerMusicGain = null;
+function updateStalkerMusic(dist) {
+  const ctx = audioCtx;
+  if (!ctx) return;
+  if (!stalkerMusicGain) {
+    stalkerMusicGain = ctx.createGain();
+    stalkerMusicGain.gain.value = 0;
+    stalkerMusicGain.connect(ctx.destination);
+    const osc1 = ctx.createOscillator();
+    osc1.type = 'sine';
+    osc1.frequency.value = 100;
+    const osc2 = ctx.createOscillator();
+    osc2.type = 'sine';
+    osc2.frequency.value = 106;
+    osc1.connect(stalkerMusicGain);
+    osc2.connect(stalkerMusicGain);
+    osc1.start();
+    osc2.start();
+  }
+  const target = Math.max(0, 1 - dist / STALKER_MUSIC_RANGE) * 0.2;
+  stalkerMusicGain.gain.setTargetAtTime(target, ctx.currentTime, 0.4);
 }
 
 // Distinct jumpscare stings per monster — no shared sound.
@@ -2754,10 +2876,11 @@ function movePlayer(dt) {
   const speed = keys.shift ? RUN_SPEED : WALK_SPEED;
   const pos = camera.position;
 
+  const footY = pos.y - EYE_H;
   const nx = pos.x + moveDir.x * speed * dt;
-  if (!collidesAt(nx, pos.z)) pos.x = nx;
+  if (!collidesAt(nx, pos.z, footY)) pos.x = nx;
   const nz = pos.z + moveDir.z * speed * dt;
-  if (!collidesAt(pos.x, nz)) pos.z = nz;
+  if (!collidesAt(pos.x, nz, footY)) pos.z = nz;
 
   if (touchJumpPressed) {
     touchJumpPressed = false;
