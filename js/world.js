@@ -267,6 +267,15 @@ const hills = [
   { x: JUNGLE_X - 22, z: JUNGLE_Z + 12, amp: 6, r: 11 },
   { x: JUNGLE_X + 8, z: JUNGLE_Z - 18, amp: 4, r: 9 },
   { x: JUNGLE_X - 5, z: JUNGLE_Z + 20, amp: 5, r: 9 },
+  // Winter Wonderland's own snow hills -- gentle drifts, not real
+  // mountains (amp 7-12, between Jungle's small bumps and the forest's
+  // big ones), spread around WINTER_X/Z. Gingerbread-house interiors and
+  // the tunnel mouth stay flat regardless, since the snow ground mesh
+  // below is flatZone-aware the same way the forest's and Jungle's are.
+  { x: WINTER_X - 35, z: WINTER_Z + 5, amp: 10, r: 22 },
+  { x: WINTER_X + 30, z: WINTER_Z + 30, amp: 12, r: 24 },
+  { x: WINTER_X - 10, z: WINTER_Z + 50, amp: 8, r: 20 },
+  { x: WINTER_X + 40, z: WINTER_Z - 25, amp: 7, r: 18 },
 ];
 
 function baseHillHeight(x, z) {
@@ -306,22 +315,8 @@ function groundHeight(x, z) {
   return baseHillHeight(x, z);
 }
 
-// The actual rendered ground — groundHeight() above only ever drove
-// collision/placement math; without a mesh that follows it, the forest
-// floor was invisible (void) the instant you stepped off the deck.
 const GROUND_EXTENT = 135;
 const GROUND_SEGMENTS = 135;
-const groundGeo = new THREE.PlaneGeometry(GROUND_EXTENT * 2, GROUND_EXTENT * 2, GROUND_SEGMENTS, GROUND_SEGMENTS);
-groundGeo.rotateX(-Math.PI / 2);
-{
-  const pos = groundGeo.attributes.position;
-  for (let i = 0; i < pos.count; i++) {
-    pos.setY(i, baseHillHeight(pos.getX(i), pos.getZ(i)));
-  }
-  pos.needsUpdate = true;
-  groundGeo.computeVertexNormals();
-}
-scene.add(new THREE.Mesh(groundGeo, groundMat));
 
 // The ramp's own slanted surface (collision already follows groundHeight's
 // lerp through this span; this box just gives it something visible).
@@ -512,27 +507,29 @@ function makeCorridorBuilder(holeHalfW, wallH, mat) {
     }
   }
 
-  // A room at each turn, wider than the corridor itself -- a real turning
-  // bay instead of a blind right-angle pinch you only discover by walking
-  // into it -- lit so the turn is actually visible coming, solid on every
-  // side except the two directions (unit vectors, always axis-aligned
-  // here) a corridor actually continues through.
+  // A room at each turn, lit so the turn is actually visible coming
+  // (unlike before), solid on every side except the two directions (unit
+  // vectors, always axis-aligned here) a corridor actually continues
+  // through. Deliberately the SAME width as the corridor itself
+  // (holeHalfW, not wider) -- a wider turning bay was tried and pulled
+  // again: its walls sat at a different offset than the connecting
+  // segment's own narrower walls, and the gap between the two read as
+  // an invisible platform / a way to walk past the wall, not a room.
   function junction(p, openDirs) {
-    const jHalf = holeHalfW * 1.8;
-    const minX = p.x - jHalf, maxX = p.x + jHalf;
-    const minZ = p.z - jHalf, maxZ = p.z + jHalf;
+    const minX = p.x - holeHalfW, maxX = p.x + holeHalfW;
+    const minZ = p.z - holeHalfW, maxZ = p.z + holeHalfW;
     const isOpen = (ddx, ddz) => openDirs.some((d) => d.x === ddx && d.z === ddz);
     if (!isOpen(-1, 0)) wallBox(minX - wallT, minX, minZ - wallT, maxZ + wallT);
     if (!isOpen(1, 0)) wallBox(maxX, maxX + wallT, minZ - wallT, maxZ + wallT);
     if (!isOpen(0, -1)) wallBox(minX - wallT, maxX + wallT, minZ - wallT, minZ);
     if (!isOpen(0, 1)) wallBox(minX - wallT, maxX + wallT, maxZ, maxZ + wallT);
     floorCeil(minX - wallT, maxX + wallT, minZ - wallT, maxZ + wallT);
-    const light = new THREE.PointLight(0xd8c8a0, 1.1, jHalf * 6, 2);
+    const light = new THREE.PointLight(0xd8c8a0, 1.1, holeHalfW * 7, 2);
     light.position.set(p.x, wallH * 0.75, p.z);
     scene.add(light);
   }
 
-  return { segment, junction };
+  return { segment, junction, wallT };
 }
 
 function buildWindingTunnel(x0, z0, x1, z1, holeHalfW, wallH, mat) {
@@ -540,11 +537,27 @@ function buildWindingTunnel(x0, z0, x1, z1, holeHalfW, wallH, mat) {
   const dist = Math.hypot(dx, dz);
   const fx = dx / dist, fz = dz / dist; // forward unit vector
   const rx = -fz, rz = fx;              // right unit vector (90deg rotate)
-  const { segment, junction } = makeCorridorBuilder(holeHalfW, wallH, mat);
+  const { segment, junction, wallT } = makeCorridorBuilder(holeHalfW, wallH, mat);
 
   const L1 = dist * (0.2 + rand() * 0.12);
   const L2 = dist * (0.2 + rand() * 0.12);
-  const jogMag = 5 + rand() * 4;
+  // The jog leg (p1->p2, then its mirror p3->p4) shares its own exact x
+  // (or z) with the straight legs immediately before and after it, since
+  // the jog is purely perpendicular -- no offset along the direction of
+  // travel. That means the straight legs' own confining walls (built to
+  // keep THEM within holeHalfW, same as every other leg) reach right up
+  // to that shared coordinate, each eating wallT past its own edge, and
+  // the player's own radius eats further still into whatever's left
+  // between them. A jog magnitude picked without that in mind (this used
+  // to be a flat 5..9) could leave less than 2*PLAYER_R of real clearance
+  // there -- passable in theory, not in practice -- which is exactly why
+  // "can't get into Badland/Jungle/Winter Wonderland, there's a wall in
+  // the way" came and went depending on the random seed of the page load
+  // (roughly 45% of the old range was too tight) rather than failing
+  // every time. +3 of slack on top of the bare minimum so it's never a
+  // photo finish even at the low end of the random range.
+  const jogClearance = holeHalfW * 2 + wallT * 2 + PLAYER_R * 2 + 3;
+  const jogMag = jogClearance + rand() * 4;
   const side = rand() < 0.5 ? 1 : -1;
 
   const fwd = { x: fx, z: fz };
@@ -756,6 +769,7 @@ function createChimpModel({
   eyeColor, eyeEmissiveIntensity = 2.5,
   torsoLen = 1.0, headScale = 1, armLen = 0.5, roughness = 0.9, arms = true,
   faceDetails = true, // false skips muzzle/eyes/brow/nostril/pupil/mouth -- a blank head
+  pupils = true, // false keeps the glowing eyes themselves but drops just the pupil dot -- a blank, pupil-less stare
 }) {
   const g = new THREE.Group();
   const mat = new THREE.MeshStandardMaterial({
@@ -863,9 +877,11 @@ function createChimpModel({
       nostril.position.set(side * 0.06 * headScale, headY - 0.14 * headScale, 0.44 * headScale);
       g.add(nostril);
 
-      const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.032 * headScale, 5, 4), faceDetailMat);
-      pupil.position.set(side * 0.17 * headScale, headY + 0.03 * headScale, 0.41 * headScale);
-      g.add(pupil);
+      if (pupils) {
+        const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.032 * headScale, 5, 4), faceDetailMat);
+        pupil.position.set(side * 0.17 * headScale, headY + 0.03 * headScale, 0.41 * headScale);
+        g.add(pupil);
+      }
     }
     const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.17 * headScale, 0.03 * headScale, 0.05 * headScale), faceDetailMat);
     mouth.position.set(0, headY - 0.24 * headScale, 0.41 * headScale);
@@ -1042,14 +1058,23 @@ function addHorns(g, headY, headScale) {
     g.add(horn);
   }
 }
+// Pale, blotchy, sickly skin for Krampus -- a dark grain texture over a
+// desaturated pale green-grey base reads as rot rather than clean fur,
+// same "multiply a noise texture over the base color" technique every
+// other material on this site already uses.
+const krampusRotTex = makeGrainTexture({ dark: 55, light: 205, repeat: 16, blotch: 4 });
+
 function createKrampusModel() {
   // Whole body, arms, AND head all scaled up together, uniformly, 6x --
   // unlike Stalker's own stretch (torsoLen only), this one keeps normal
-  // proportions and scales the entire finished model instead.
-  const torsoLen = 1.0, headScale = 1.0;
+  // proportions and scales the entire finished model instead. torsoLen
+  // 2.0 (on request) stretches the torso itself 2x taller on top of that
+  // uniform 6x, the same "stretch the torso, not just scale everything"
+  // technique Stalker uses for its own elongated look.
+  const torsoLen = 2.0, headScale = 1.0;
   const g = createChimpModel({
-    bodyColor: 0x4a2a1a, eyeColor: 0x7ad8ff, eyeEmissiveIntensity: 3.5,
-    torsoLen, headScale, armLen: 0.6, roughness: 0.8,
+    bodyColor: 0x8a9b82, bodyMap: krampusRotTex, eyeColor: 0x7ad8ff, eyeEmissiveIntensity: 3.5,
+    torsoLen, headScale, armLen: 0.6, roughness: 0.95, pupils: false,
   });
   addBeard(g, chimpHeadY(torsoLen, headScale), headScale);
   addSantaHat(g, chimpHeadY(torsoLen, headScale), headScale);
@@ -1887,6 +1912,40 @@ const winterWallMat = new THREE.MeshStandardMaterial({ color: 0xd8e4ea, roughnes
 // Badland's/Jungle's.
 buildWindingTunnel(WINTER_X, WALL_R + 1, WINTER_X, WINTER_Z - WINTER_HALF, WINTER_HOLE_HALF_W, 4.5, tunnelWallMat);
 
+// The actual rendered forest ground — groundHeight() above only ever
+// drove collision/placement math; without a mesh that follows it, the
+// forest floor was invisible (void) the instant you stepped off the
+// deck. Built here, AFTER all three tunnels (Badland/Jungle/Winter) have
+// already run buildWindingTunnel() and registered their own flatZones,
+// and flatZone-aware the same way groundHeight() is -- but deliberately
+// NOT routed through groundHeight() itself, since that function also
+// forces the platform/ramp area up to PLATFORM_H for collision purposes,
+// and this mesh visually needs to stay low there (the deck is stilted
+// above open space, not sitting on raised ground). A forest hill happens
+// to sit right next to the Winter tunnel's mouth (the x:18/z:75 and
+// x:-30/z:80 hills both reach out past z=120), and without the flatZone
+// check below, the grass terrain poked up through the tunnel opening --
+// walkable the whole time, since collidesAt() never looked at this mesh
+// at all, but it visually read as "blocked off by grass," just as bad as
+// an actual wall there.
+function terrainHeight(x, z) {
+  for (const fz of flatZones) {
+    if (x >= fz.minX && x <= fz.maxX && z >= fz.minZ && z <= fz.maxZ) return 0;
+  }
+  return baseHillHeight(x, z);
+}
+{
+  const groundGeo = new THREE.PlaneGeometry(GROUND_EXTENT * 2, GROUND_EXTENT * 2, GROUND_SEGMENTS, GROUND_SEGMENTS);
+  groundGeo.rotateX(-Math.PI / 2);
+  const pos = groundGeo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    pos.setY(i, terrainHeight(pos.getX(i), pos.getZ(i)));
+  }
+  pos.needsUpdate = true;
+  groundGeo.computeVertexNormals();
+  scene.add(new THREE.Mesh(groundGeo, groundMat));
+}
+
 const WINTER_WALL_H = 9.0;
 const wMinX = WINTER_X - WINTER_HALF, wMaxX = WINTER_X + WINTER_HALF;
 const wMinZ = WINTER_Z - WINTER_HALF, wMaxZ = WINTER_Z + WINTER_HALF;
@@ -1903,9 +1962,16 @@ const wMinZ = WINTER_Z - WINTER_HALF, wMaxZ = WINTER_Z + WINTER_HALF;
   scene.add(lintel);
 }
 
-const snowGround = new THREE.Mesh(new THREE.PlaneGeometry(WINTER_HALF * 2, WINTER_HALF * 2), snowMat);
-snowGround.rotation.x = -Math.PI / 2;
-snowGround.position.set(WINTER_X, 0.03, WINTER_Z);
+// Segmented and per-vertex displaced through terrainHeight() -- same
+// technique as the forest's own ground mesh above -- rather than one flat
+// plane, so the new snow hills actually show up and the tunnel mouth /
+// gingerbread house interiors (already flatZone-registered once those are
+// built below) stay walkable-flat regardless.
+const SNOW_SEGMENTS = 100;
+const snowGeo = new THREE.PlaneGeometry(WINTER_HALF * 2, WINTER_HALF * 2, SNOW_SEGMENTS, SNOW_SEGMENTS);
+snowGeo.rotateX(-Math.PI / 2);
+const snowGround = new THREE.Mesh(snowGeo, snowMat);
+snowGround.position.set(WINTER_X, 0, WINTER_Z);
 scene.add(snowGround);
 
 // A brick path straight up from the entrance toward the middle of the map.
@@ -1983,6 +2049,60 @@ function buildGingerbreadHouse(cx, cz, halfW, halfD) {
 buildGingerbreadHouse(WINTER_X - 18, WINTER_Z - 10, 5, 4.5);
 buildGingerbreadHouse(WINTER_X + 16, WINTER_Z - 6, 5.5, 5);
 buildGingerbreadHouse(WINTER_X, WINTER_Z + 20, 6, 5);
+
+// Displace the snow ground's own vertices now that every flatZone inside
+// Winter Wonderland (the tunnel mouth, all three house interiors) is
+// registered -- same ordering reason the forest's own ground mesh is
+// built after its tunnels.
+{
+  const pos = snowGeo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const wx = pos.getX(i) + WINTER_X, wz = pos.getZ(i) + WINTER_Z;
+    pos.setY(i, terrainHeight(wx, wz));
+  }
+  pos.needsUpdate = true;
+  snowGeo.computeVertexNormals();
+}
+
+// Ice spikes -- jagged, translucent blue-white cones jutting straight up
+// out of the snow, scattered the same way the candy canes are.
+const iceSpikeMat = new THREE.MeshStandardMaterial({
+  color: 0xbfe8f5, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.82,
+  emissive: 0x3a6a78, emissiveIntensity: 0.25,
+});
+function makeIceSpike(x, z) {
+  const h = terrainHeight(x, z);
+  const height = 1.4 + rand() * 2.2;
+  const r = 0.25 + rand() * 0.25;
+  const spike = new THREE.Mesh(new THREE.ConeGeometry(r, height, 5), iceSpikeMat);
+  spike.position.set(x, h + height / 2, z);
+  spike.rotation.y = rand() * Math.PI;
+  scene.add(spike);
+  // A couple of smaller shards leaning off the base of the big one --
+  // reads as a jagged ice formation instead of one lone cone.
+  for (let s = 0; s < 2; s++) {
+    const shardH = height * (0.35 + rand() * 0.25);
+    const shard = new THREE.Mesh(new THREE.ConeGeometry(r * 0.5, shardH, 5), iceSpikeMat);
+    const a = rand() * Math.PI * 2;
+    shard.position.set(x + Math.cos(a) * r * 1.1, h + shardH / 2, z + Math.sin(a) * r * 1.1);
+    shard.rotation.z = (rand() - 0.5) * 0.6;
+    shard.rotation.x = (rand() - 0.5) * 0.6;
+    scene.add(shard);
+  }
+  addCircleCollider(x, z, r * 1.3);
+}
+let spikesPlaced = 0;
+while (spikesPlaced < 22) {
+  const x = WINTER_X + (rand() - 0.5) * WINTER_HALF * 1.7;
+  const z = WINTER_Z + (rand() - 0.5) * WINTER_HALF * 1.7;
+  let inHouse = false;
+  for (const b of winterHouseBounds) {
+    if (x >= b.minX - 1 && x <= b.maxX + 1 && z >= b.minZ - 1 && z <= b.maxZ + 1) { inHouse = true; break; }
+  }
+  if (inHouse) continue;
+  makeIceSpike(x, z);
+  spikesPlaced++;
+}
 
 function winterPoint() {
   const x = WINTER_X + (rand() - 0.5) * WINTER_HALF * 1.6;
@@ -2375,7 +2495,7 @@ function makeJungleMonster(make, catchR) {
 // 1.5x the player's own speed, and it can spot you from much farther off
 // than anything else out there (seenRange 45 vs. everyone else's 16-24) --
 // the whole point is that outrunning it only works if you saw it first.
-const STALKER_SPEED = RUN_SPEED * 1.5, STALKER_TURN_RATE = 2.2;
+const STALKER_SPEED = RUN_SPEED * 0.75, STALKER_TURN_RATE = 2.2; // 50% slower, on request
 const stalker = makeJungleMonster(createStalkerModel, 3.5); // 3x the model, so a bigger forgiving hitbox to match
 // Its own spawn point is picked the same way every roam target is (see
 // junglePoint()), so it can land inside a temple/dungeon box just like

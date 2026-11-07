@@ -7,6 +7,13 @@
 <meta name="description" content="A connected, open first-person horror map — free roam as a chimp with a flashlight, no objective, no loading screens.">
 <link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=">
 <link rel="stylesheet" href="css/style.css">
+<!-- Pixel-art display font for the customize panel only -- the game
+     canvas already renders pixelated (see canvas.game-canvas in
+     css/style.css); this is the same look applied to that one piece of
+     real UI instead of leaving it as smooth system-font text. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 <style>
   body { background: #000; }
 </style>
@@ -69,6 +76,6 @@
 <!-- cache-bust on every deploy: bump this version string any time
      js/world.js changes, so a returning player's browser can't keep
      running a stale cached copy against the current markup/CSS. -->
-<script src="js/world.js?v=24" defer></script>
+<script src="js/world.js?v=25" defer></script>
 </body>
 </html>

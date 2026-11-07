@@ -53,9 +53,9 @@ dungeon, not just a bigger room, and genuinely dark — nothing lights it
 but your own flashlight) down a corridor past the main entrance — the sky
 here fades to a dark blue instead. On the north side, behind a sign
 reading **WINTER WONDERLAND**: the biggest of the three by a clear
-margin — snow, thickening fog, a brick path, candy canes everywhere, and
-three gingerbread houses you can walk into — under a pale, overcast-white
-sky instead of the forest's black one.
+margin — rolling snow hills, thickening fog, a brick path, candy canes and
+jagged ice spikes everywhere, and three gingerbread houses you can walk
+into — under a pale, overcast-white sky instead of the forest's black one.
 
 A small alcove on the deck (the **bestiary room**) holds miniature, slowly
 turning models of the things loose out there, labelled by name, on
@@ -142,9 +142,9 @@ sky fades to a dark blue once you're inside.
 **Stalker** — a chimp whose whole body has been stretched far upward and
 then scaled up again on top of that, genuinely huge, near-black with pale
 glowing eyes. It can spot you from much farther off than anything else out
-there, and once it has, it's properly fast (1.5x your speed) — but it can't
-follow you into either temple or the dungeon behind one; reaching a
-doorway is an instant, total out.
+there, but it's slower than you (0.75x your speed) — but it can't follow
+you into either temple or the dungeon behind one; reaching a doorway is an
+instant, total out.
 
 **Wanderer** — three of them, dark grey chimps with no face at all (no
 eyes, no mouth, nothing looking back). Slower than you (0.75x your speed),
@@ -156,9 +156,9 @@ doorway and all the way back into the dungeon chamber behind it.
 The biggest of the three sections, reached the same way as the other
 two — through the one hole in the forest's own outer wall on its north
 side, down its own winding tunnel, to a matching hole in Winter
-Wonderland's own perimeter wall. Snow, thick fog, a brick path, candy
-canes scattered everywhere, and three gingerbread houses with icing trim
-you can actually walk into.
+Wonderland's own perimeter wall. Rolling snow hills, thick fog, a brick
+path, candy canes and jagged translucent ice spikes scattered everywhere,
+and three gingerbread houses with icing trim you can actually walk into.
 
 **Gingy** — gingerbread brown, no face at all. Slower than you (0.7x your
 speed).
@@ -170,11 +170,12 @@ Spots you from much farther off than almost anything else out there.
 **Elf** — three of them, red or green costume, pointed hat. The slowest
 thing in the game (0.5x your speed).
 
-**Krampus** — a chimp scaled up 6x, whole body and head together, not
-just stretched: beard, Santa hat, horns, pale blue glowing eyes, dark
-bent claws. The fastest thing in the game (1.5x your speed) — but it can
-never follow you into a gingerbread house; reaching the doorway is an
-instant, total out.
+**Krampus** — a chimp scaled up 6x, with its torso additionally stretched
+2x taller on top of that: beard, Santa hat, horns, pale blue glowing eyes
+with no pupils, dark bent claws, pale sickly green-grey skin blotched
+like it's rotting. The fastest thing in the game (1.5x your speed) — but
+it can never follow you into a gingerbread house; reaching the doorway is
+an instant, total out.
 
 Every monster is capped at a 20-unit radius from the treehouse, and the
 ones in Badland, the Jungle, or Winter Wonderland can't wander, or be
