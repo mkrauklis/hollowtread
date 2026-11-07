@@ -112,6 +112,10 @@ const SKY_FOREST = new THREE.Color(0x000000);
 const SKY_BADLAND = new THREE.Color(0x4a1f06);
 const SKY_JUNGLE = new THREE.Color(0x060a1c);
 const SKY_WINTER = new THREE.Color(0xc7d2da);
+// Overrides every zone's own sky while the god event (see "summon shrine"
+// below) is active -- deliberately the same color in every map at once,
+// not just Winter Wonderland where the shrine itself lives.
+const SKY_GOD_EVENT = new THREE.Color(0x6b0000);
 function skyTargetFor(x, z) {
   if (Math.abs(x - BADLAND_X) <= BADLAND_HALF && Math.abs(z - BADLAND_Z) <= BADLAND_HALF) return SKY_BADLAND;
   if (Math.abs(x - JUNGLE_X) <= JUNGLE_HALF && Math.abs(z - JUNGLE_Z) <= JUNGLE_HALF) return SKY_JUNGLE;
@@ -123,6 +127,7 @@ function skyTargetFor(x, z) {
 // forest's own density.
 const FOG_DENSITY_FOREST = 0.028;
 const FOG_DENSITY_WINTER = 0.065;
+const FOG_DENSITY_GOD_EVENT = 0.045;
 function fogDensityFor(x, z) {
   if (Math.abs(x - WINTER_X) <= WINTER_HALF && Math.abs(z - WINTER_Z) <= WINTER_HALF) return FOG_DENSITY_WINTER;
   return FOG_DENSITY_FOREST;
@@ -1047,8 +1052,8 @@ function createElfModel(color) {
 function createElfModelRed() { return createElfModel('red'); }
 function createElfModelGreen() { return createElfModel('green'); }
 
-function addBeard(g, headY, headScale) {
-  const beard = new THREE.Mesh(new THREE.ConeGeometry(0.18 * headScale, 0.4 * headScale, 8), krampusPropMat);
+function addBeard(g, headY, headScale, mat = krampusPropMat) {
+  const beard = new THREE.Mesh(new THREE.ConeGeometry(0.18 * headScale, 0.4 * headScale, 8), mat);
   beard.position.set(0, headY - 0.3 * headScale, 0.25 * headScale);
   beard.rotation.x = Math.PI;
   g.add(beard);
@@ -1102,6 +1107,52 @@ function createKrampusModel() {
   }
   g.scale.setScalar(6);
   g.userData.hoverHeight *= 6;
+  return g;
+}
+
+// The summoned god -- a giant Santa chimp riding a sleigh, not walking.
+// Built from the same factory as everything else (consistency with the
+// rest of the cast matters more here than realism), scaled up even
+// further than Krampus since this is meant to read as the single biggest,
+// most dramatic thing in the game. It doesn't use hoverHeight/groundHeight
+// at all -- see tickSantaGod() -- it actually flies.
+const sleighBodyMat = new THREE.MeshStandardMaterial({ color: 0x6b1a1a, roughness: 0.5, metalness: 0.15 });
+const sleighTrimMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, roughness: 0.35, metalness: 0.7 });
+const SANTA_GOD_SCALE = 10;
+function createSantaGodModel() {
+  const torsoLen = 1.2, headScale = 1.1;
+  const g = createChimpModel({
+    bodyColor: 0xa41824, eyeColor: 0xffd24a, eyeEmissiveIntensity: 4.5,
+    torsoLen, headScale, armLen: 0.65, roughness: 0.75,
+  });
+  // A white beard (icingMat, not the dark krampusPropMat default) and the
+  // same Santa hat Krampus wears -- this is the "real" Santa the rest of
+  // Winter Wonderland's cast is only ever riffing on.
+  addBeard(g, chimpHeadY(torsoLen, headScale), headScale, icingMat);
+  addSantaHat(g, chimpHeadY(torsoLen, headScale), headScale);
+
+  // A simple curved-runner sleigh, slung beneath and behind the body as
+  // if it's standing in it driving.
+  const sleigh = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.55, 2.4), sleighBodyMat);
+  body.position.set(0, -0.55, -1.1);
+  sleigh.add(body);
+  const trim = new THREE.Mesh(new THREE.BoxGeometry(1.56, 0.1, 2.46), sleighTrimMat);
+  trim.position.set(0, -0.26, -1.1);
+  sleigh.add(trim);
+  const curl = new THREE.Mesh(new THREE.TorusGeometry(0.45, 0.08, 6, 10, Math.PI), sleighTrimMat);
+  curl.rotation.x = Math.PI / 2;
+  curl.position.set(0, -0.2, -2.25);
+  sleigh.add(curl);
+  for (const side of [-1, 1]) {
+    const runner = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 2.8), sleighTrimMat);
+    runner.position.set(side * 0.65, -0.95, -1.0);
+    sleigh.add(runner);
+  }
+  g.add(sleigh);
+
+  g.userData.hoverHeight = 0; // flies -- see tickSantaGod(), not groundHeight-driven
+  g.scale.setScalar(SANTA_GOD_SCALE);
   return g;
 }
 
@@ -2062,7 +2113,11 @@ function buildGingerbreadHouse(cx, cz, halfW, halfD) {
 
   winterHouseBounds.push({ minX, maxX, minZ, maxZ });
 }
-buildGingerbreadHouse(WINTER_X - 18, WINTER_Z - 10, 5, 4.5);
+// House #1's own params are named so the summon shrine below (which lives
+// inside this specific house) can place itself relative to the same
+// numbers rather than a second, easily-drifting set of hardcoded ones.
+const SHRINE_HOUSE = { cx: WINTER_X - 18, cz: WINTER_Z - 10, halfW: 5, halfD: 4.5 };
+buildGingerbreadHouse(SHRINE_HOUSE.cx, SHRINE_HOUSE.cz, SHRINE_HOUSE.halfW, SHRINE_HOUSE.halfD);
 buildGingerbreadHouse(WINTER_X + 16, WINTER_Z - 6, 5.5, 5);
 buildGingerbreadHouse(WINTER_X, WINTER_Z + 20, 6, 5);
 
@@ -2078,6 +2133,40 @@ buildGingerbreadHouse(WINTER_X, WINTER_Z + 20, 6, 5);
   }
   pos.needsUpdate = true;
   snowGeo.computeVertexNormals();
+}
+
+// The summon shrine -- a stone altar with a floating glowing orb, tucked
+// against the back wall of house #1 (opposite its door, so you have to
+// actually walk all the way in to find it). Standing close to it charges
+// it up over time; the orb (and the light it casts) shifts from a neon
+// white at zero charge to blood red at full charge, so the color alone
+// tells you how close the summon is without any HUD. See tickShrine() /
+// startGodEvent() / endGodEvent() further down, near the rest of the
+// game-state logic, for what happens once it's full.
+const shrineStoneMat = new THREE.MeshStandardMaterial({ color: 0x2a2a30, roughness: 0.85 });
+const shrineOrbMat = new THREE.MeshStandardMaterial({
+  color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.6, roughness: 0.25, metalness: 0.1,
+});
+let shrineOrb = null, shrineLight = null;
+const shrineCenter = new THREE.Vector3(
+  SHRINE_HOUSE.cx,
+  terrainHeight(SHRINE_HOUSE.cx, SHRINE_HOUSE.cz + SHRINE_HOUSE.halfD - 1.4),
+  SHRINE_HOUSE.cz + SHRINE_HOUSE.halfD - 1.4
+);
+{
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.7, 0.9, 8), shrineStoneMat);
+  base.position.set(shrineCenter.x, shrineCenter.y + 0.45, shrineCenter.z);
+  scene.add(base);
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.5, 0.15, 8), shrineStoneMat);
+  cap.position.set(shrineCenter.x, shrineCenter.y + 0.97, shrineCenter.z);
+  scene.add(cap);
+  shrineOrb = new THREE.Mesh(new THREE.IcosahedronGeometry(0.26, 1), shrineOrbMat);
+  shrineOrb.position.set(shrineCenter.x, shrineCenter.y + 1.35, shrineCenter.z);
+  scene.add(shrineOrb);
+  shrineLight = new THREE.PointLight(0xffffff, 1.2, 9, 2);
+  shrineLight.position.copy(shrineOrb.position);
+  scene.add(shrineLight);
+  addCircleCollider(shrineCenter.x, shrineCenter.z, 0.6);
 }
 
 // Ice spikes -- jagged, translucent blue-white cones jutting straight up
@@ -2780,6 +2869,95 @@ function tickCrangler(dt, p) { return tickGenericMonster(crangler, dt, p, CRANGL
 function tickElf(m, dt, p) { return tickGenericMonster(m, dt, p, ELF_SPEED, ELF_TURN_RATE, 'elf', 15, 0.86, 5, 7, clampToWinter); }
 function tickKrampus(dt, p) { return tickGenericMonster(krampus, dt, p, KRAMPUS_SPEED, KRAMPUS_TURN_RATE, 'krampus', 22, 0.86, 7, 11, clampKrampusZone); }
 
+/* ---------------- summon: the shrine + the god it calls down ---------------- */
+/* The only god for now (see createSantaGodModel() above). Standing near
+ * the shrine (built back in the Winter Wonderland section, inside house
+ * #1) charges it from 0 to 1 over GOD_CHARGE_TIME seconds; leaving lets it
+ * bleed back down over GOD_CHARGE_DECAY_TIME instead of holding wherever
+ * you left it, so this is a "stay and commit" action, not a one-touch
+ * switch. At full charge the event starts on its own -- no prompt, no
+ * button, the shrine going solid red *is* the warning. */
+let godCharge = 0;
+let godEventActive = false;
+const GOD_CHARGE_RADIUS = 2.3;
+const GOD_CHARGE_TIME = 15;
+const GOD_CHARGE_DECAY_TIME = 6;
+const godChargeColor = new THREE.Color();
+
+function tickShrine(dt, playerPos) {
+  if (godEventActive) return;
+  const d = playerPos.distanceTo(shrineCenter);
+  if (d < GOD_CHARGE_RADIUS) godCharge = Math.min(1, godCharge + dt / GOD_CHARGE_TIME);
+  else godCharge = Math.max(0, godCharge - dt / GOD_CHARGE_DECAY_TIME);
+
+  godChargeColor.setHex(0xffffff).lerp(new THREE.Color(0xff1010), godCharge);
+  shrineOrbMat.color.copy(godChargeColor);
+  shrineOrbMat.emissive.copy(godChargeColor);
+  shrineLight.color.copy(godChargeColor);
+  shrineLight.intensity = 1.2 + godCharge * 2.2;
+  shrineOrb.rotation.y += dt * (0.4 + godCharge * 2.2);
+  shrineOrb.position.y = shrineCenter.y + 1.35 + Math.sin(performance.now() * 0.002) * 0.04;
+
+  if (godCharge >= 1) startGodEvent();
+}
+
+let santaGod = null;
+function ensureSantaGod() {
+  if (!santaGod) {
+    const group = createSantaGodModel();
+    group.visible = false;
+    scene.add(group);
+    santaGod = { group, catchR: 3.2 };
+  }
+  return santaGod;
+}
+
+const SANTA_SPEED = RUN_SPEED * 1.2; // exact figure requested: 1.2x the player
+const SANTA_FLY_HIGH = 6.5, SANTA_FLY_LOW = 2.2, SANTA_SWOOP_RANGE = 16;
+
+function startGodEvent() {
+  godEventActive = true;
+  const s = ensureSantaGod();
+  s.group.visible = true;
+  // Flies in from behind wherever the player's actually facing right now,
+  // in whatever map that happens to be -- this isn't zone-locked like
+  // every other monster, on purpose.
+  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+  const spawnPos = camera.position.clone().addScaledVector(forward, -24);
+  spawnPos.y = camera.position.y + SANTA_FLY_HIGH;
+  s.group.position.copy(spawnPos);
+  startGodMusic();
+}
+
+function endGodEvent() {
+  godEventActive = false;
+  godCharge = 0;
+  if (santaGod) santaGod.group.visible = false;
+  stopGodMusic();
+}
+
+function tickSantaGod(dt, playerPos) {
+  const s = ensureSantaGod();
+  if (!godEventActive) return { dist: Infinity, danger: 0, catchR: 0, type: 'santagod', instance: s };
+
+  const toPlayer = new THREE.Vector3(playerPos.x - s.group.position.x, 0, playerPos.z - s.group.position.z);
+  const horizDist = toPlayer.length();
+  if (horizDist > 0.01) {
+    toPlayer.normalize();
+    s.group.position.x += toPlayer.x * SANTA_SPEED * dt;
+    s.group.position.z += toPlayer.z * SANTA_SPEED * dt;
+    s.group.rotation.y = Math.atan2(toPlayer.x, toPlayer.z);
+  }
+  // Swoops down out of the sky as it closes in, instead of catching you
+  // from high overhead where a "giant flying thing got me" moment would
+  // otherwise read as oddly disconnected.
+  const flyT = Math.min(horizDist / SANTA_SWOOP_RANGE, 1);
+  const flyHeight = THREE.MathUtils.lerp(SANTA_FLY_LOW, SANTA_FLY_HIGH, flyT);
+  s.group.position.y = playerPos.y + flyHeight + Math.sin(performance.now() * 0.0015) * 0.35;
+
+  return { dist: horizDist, danger: Math.max(0, 1 - horizDist / 20), catchR: s.catchR, type: 'santagod', instance: s };
+}
+
 /* ---------------- audio ---------------- */
 /* Everything here is generated live with oscillators/noise buffers, same
  * "no asset files" rule as the rest of the project — no mp3s, no fetches. */
@@ -2859,6 +3037,63 @@ function updateStalkerMusic(dist) {
   }
   const target = Math.max(0, 1 - dist / STALKER_MUSIC_RANGE) * 0.2;
   stalkerMusicGain.gain.setTargetAtTime(target, ctx.currentTime, 0.4);
+}
+
+// The god event's own soundtrack: the opening Jingle Bells phrase
+// (E E E, E E E, E G C D E...), but run through a hard tanh waveshaper
+// for distortion and given a random per-note detune + timing jitter so
+// it sounds warped and wrong rather than festive -- the audio equivalent
+// of the sky turning red. Ticked every frame like Supersonic's own
+// arpeggio (updateSupersonicMusic above), not scheduled in advance, so it
+// can start/stop cleanly with the event itself.
+const jingleBellsNotes = [659.25, 659.25, 659.25, 659.25, 659.25, 659.25, 659.25, 783.99, 523.25, 587.33, 659.25];
+let jingleIdx = 0, jingleTimer = 0, godMusicGain = null, godDistortion = null;
+
+function makeDistortionCurve(amount) {
+  const n = 256, curve = new Float32Array(n);
+  for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1; curve[i] = Math.tanh(x * amount); }
+  return curve;
+}
+
+function startGodMusic() {
+  const ctx = ensureAudio();
+  if (!ctx) return;
+  jingleIdx = 0; jingleTimer = 0;
+  if (!godMusicGain) {
+    godMusicGain = ctx.createGain();
+    godMusicGain.gain.value = 0.32;
+    godDistortion = ctx.createWaveShaper();
+    godDistortion.curve = makeDistortionCurve(20);
+    godDistortion.oversample = '2x';
+    godMusicGain.connect(godDistortion).connect(ctx.destination);
+  } else {
+    godMusicGain.gain.setTargetAtTime(0.32, ctx.currentTime, 0.1);
+  }
+}
+
+function stopGodMusic() {
+  if (godMusicGain && audioCtx) godMusicGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.3);
+}
+
+function tickGodMusic(dt) {
+  const ctx = audioCtx;
+  if (!ctx || !godMusicGain) return;
+  jingleTimer -= dt;
+  if (jingleTimer > 0) return;
+  jingleTimer = 0.26 + (Math.random() - 0.5) * 0.1; // uneven tempo -- wrong, not just off-key
+  const baseFreq = jingleBellsNotes[jingleIdx % jingleBellsNotes.length];
+  jingleIdx++;
+  const osc = ctx.createOscillator();
+  osc.type = 'square';
+  osc.frequency.value = baseFreq;
+  osc.detune.value = (Math.random() - 0.5) * 70;
+  const g = ctx.createGain();
+  g.gain.value = 0;
+  osc.connect(g).connect(godMusicGain);
+  const now = ctx.currentTime;
+  g.gain.linearRampToValueAtTime(0.8, now + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+  osc.start(now); osc.stop(now + 0.25);
 }
 
 // Distinct jumpscare stings per monster — no shared sound.
@@ -3050,6 +3285,34 @@ function playScare(type) {
     ng.gain.value = 0.4;
     noise.connect(ng).connect(master);
     noise.start(now);
+  } else if (type === 'santagod') {
+    // A huge descending boom -- the biggest, lowest sound in the game,
+    // bigger than even Krampus's roar -- followed by a burst of harsh,
+    // clashing, detuned sleigh bells instead of a clean jingle.
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(85, now);
+    osc.frequency.exponentialRampToValueAtTime(24, now + 1.2);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(0.95, now + 0.12);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 1.3);
+    osc.connect(g).connect(master);
+    osc.start(now); osc.stop(now + 1.3);
+
+    for (let i = 0; i < 7; i++) {
+      const bell = ctx.createOscillator();
+      bell.type = 'triangle';
+      bell.frequency.value = 1700 + Math.random() * 1000;
+      bell.detune.value = (Math.random() - 0.5) * 250;
+      const bg = ctx.createGain();
+      const t0 = now + i * 0.08;
+      bg.gain.setValueAtTime(0.0001, t0);
+      bg.gain.exponentialRampToValueAtTime(0.45, t0 + 0.01);
+      bg.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.32);
+      bell.connect(bg).connect(master);
+      bell.start(t0); bell.stop(t0 + 0.33);
+    }
   }
 }
 
@@ -3385,6 +3648,10 @@ const jumpscareEl = document.getElementById('jumpscare-flash');
 const interactHint = document.getElementById('interact-hint');
 
 function resetAfterCatch() {
+  // Any catch ends the god event (not just Santa's own) -- everything
+  // else resets to baseline here too, so a world still stuck red with no
+  // way back would be the odd one out.
+  if (godEventActive) endGodEvent();
   camera.position.copy(SPAWN);
   velocity.set(0, 0, 0);
   onGround = true;
@@ -3428,6 +3695,7 @@ const SCARE_DURATION = {
   lizard: 0.7, gunslinger: 0.65, outlaw: 0.6,
   stalker: 0.75, wanderer: 0.55,
   gingy: 0.6, crangler: 0.8, elf: 0.55, krampus: 0.9,
+  santagod: 1.1,
 };
 
 let scareActive = false;
@@ -3517,11 +3785,18 @@ function animate() {
   } else if ((isLocked() || fallbackLook) && !customizeOpen) {
     movePlayer(dt);
 
-    const skyTarget = skyTargetFor(camera.position.x, camera.position.z);
+    // The god event overrides sky/fog in every map at once -- deliberately
+    // checked before the normal per-zone lookup, not blended with it, so
+    // Winter Wonderland's own pale sky can't fight the red.
+    const skyTarget = godEventActive ? SKY_GOD_EVENT : skyTargetFor(camera.position.x, camera.position.z);
+    const targetFogDensity = godEventActive ? FOG_DENSITY_GOD_EVENT : fogDensityFor(camera.position.x, camera.position.z);
     const skyT = Math.min(dt * 1.2, 1);
     scene.background.lerp(skyTarget, skyT);
     scene.fog.color.lerp(skyTarget, skyT);
-    scene.fog.density = THREE.MathUtils.lerp(scene.fog.density, fogDensityFor(camera.position.x, camera.position.z), skyT);
+    scene.fog.density = THREE.MathUtils.lerp(scene.fog.density, targetFogDensity, skyT);
+
+    tickShrine(dt, camera.position);
+    if (godEventActive) tickGodMusic(dt);
 
     const nearBestiary = camera.position.distanceTo(bestiaryCenter) < 3.2;
     const nearKeyboard = camera.position.distanceTo(keyboardCenter) < 3.2;
@@ -3545,6 +3820,7 @@ function animate() {
       tickGingy(dt, camera.position), tickCrangler(dt, camera.position),
       ...elves.map((m) => tickElf(m, dt, camera.position)),
       tickKrampus(dt, camera.position),
+      tickSantaGod(dt, camera.position),
     ];
     const danger = Math.max(...results.map((r) => r.danger));
     vignette.style.opacity = String(danger);

@@ -186,6 +186,27 @@ ones in Badland, the Jungle, or Winter Wonderland can't wander, or be
 chased, out of their own area at all — once you're back near home,
 you're safe, mid-chase or not.
 
+## The summon shrine
+
+Tucked against the back wall of Winter Wonderland's first gingerbread
+house (the one closest to the entrance) is a stone altar with a floating
+orb on top — the one way to summon a god. Standing close to it charges it
+up the longer you stay; the orb (and the light it casts) shifts from a
+neon white at zero charge to blood red as it fills, so you can watch the
+summon coming without any HUD telling you. Walk away before it's full and
+it bleeds back down instead of holding your progress — this takes
+committing to, not just a tap.
+
+The only god for now: once the shrine hits full charge, the sky turns
+blood red in *every* map at once (not just Winter Wonderland), a
+distorted, off-key rendition of Jingle Bells starts playing, and a giant
+Santa chimp riding a sleigh flies in and comes straight for you — 1.2x
+your own speed, unbound by the 20-unit leash and zone walls everything
+else respects, so there's nowhere on the whole map that's safe from it
+mid-chase. It catches you eventually; once it does, the world resets back
+to normal same as any other catch — sky, music, and the shrine itself,
+ready to be charged again.
+
 ## Lessons carried over from Desolate Apes (goofy-horror)
 
 This project reuses the working parts of an earlier browser horror game
