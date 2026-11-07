@@ -56,7 +56,11 @@ const WALL_R = 120;
 // ever placed out here, so there's nothing left to collide with.
 const BADLAND_HALF = 40;
 const BADLAND_HOLE_HALF_W = 2.5; // shared by both the boundary wall's hole and Badland's own
-const BADLAND_X = WALL_R + 1 + BADLAND_HALF; // flush against the boundary wall's outer face
+// A winding tunnel (random turns, see buildWindingTunnel() further down)
+// now fills the gap between the two holes instead of them sitting flush
+// against each other -- TUNNEL_LEN is that gap's length.
+const TUNNEL_LEN = 30;
+const BADLAND_X = WALL_R + 1 + TUNNEL_LEN + BADLAND_HALF;
 const BADLAND_Z = 0;
 
 // Jungle: same idea as Badland now -- its own separate section entirely
@@ -70,7 +74,7 @@ const BADLAND_Z = 0;
 // rather than a flat plane, since it's now well past GROUND_EXTENT too.
 const JUNGLE_HALF = 35;
 const JUNGLE_HOLE_HALF_W = 2.5; // shared by both the boundary wall's hole and Jungle's own
-const JUNGLE_X = -(WALL_R + 1 + JUNGLE_HALF); // flush against the boundary wall's outer face
+const JUNGLE_X = -(WALL_R + 1 + TUNNEL_LEN + JUNGLE_HALF);
 const JUNGLE_Z = 0;
 
 /* ---------------- deterministic scatter (no Math.random so the forest is stable) ---------------- */
@@ -90,6 +94,18 @@ const rand = mulberry32(1337);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x000000);
 scene.fog = new THREE.FogExp2(0x000000, 0.028); // matches the sky so the fade-out has no visible seam
+
+// Sky/fog color smoothly lerps toward whichever of these three the player
+// is actually standing in (see the lerp in animate()) -- pitch black in
+// the forest, a dark sunrise orange in Badland, a dark blue in Jungle.
+const SKY_FOREST = new THREE.Color(0x000000);
+const SKY_BADLAND = new THREE.Color(0x4a1f06);
+const SKY_JUNGLE = new THREE.Color(0x060a1c);
+function skyTargetFor(x, z) {
+  if (Math.abs(x - BADLAND_X) <= BADLAND_HALF && Math.abs(z - BADLAND_Z) <= BADLAND_HALF) return SKY_BADLAND;
+  if (Math.abs(x - JUNGLE_X) <= JUNGLE_HALF && Math.abs(z - JUNGLE_Z) <= JUNGLE_HALF) return SKY_JUNGLE;
+  return SKY_FOREST;
+}
 
 const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.05, 260);
 camera.position.set(0, PLATFORM_H + EYE_H, -1);
@@ -167,6 +183,26 @@ function makeGrainTexture({ size = 96, dark = 150, light = 255, repeat = 6, blot
   tex.magFilter = THREE.NearestFilter;
   tex.minFilter = THREE.NearestFilter;
   tex.repeat.set(repeat, repeat);
+  return tex;
+}
+
+// A sign's lettering, same "drawn on a canvas, not a fetched image"
+// discipline as the grain textures above.
+function makeTextTexture(text, { width = 512, height = 160, bg = '#1a1510', fg = '#e8c77a' } = {}) {
+  const canvas = document.createElement('canvas');
+  canvas.width = width; canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, width, height);
+  ctx.strokeStyle = fg;
+  ctx.lineWidth = 6;
+  ctx.strokeRect(10, 10, width - 20, height - 20);
+  ctx.fillStyle = fg;
+  ctx.font = 'bold 72px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, width / 2, height / 2);
+  const tex = new THREE.CanvasTexture(canvas);
   return tex;
 }
 
@@ -336,6 +372,97 @@ function collidesAt(x, z) {
   }
 }
 
+// A small sign mounted on the wall's forest-facing surface, right above
+// each hole -- the only hint either gap exists at all, labelling it
+// before anyone actually walks through.
+function buildEntranceSign(x, z, normalX, text, fg) {
+  const tex = makeTextTexture(text, { fg });
+  const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8, side: THREE.DoubleSide });
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 1.0), mat);
+  sign.position.set(x, 5.3, z);
+  sign.rotation.y = normalX > 0 ? Math.PI / 2 : -Math.PI / 2;
+  scene.add(sign);
+}
+buildEntranceSign(WALL_R - 1.05, BADLAND_Z, -1, 'BADLAND', '#e8c77a');
+buildEntranceSign(-WALL_R + 1.05, JUNGLE_Z, 1, 'JUNGLE', '#9fe8c9');
+
+// A winding corridor between two points that share either the same x or
+// the same z -- the forest-side boundary wall hole and Badland's/Jungle's
+// own wall hole, in practice. Built as 5 straight legs with two 90-degree
+// jogs partway through (randomized length and left/right via rand()),
+// instead of one straight hallway. The second jog always exactly cancels
+// the first, so the path reaches the exact end point regardless of how
+// the jogs land -- no maze-solving needed, just pick random jogs and let
+// the last leg close the gap.
+function buildWindingTunnel(x0, z0, x1, z1, holeHalfW, wallH, mat) {
+  const dx = x1 - x0, dz = z1 - z0;
+  const dist = Math.hypot(dx, dz);
+  const fx = dx / dist, fz = dz / dist; // forward unit vector
+  const rx = -fz, rz = fx;              // right unit vector (90deg rotate)
+  const wallT = 0.5;
+
+  function segment(p0, p1) {
+    const sx = p1.x - p0.x, sz = p1.z - p0.z;
+    if (Math.hypot(sx, sz) < 0.05) return;
+    const alongX = Math.abs(sx) >= Math.abs(sz);
+    const minX = Math.min(p0.x, p1.x), maxX = Math.max(p0.x, p1.x);
+    const minZ = Math.min(p0.z, p1.z), maxZ = Math.max(p0.z, p1.z);
+    if (alongX) {
+      const cz = p0.z;
+      for (const sign of [-1, 1]) {
+        const wall = new THREE.Mesh(new THREE.BoxGeometry(maxX - minX + wallT * 2, wallH, wallT), mat);
+        wall.position.set((minX + maxX) / 2, wallH / 2, cz + sign * (holeHalfW + wallT / 2));
+        scene.add(wall);
+        const z0b = sign < 0 ? cz - holeHalfW - wallT : cz + holeHalfW;
+        boxColliders.push(new THREE.Box3(new THREE.Vector3(minX - wallT, 0, z0b), new THREE.Vector3(maxX + wallT, wallH, z0b + wallT)));
+      }
+      const floor = new THREE.Mesh(new THREE.BoxGeometry(maxX - minX + wallT * 2, 0.15, holeHalfW * 2), mat);
+      floor.position.set((minX + maxX) / 2, 0.08, cz);
+      scene.add(floor);
+      registerFlatZone(minX - wallT, maxX + wallT, cz - holeHalfW - wallT, cz + holeHalfW + wallT);
+      const ceil = new THREE.Mesh(new THREE.BoxGeometry(maxX - minX + wallT * 2, 0.2, holeHalfW * 2 + wallT * 2), mat);
+      ceil.position.set((minX + maxX) / 2, wallH, cz);
+      scene.add(ceil);
+      boxColliders.push(new THREE.Box3(new THREE.Vector3(minX - wallT, wallH, cz - holeHalfW - wallT), new THREE.Vector3(maxX + wallT, wallH + 0.3, cz + holeHalfW + wallT)));
+    } else {
+      const cx = p0.x;
+      for (const sign of [-1, 1]) {
+        const wall = new THREE.Mesh(new THREE.BoxGeometry(wallT, wallH, maxZ - minZ + wallT * 2), mat);
+        wall.position.set(cx + sign * (holeHalfW + wallT / 2), wallH / 2, (minZ + maxZ) / 2);
+        scene.add(wall);
+        const x0b = sign < 0 ? cx - holeHalfW - wallT : cx + holeHalfW;
+        boxColliders.push(new THREE.Box3(new THREE.Vector3(x0b, 0, minZ - wallT), new THREE.Vector3(x0b + wallT, wallH, maxZ + wallT)));
+      }
+      const floor = new THREE.Mesh(new THREE.BoxGeometry(holeHalfW * 2, 0.15, maxZ - minZ + wallT * 2), mat);
+      floor.position.set(cx, 0.08, (minZ + maxZ) / 2);
+      scene.add(floor);
+      registerFlatZone(cx - holeHalfW - wallT, cx + holeHalfW + wallT, minZ - wallT, maxZ + wallT);
+      const ceil = new THREE.Mesh(new THREE.BoxGeometry(holeHalfW * 2 + wallT * 2, 0.2, maxZ - minZ + wallT * 2), mat);
+      ceil.position.set(cx, wallH, (minZ + maxZ) / 2);
+      scene.add(ceil);
+      boxColliders.push(new THREE.Box3(new THREE.Vector3(cx - holeHalfW - wallT, wallH, minZ - wallT), new THREE.Vector3(cx + holeHalfW + wallT, wallH + 0.3, maxZ + wallT)));
+    }
+  }
+
+  const L1 = dist * (0.2 + rand() * 0.12);
+  const L2 = dist * (0.2 + rand() * 0.12);
+  const jogMag = 5 + rand() * 4;
+  const side = rand() < 0.5 ? 1 : -1;
+
+  const p0 = { x: x0, z: z0 };
+  const p1 = { x: x0 + fx * L1, z: z0 + fz * L1 };
+  const p2 = { x: p1.x + rx * jogMag * side, z: p1.z + rz * jogMag * side };
+  const p3 = { x: p2.x + fx * L2, z: p2.z + fz * L2 };
+  const p4 = { x: p3.x - rx * jogMag * side, z: p3.z - rz * jogMag * side };
+  const p5 = { x: x1, z: z1 };
+
+  segment(p0, p1);
+  segment(p1, p2);
+  segment(p2, p3);
+  segment(p3, p4);
+  segment(p4, p5);
+}
+
 /* ---------------- spawn perimeter: wooden stockade wall ---------------- */
 /* A ring of sharpened log wall around the treehouse/ramp, just inside the
  * SAFE_R monsters can't cross anyway -- a gate, framed by two posts and a
@@ -455,6 +582,20 @@ for (const [ox, oy, oz, r] of [[-4, PLATFORM_H + 5, -4, 4.2], [-1, PLATFORM_H + 
   const leaf = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 10), leafMat);
   leaf.position.set(ox, oy, oz);
   scene.add(leaf);
+}
+
+// A low ring of posts enclosing the tree's own base -- a small fenced
+// planter bed around the trunk instead of it just standing bare in the
+// open deck.
+{
+  const ringR = 2.1, posts = 14;
+  for (let i = 0; i < posts; i++) {
+    const a = (i / posts) * Math.PI * 2;
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.55, 6), woodDarkMat);
+    post.position.set(-4 + Math.cos(a) * ringR, PLATFORM_H + 0.275, -4 + Math.sin(a) * ringR);
+    scene.add(post);
+  }
+  addCircleCollider(-4, -4, ringR - 0.3);
 }
 
 // Railing around the open deck (every edge except the ramp gap on -z).
@@ -656,14 +797,19 @@ function createPeanutModel() {
 /* ---------------- Jungle: Stalker + Wanderer (same chimp factory again) ---------------- */
 
 function createStalkerModel() {
-  // "Whole body stretched 3x upwards" -- torsoLen is exactly that knob
-  // (Supersonic uses 2.4 for its own "stretched" look; this goes further).
-  // Near-black with pale glowing eyes, no other color on it at all -- it's
-  // meant to read as a shape at the edge of sight long before it's close.
-  return createChimpModel({
+  // torsoLen doubled again on top of the original stretch (3.0 -> 6.0),
+  // then the whole model scaled 3x on top of that -- same two-knob
+  // combo Hot Cheeto uses (its own proportions, then a flat scale over
+  // the top). Near-black with pale glowing eyes, no other color on it at
+  // all -- it's meant to read as a shape at the edge of sight long
+  // before it's close, now a genuinely huge one.
+  const g = createChimpModel({
     bodyColor: 0x05070a, eyeColor: 0xe4ffe8, eyeEmissiveIntensity: 3.2,
-    torsoLen: 3.0, headScale: 0.65, armLen: 0.55, roughness: 0.85,
+    torsoLen: 6.0, headScale: 0.65, armLen: 0.55, roughness: 0.85,
   });
+  g.scale.setScalar(3);
+  g.userData.hoverHeight *= 3;
+  return g;
 }
 
 function createWandererModel() {
@@ -843,6 +989,57 @@ function showBestiaryPage(i) {
 }
 showBestiaryPage(0);
 const bestiaryCenter = new THREE.Vector3(-4.0, PLATFORM_H + EYE_H, BESTIARY_Z);
+
+/* ---------------- old computer + keyboard (color/name customizer) ---------------- */
+/* An old CRT-style desk setup on the deck, in the one quadrant nothing
+ * else already uses (the alcove owns the northwest corner, the tree owns
+ * the southwest, the stilts sit at all four corners) -- standing close
+ * and pressing E opens a panel to change the first-person arms' color
+ * (a hue slider -- "a color scale", not a full Gorilla-Tag-style 3D
+ * picker, which this engine has no raycast-UI system to support) and set
+ * a display name, both persisted in localStorage. */
+
+const deskMat = new THREE.MeshStandardMaterial({ color: 0x3a2e22, roughness: 0.9 });
+const monitorMat = new THREE.MeshStandardMaterial({ color: 0xcac6b8, roughness: 0.7 });
+const screenMat = new THREE.MeshStandardMaterial({ color: 0x0a1a12, emissive: 0x1fae7a, emissiveIntensity: 0.9, roughness: 0.4 });
+const keyboardMat = new THREE.MeshStandardMaterial({ color: 0xb9b5a8, roughness: 0.8 });
+
+const DESK_X = 3, DESK_Z = 3;
+{
+  const topY = PLATFORM_H + 0.75;
+  const desk = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.08, 1.0), deskMat);
+  desk.position.set(DESK_X, topY, DESK_Z);
+  scene.add(desk);
+  for (const [lx, lz] of [[-0.75, -0.45], [0.75, -0.45], [-0.75, 0.45], [0.75, 0.45]]) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.75, 0.06), deskMat);
+    leg.position.set(DESK_X + lx, PLATFORM_H + 0.375, DESK_Z + lz);
+    scene.add(leg);
+  }
+  // Boxy old CRT body + a glowing screen face.
+  const monBody = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.45, 0.5), monitorMat);
+  monBody.position.set(DESK_X, topY + 0.265, DESK_Z - 0.15);
+  scene.add(monBody);
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.3), screenMat);
+  screen.position.set(DESK_X, topY + 0.265, DESK_Z - 0.15 + 0.26);
+  scene.add(screen);
+  const screenGlow = new THREE.PointLight(0x2fd69a, 0.6, 3, 2);
+  screenGlow.position.set(DESK_X, topY + 0.4, DESK_Z);
+  scene.add(screenGlow);
+  // Keyboard, out front where you'd actually reach to press it.
+  const keyboard = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.04, 0.16), keyboardMat);
+  keyboard.position.set(DESK_X, topY + 0.06, DESK_Z + 0.3);
+  scene.add(keyboard);
+  for (let row = 0; row < 3; row++) {
+    const key = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.015, 0.03), deskMat);
+    key.position.set(DESK_X, topY + 0.085, DESK_Z + 0.24 + row * 0.045);
+    scene.add(key);
+  }
+  boxColliders.push(new THREE.Box3(
+    new THREE.Vector3(DESK_X - 0.85, PLATFORM_H, DESK_Z - 0.5),
+    new THREE.Vector3(DESK_X + 0.85, PLATFORM_H + 1.1, DESK_Z + 0.5)
+  ));
+}
+const keyboardCenter = new THREE.Vector3(DESK_X, PLATFORM_H + EYE_H, DESK_Z + 0.3);
 
 /* ---------------- forest: trees ---------------- */
 
@@ -1050,12 +1247,41 @@ const cactusMat = new THREE.MeshStandardMaterial({ color: 0x3f7d4f, roughness: 0
 // only way in is a hole in the west wall, lined up with the boundary
 // wall's own hole a few units away across a short stretch of open ground
 // -- walk through one and you're immediately at the other.
-const BADLAND_WALL_H = 4.5;
+// Shared by Badland's and Jungle's own perimeter walls: a "rugged" wall
+// run built from several shorter segments with independently randomized
+// heights (an uneven, weathered skyline) instead of one perfectly
+// flat-topped box. The collider stays a single uniform box at the full
+// target height regardless of that jagged top -- it's visual only, never
+// a gap a player could climb through.
+function buildRuggedWall(x0, x1, z0, z1, baseH, mat) {
+  const alongX = (x1 - x0) >= (z1 - z0);
+  if (alongX) {
+    let cx = x0;
+    while (cx < x1 - 0.01) {
+      const segLen = Math.min(2 + rand() * 2.5, x1 - cx);
+      const segH = baseH * (0.78 + rand() * 0.5);
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(segLen, segH, z1 - z0), mat);
+      mesh.position.set(cx + segLen / 2, segH / 2, (z0 + z1) / 2);
+      scene.add(mesh);
+      cx += segLen;
+    }
+  } else {
+    let cz = z0;
+    while (cz < z1 - 0.01) {
+      const segLen = Math.min(2 + rand() * 2.5, z1 - cz);
+      const segH = baseH * (0.78 + rand() * 0.5);
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, segH, segLen), mat);
+      mesh.position.set((x0 + x1) / 2, segH / 2, cz + segLen / 2);
+      scene.add(mesh);
+      cz += segLen;
+    }
+  }
+  boxColliders.push(new THREE.Box3(new THREE.Vector3(x0, 0, z0), new THREE.Vector3(x1, baseH, z1)));
+}
+
+const BADLAND_WALL_H = 9.0;
 function badlandWallBox(x0, x1, y0, y1, z0, z1) {
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0), woodDarkMat);
-  mesh.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
-  scene.add(mesh);
-  boxColliders.push(new THREE.Box3(new THREE.Vector3(x0, y0, z0), new THREE.Vector3(x1, y1, z1)));
+  buildRuggedWall(x0, x1, z0, z1, y1, woodDarkMat);
 }
 {
   const bMinX = BADLAND_X - BADLAND_HALF, bMaxX = BADLAND_X + BADLAND_HALF;
@@ -1071,6 +1297,10 @@ function badlandWallBox(x0, x1, y0, y1, z0, z1) {
   lintel.position.set(bMinX + wallT / 2, BADLAND_WALL_H - 0.6, BADLAND_Z);
   scene.add(lintel);
 }
+
+// The winding tunnel connecting the forest's own boundary-wall hole to
+// this one.
+buildWindingTunnel(WALL_R + 1, BADLAND_Z, BADLAND_X - BADLAND_HALF, BADLAND_Z, BADLAND_HOLE_HALF_W, 4.5, woodDarkMat);
 
 // Hollow false-front buildings -- walls + a doorway + a roof you can see
 // under but never collide with (no ceiling anywhere else in this game
@@ -1169,12 +1399,9 @@ const jungleWallMat = new THREE.MeshStandardMaterial({ color: 0x3f4a35, roughnes
 // Badland's wooden one -- entrance is a hole in the east wall, flush
 // against the boundary wall's own hole a few units away on the other
 // side of the gap.
-const JUNGLE_WALL_H = 5.0;
+const JUNGLE_WALL_H = 10.0;
 function jungleWallBox(x0, x1, y0, y1, z0, z1) {
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0), jungleWallMat);
-  mesh.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
-  scene.add(mesh);
-  boxColliders.push(new THREE.Box3(new THREE.Vector3(x0, y0, z0), new THREE.Vector3(x1, y1, z1)));
+  buildRuggedWall(x0, x1, z0, z1, y1, jungleWallMat);
 }
 {
   const jMinX = JUNGLE_X - JUNGLE_HALF, jMaxX = JUNGLE_X + JUNGLE_HALF;
@@ -1190,6 +1417,10 @@ function jungleWallBox(x0, x1, y0, y1, z0, z1) {
   lintel.position.set(jMaxX - wallT / 2, JUNGLE_WALL_H - 0.6, JUNGLE_Z);
   scene.add(lintel);
 }
+
+// The winding tunnel connecting the forest's own boundary-wall hole to
+// this one.
+buildWindingTunnel(-(WALL_R + 1), JUNGLE_Z, JUNGLE_X + JUNGLE_HALF, JUNGLE_Z, JUNGLE_HOLE_HALF_W, 4.5, jungleWallMat);
 
 // Temples: a stepped stone exterior with a single south-facing doorway
 // into a main room, then a corridor, then a windowless back chamber --
@@ -1297,29 +1528,66 @@ function insideAnyTemple(x, z) {
   return false;
 }
 
+const vineMat = new THREE.MeshStandardMaterial({ color: 0x33551f, roughness: 0.95 });
+
 // Dense jungle canopy -- layered, broader leaf clusters and a lighter
 // green than the forest's own bare trees, so this patch of ground reads
-// as a different kind of place at a glance, not just "more trees".
+// as a different kind of place at a glance, not just "more trees". Real
+// branches too (same makeBranch() the forest's own trees use -- a
+// climbable platform, not just decoration), plus vines hanging down
+// from somewhere in the canopy.
+const JUNGLE_TREE_SCALE = 3;
 function makeJungleTree(x, z) {
   const h = groundHeight(x, z);
-  const trunkH = 3.5 + rand() * 2;
-  const r = 0.28 + rand() * 0.15;
+  const trunkH = (3.5 + rand() * 2) * JUNGLE_TREE_SCALE;
+  const r = (0.28 + rand() * 0.15) * JUNGLE_TREE_SCALE;
   const trunk = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.75, r, trunkH, 7), jungleTrunkMat);
   trunk.position.set(x, h + trunkH / 2, z);
   scene.add(trunk);
   addCircleCollider(x, z, r + 0.2);
+
+  const canopy = [];
   for (const [ox, oy, oz, rad] of [
-    [0, trunkH + 0.4, 0, 1.3 + rand() * 0.4],
-    [0.6, trunkH + 0.1, 0.3, 0.9 + rand() * 0.3],
-    [-0.5, trunkH + 0.3, -0.4, 0.9 + rand() * 0.3],
+    [0, trunkH + 0.4 * JUNGLE_TREE_SCALE, 0, (1.3 + rand() * 0.4) * JUNGLE_TREE_SCALE],
+    [0.6 * JUNGLE_TREE_SCALE, trunkH + 0.1 * JUNGLE_TREE_SCALE, 0.3 * JUNGLE_TREE_SCALE, (0.9 + rand() * 0.3) * JUNGLE_TREE_SCALE],
+    [-0.5 * JUNGLE_TREE_SCALE, trunkH + 0.3 * JUNGLE_TREE_SCALE, -0.4 * JUNGLE_TREE_SCALE, (0.9 + rand() * 0.3) * JUNGLE_TREE_SCALE],
   ]) {
     const leaf = new THREE.Mesh(new THREE.SphereGeometry(rad, 8, 7), jungleLeafMat);
     leaf.position.set(x + ox, h + oy, z + oz);
     scene.add(leaf);
+    canopy.push({ x: x + ox, y: h + oy, z: z + oz, rad });
+  }
+
+  // One or two real branches, same technique (and climbable platform)
+  // as the forest's own bare trees.
+  const branchCount = rand() < 0.4 ? 2 : 1;
+  for (let b = 0; b < branchCount; b++) {
+    const angle = rand() * Math.PI * 2;
+    const len = (1.6 + rand() * 1.3) * JUNGLE_TREE_SCALE;
+    const branchH = h + trunkH * (0.4 + rand() * 0.45);
+    const tilt = (rand() - 0.5) * 0.6 * JUNGLE_TREE_SCALE;
+    const ex = x + Math.cos(angle) * (r + len);
+    const ez = z + Math.sin(angle) * (r + len);
+    makeBranch(x + Math.cos(angle) * r, branchH, z + Math.sin(angle) * r, ex, branchH + tilt, ez);
+  }
+
+  // Vines hanging straight down from somewhere in the canopy.
+  const vineCount = 1 + Math.floor(rand() * 3);
+  for (let v = 0; v < vineCount; v++) {
+    const from = canopy[Math.floor(rand() * canopy.length)];
+    const vineLen = trunkH * (0.4 + rand() * 0.5);
+    const vx = from.x + (rand() - 0.5) * from.rad;
+    const vz = from.z + (rand() - 0.5) * from.rad;
+    const bottomY = Math.max(h + 0.3, from.y - vineLen);
+    const actualLen = from.y - bottomY;
+    if (actualLen < 0.5) continue;
+    const vine = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.05, actualLen, 5), vineMat);
+    vine.position.set(vx, bottomY + actualLen / 2, vz);
+    scene.add(vine);
   }
 }
 let jungleTreesPlaced = 0;
-while (jungleTreesPlaced < 75) {
+while (jungleTreesPlaced < 225) {
   const x = JUNGLE_X + (rand() - 0.5) * JUNGLE_HALF * 1.6;
   const z = JUNGLE_Z + (rand() - 0.5) * JUNGLE_HALF * 1.6;
   if (insideAnyTemple(x, z)) continue;
@@ -1474,7 +1742,7 @@ supersonic.group.position.copy(supersonic.route[0]);
 // turn almost instantly; now it's kinda bad at it (same register as
 // Supersonic's old self vs. Hot Cheeto's new one) -- circling around it
 // works, same as Hot Cheeto.
-const SUPERSONIC_SPEED = RUN_SPEED * 1.2;
+const SUPERSONIC_SPEED = RUN_SPEED * 1.05;
 const SUPERSONIC_TURN_RATE = 2.5; // rad/sec
 // It's also short -- no legs, torso tapering straight down -- so a jump
 // timed right actually clears its back instead of just failing to help.
@@ -1571,7 +1839,7 @@ peanut.group.position.copy(peanut.route[0]);
 // Clearly slower than you, but turns on a dime (even faster than
 // Supersonic) -- it'll never win a straight chase, but it corners
 // perfectly, so don't expect to lose it by weaving either.
-const PEANUT_SPEED = RUN_SPEED * 0.85;
+const PEANUT_SPEED = RUN_SPEED * 0.7;
 const PEANUT_TURN_RATE = 12.0; // rad/sec
 
 function tickPeanut(dt, playerPos) {
@@ -1677,7 +1945,7 @@ function makeJungleMonster(make, catchR) {
 // than anything else out there (seenRange 45 vs. everyone else's 16-24) --
 // the whole point is that outrunning it only works if you saw it first.
 const STALKER_SPEED = RUN_SPEED * 1.5, STALKER_TURN_RATE = 2.2;
-const stalker = makeJungleMonster(createStalkerModel, 1.3);
+const stalker = makeJungleMonster(createStalkerModel, 3.5); // 3x the model, so a bigger forgiving hitbox to match
 // Its own spawn point is picked the same way every roam target is (see
 // junglePoint()), so it can land inside a temple/dungeon box just like
 // any other roam target can -- push it back out once, the same way every
@@ -1880,6 +2148,7 @@ function playScare(type) {
 // and modules are blocked entirely over file://. This is a small enough
 // surface (request/track lock, apply mouse deltas) to just own outright.
 const blocker = document.getElementById('blocker');
+let customizeOpen = false; // the keyboard-prop color/name panel -- pauses movement/ticking while up
 
 function isLocked() { return document.pointerLockElement === renderer.domElement; }
 
@@ -1928,12 +2197,65 @@ document.addEventListener('pointerlockchange', () => {
     fallbackLook = false;
     dragging = false;
     relockHint.classList.remove('show');
-  } else if (!fallbackLook) {
+  } else if (!fallbackLook && !customizeOpen) {
+    // Exiting lock to open the customize panel shouldn't also pop the
+    // "click to drop in" pause screen behind it.
     blocker.style.display = 'flex';
   }
 });
 document.addEventListener('pointerlockerror', () => {
   enterFallbackLook();
+});
+
+/* ---------------- customize panel (color/name, opened from the keyboard prop) ---------------- */
+
+const customizePanel = document.getElementById('customize-panel');
+const hueSlider = document.getElementById('customize-hue');
+const nameInput = document.getElementById('customize-name');
+const customizeDoneBtn = document.getElementById('customize-done');
+const nameTag = document.getElementById('player-name-tag');
+
+// null until the player actually customizes once -- leaves armMat at its
+// originally authored brown instead of forcing hue 0 (red) by default.
+let playerHue = null;
+let playerName = '';
+try {
+  const savedHue = localStorage.getItem('hollowtread_hue');
+  const savedName = localStorage.getItem('hollowtread_name');
+  if (savedHue !== null) playerHue = parseFloat(savedHue);
+  if (savedName) playerName = savedName;
+} catch (err) { /* localStorage unavailable (private mode, etc.) -- just use defaults */ }
+if (playerHue !== null) armMat.color.setHSL(playerHue / 360, 0.65, 0.5);
+hueSlider.value = String(playerHue !== null ? playerHue : 0);
+nameInput.value = playerName;
+if (playerName) nameTag.textContent = playerName;
+
+function openCustomizePanel() {
+  customizeOpen = true;
+  customizePanel.classList.add('show');
+  if (isLocked()) document.exitPointerLock();
+  hueSlider.value = String(playerHue !== null ? playerHue : 0);
+  nameInput.value = playerName;
+}
+function closeCustomizePanel() {
+  customizeOpen = false;
+  customizePanel.classList.remove('show');
+  attemptLock();
+}
+hueSlider.addEventListener('input', () => {
+  playerHue = parseFloat(hueSlider.value);
+  armMat.color.setHSL(playerHue / 360, 0.65, 0.5);
+});
+nameInput.addEventListener('input', () => {
+  playerName = nameInput.value.slice(0, 16);
+});
+customizeDoneBtn.addEventListener('click', () => {
+  try {
+    localStorage.setItem('hollowtread_hue', String(playerHue !== null ? playerHue : 0));
+    localStorage.setItem('hollowtread_name', playerName);
+  } catch (err) { /* localStorage unavailable -- the choice just won't survive a reload */ }
+  nameTag.textContent = playerName || '';
+  closeCustomizePanel();
 });
 
 renderer.domElement.addEventListener('mousedown', () => { if (fallbackLook) dragging = true; });
@@ -1942,17 +2264,25 @@ document.addEventListener('mousemove', (e) => {
   if (isLocked() || (fallbackLook && dragging)) applyLookDelta(e.movementX, e.movementY);
 });
 document.addEventListener('keydown', (e) => {
+  if (e.code === 'Escape' && customizeOpen) {
+    closeCustomizePanel();
+    return;
+  }
   if (e.code === 'Escape' && fallbackLook) {
     fallbackLook = false;
     blocker.style.display = 'flex';
   }
+  if (customizeOpen) return; // typing in the name field shouldn't also trigger game shortcuts
   if (e.code === 'KeyE' && camera.position.distanceTo(bestiaryCenter) < 3.2) {
     showBestiaryPage(bestiaryPageIndex + 1);
+  } else if (e.code === 'KeyE' && camera.position.distanceTo(keyboardCenter) < 2.5) {
+    openCustomizePanel();
   }
 });
 
 const keys = { w: false, a: false, s: false, d: false, shift: false };
 document.addEventListener('keydown', (e) => {
+  if (customizeOpen) return; // typing a name shouldn't move the player or jump
   switch (e.code) {
     case 'KeyW': case 'ArrowUp': keys.w = true; break;
     case 'KeyS': case 'ArrowDown': keys.s = true; break;
@@ -2260,10 +2590,25 @@ function animate() {
     const t = (now - scareStart) / 1000;
     const duration = SCARE_DURATION[scareType] || 0.6;
     updateScareCamera(Math.min(t / duration, 1), t);
-  } else if (isLocked() || fallbackLook) {
+  } else if ((isLocked() || fallbackLook) && !customizeOpen) {
     movePlayer(dt);
 
-    interactHint.classList.toggle('show', camera.position.distanceTo(bestiaryCenter) < 3.2);
+    const skyTarget = skyTargetFor(camera.position.x, camera.position.z);
+    const skyT = Math.min(dt * 1.2, 1);
+    scene.background.lerp(skyTarget, skyT);
+    scene.fog.color.lerp(skyTarget, skyT);
+
+    const nearBestiary = camera.position.distanceTo(bestiaryCenter) < 3.2;
+    const nearKeyboard = camera.position.distanceTo(keyboardCenter) < 2.5;
+    if (nearBestiary) {
+      interactHint.textContent = 'Press E to switch map';
+      interactHint.classList.add('show');
+    } else if (nearKeyboard) {
+      interactHint.textContent = 'Press E to customize';
+      interactHint.classList.add('show');
+    } else {
+      interactHint.classList.remove('show');
+    }
 
     const results = [
       tickSupersonic(dt, camera.position), tickHotCheeto(dt, camera.position),

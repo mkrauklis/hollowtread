@@ -25,13 +25,25 @@
   <div id="hud">
     <div class="top-left">
       <div>HOLLOWTREAD</div>
+      <div id="player-name-tag"></div>
     </div>
-    <div class="hint">WASD move · mouse look · Space jump · Shift sprint · E switch bestiary page · jump pads glow teal</div>
+    <div class="hint">WASD move · mouse look · Space jump · Shift sprint · E to interact · jump pads glow teal</div>
     <div id="relock-hint">Mouse not locked — click to try again</div>
     <div id="interact-hint">Press E to switch map</div>
   </div>
   <div id="dread-vignette"></div>
   <div id="jumpscare-flash"></div>
+
+  <div id="customize-panel">
+    <div class="customize-box">
+      <h2>Customize</h2>
+      <label for="customize-hue">Color</label>
+      <input type="range" id="customize-hue" min="0" max="360" value="0">
+      <label for="customize-name">Name</label>
+      <input type="text" id="customize-name" maxlength="16" placeholder="Your name" autocomplete="off">
+      <button id="customize-done">Done</button>
+    </div>
+  </div>
 
   <div id="blocker">
     <div class="msg">
@@ -57,6 +69,6 @@
 <!-- cache-bust on every deploy: bump this version string any time
      js/world.js changes, so a returning player's browser can't keep
      running a stale cached copy against the current markup/CSS. -->
-<script src="js/world.js?v=19" defer></script>
+<script src="js/world.js?v=20" defer></script>
 </body>
 </html>
