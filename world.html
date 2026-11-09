@@ -43,11 +43,30 @@
 
   <div id="customize-panel">
     <div class="customize-box">
-      <h2>Customize</h2>
-      <label for="customize-hue">Color</label>
-      <input type="range" id="customize-hue" min="0" max="360" value="0">
-      <label for="customize-name">Name</label>
-      <input type="text" id="customize-name" maxlength="16" placeholder="Your name" autocomplete="off">
+      <div class="customize-tabs">
+        <button class="customize-tab active" id="tab-appearance" data-tab="appearance">Appearance</button>
+        <button class="customize-tab" id="tab-bestiary" data-tab="bestiary">Bestiary</button>
+      </div>
+
+      <div class="customize-page" data-page="appearance">
+        <h2>Customize</h2>
+        <label for="customize-hue">Color</label>
+        <input type="range" id="customize-hue" min="0" max="360" value="0">
+        <label for="customize-name">Name</label>
+        <input type="text" id="customize-name" maxlength="16" placeholder="Your name" autocomplete="off">
+      </div>
+
+      <div class="customize-page" data-page="bestiary" hidden>
+        <h2 id="bestiary-zone">THIS FOREST</h2>
+        <canvas id="bestiary-canvas" width="252" height="170"></canvas>
+        <div id="bestiary-name">—</div>
+        <div class="bestiary-nav">
+          <button id="bestiary-prev" aria-label="Previous">&lt;</button>
+          <span id="bestiary-count">1 / 1</span>
+          <button id="bestiary-next" aria-label="Next">&gt;</button>
+        </div>
+      </div>
+
       <button id="customize-done">Done</button>
     </div>
   </div>
@@ -58,9 +77,9 @@
       <p>
         Home is the treehouse — safe, lit, yours. Everything past the ramp is one
         unbroken, free-roam forest: giant trees, connected platforms and
-        bridges, jump pads, pumpkins, and three things that don't live in the
-        bestiary room by choice. No objective — just you, the dark, and
-        however far you want to go.
+        bridges, jump pads, pumpkins, and a few things the old computer's
+        bestiary doesn't list, by choice. No objective — just you, the dark,
+        and however far you want to go.
       </p>
       <p id="start-hint">Click to drop in. Esc to pause. (If your browser won't lock the mouse, click-and-drag to look instead.)</p>
     </div>
@@ -76,6 +95,6 @@
 <!-- cache-bust on every deploy: bump this version string any time
      js/world.js changes, so a returning player's browser can't keep
      running a stale cached copy against the current markup/CSS. -->
-<script src="js/world.js?v=28" defer></script>
+<script src="js/world.js?v=35" defer></script>
 </body>
 </html>

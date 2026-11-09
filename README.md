@@ -32,25 +32,26 @@ carved to a point along the top, rings the yard, with four open gates (one
 at each compass point — the south one's right where the ramp down from the
 deck lands) so leaving never means walking the fence looking for a way out.
 
-Past the wall: **the forest** — giant rolling hills, oversized bare trees
-(real climbable branches), several loops of connected elevated platforms and
-bridges, glowing jump pads, and autumn clutter (pumpkins, leaf piles,
+Past the wall: **the forest** — giant rolling hills, towering bare trees
+(real climbable branches), several loops of connected elevated platforms —
+raised well past a normal jump's reach now, so a jump pad or a bridge is
+the real way up — linked by bent, kinked bridges instead of dead-straight
+planks, glowing jump pads, and autumn clutter (pumpkins, leaf piles,
 scarecrows) scattered out toward a perimeter wall that rings the whole
 forest. A small sign is mounted above each gap, but nothing points you
 toward any of them in the first place. That wall isn't fully sealed —
-three single holes, one on each remaining side, each lead into a winding
-tunnel (real turns, lit and widened into an actual turning bay at each
-one so the bend itself is visible, not a blind corner — the exact path is
-different every time the page loads) that comes out into a section that
-doesn't share the forest's own ground at all. On the east side, behind a
-sign reading **BADLAND**: a desert town behind its own perimeter wall
-with a matching hole at the far end of the tunnel, hollow walk-in western
-buildings, cactus scrub, and air that fades to a dark sunrise orange the
-moment you're actually inside. On the west side, behind a sign reading
-**JUNGLE**: small hills, dense broad-leafed canopy strung with hanging
-vines, and two stone temples, each with a windowless back chamber (a real
-dungeon, not just a bigger room, and genuinely dark — nothing lights it
-but your own flashlight) down a corridor past the main entrance — the sky
+three single holes, one on each remaining side, each lead into a round,
+winding tunnel (a real circular bore, lit, with real turns through a
+matching round turning bay at each one so the bend itself is visible, not
+a blind corner — the exact path is different every time the page loads)
+that comes out into a section that doesn't share the forest's own ground
+at all. On the east side, behind a sign reading **BADLAND**: a desert
+town behind its own perimeter wall with a matching hole at the far end of
+the tunnel, hollow walk-in western buildings, cactus scrub, and air that
+fades to a dark sunrise orange the moment you're actually inside. On the
+west side, behind a sign reading **JUNGLE**: small hills, dense
+broad-leafed canopy strung with hanging vines, and two stone temples,
+single-room and windowless, lit only by your own flashlight — the sky
 here fades to a dark blue instead. On the north side, behind a sign
 reading **WINTER WONDERLAND**: the biggest of the three by a clear
 margin — rolling snow hills, thickening fog, a lamp-lit brick path, candy
@@ -59,26 +60,28 @@ piles of wrapped presents, a frozen pond, and three gingerbread houses you
 can walk into — under a pale, overcast-white sky instead of the forest's
 black one.
 
-A small alcove on the deck (the **bestiary room**) holds miniature, slowly
-turning models of the things loose out there, labelled by name, on
-pedestals that don't move. Which models are *on* them does: standing close
-and pressing **E** cycles to the next area's roster, forest first. It's
-purely informational either way — nothing in that room can catch you.
-
-An old desk sits in another corner of the deck, an equally old CRT monitor
+An old desk sits in a corner of the deck, an equally old CRT monitor
 glowing on top of it. Stand at the keyboard and press **E** to open a
-panel: a hue slider for the color of your own first-person arms, and a
-name field that shows up under the HOLLOWTREAD logo in the corner. Both
-persist in your browser (`localStorage`) across visits.
+panel with two tabs: **Appearance** (a hue slider for the color of your
+own first-person arms, and a name field that shows up under the
+HOLLOWTREAD logo in the corner — both persist in your browser,
+`localStorage`, across visits) and **Bestiary** — a real, live, slowly
+turning 3D render of every monster in the game (rendered to its own small
+canvas right there in the panel, the same procedural models every
+creature in the world actually uses, not a picture), Prev/Next buttons to
+page through the roster. Catch is: you can't actually *see* one until
+you've died to it — an entry you haven't been caught by yet shows as a
+dark, featureless silhouette with a glowing "?" and no name, unlocking
+permanently (saved in `localStorage`) the instant whatever it is gets you
+for real. Nothing in the panel itself can catch you either way.
 
 ## Controls
 
 `W` `A` `S` `D` to move, mouse to look, **Space** to jump, **Shift** to
-sprint, **E** to interact — switches the bestiary's page or opens the
-customize panel, whichever you're standing closer to. Click the start
-screen to lock the pointer; `Esc` releases it (or closes the customize
-panel, if that's open instead). Walking onto one of the teal jump pads
-launches you hard into the air.
+sprint, **E** to interact — opens the computer panel when you're standing
+at the keyboard. Click the start screen to lock the pointer; `Esc`
+releases it (or closes the computer panel, if that's open instead).
+Walking onto one of the teal jump pads launches you hard into the air.
 
 ## Objective
 
@@ -138,20 +141,20 @@ by finding the one hole in the forest's own outer perimeter wall on its
 west side, through its own winding tunnel, to the matching hole in the
 Jungle's own rugged mossy stone wall at the far end. Small hills, dense
 broad-leafed canopy with vines hanging down out of it, real climbable
-branches on the trees same as the forest's own, and two stone temples. The
-sky fades to a dark blue once you're inside.
+branches on the trees same as the forest's own, and two single-room stone
+temples, each windowless and lit only by your own flashlight. The sky
+fades to a dark blue once you're inside.
 
 **Stalker** — a chimp whose whole body has been stretched far upward and
 then scaled up again on top of that, genuinely huge, near-black with pale
 glowing eyes. It can spot you from much farther off than anything else out
 there, but it's slower than you (0.75x your speed) — but it can't follow
-you into either temple or the dungeon behind one; reaching a doorway is an
-instant, total out.
+you into either temple; reaching a doorway is an instant, total out.
 
 **Wanderer** — three of them, dark grey chimps with no face at all (no
 eyes, no mouth, nothing looking back). Slower than you (0.75x your speed),
-and unlike Stalker, nothing stops one from following you through a temple
-doorway and all the way back into the dungeon chamber behind it.
+and unlike Stalker, nothing stops one from following you in through a
+temple doorway.
 
 ### Winter Wonderland (hidden, past the forest's own north wall)
 
@@ -203,9 +206,11 @@ distorted, off-key rendition of Jingle Bells starts playing, and a giant
 Santa chimp riding a sleigh flies in and comes straight for you — 1.2x
 your own speed, unbound by the 20-unit leash and zone walls everything
 else respects, so there's nowhere on the whole map that's safe from it
-mid-chase. It catches you eventually; once it does, the world resets back
-to normal same as any other catch — sky, music, and the shrine itself,
-ready to be charged again.
+mid-chase, except the house the shrine itself lives in — that one stays a
+safe zone even from Santa. Getting caught by something else while the
+event is still going doesn't end it; only Santa's own catch does, sky,
+music, and the shrine resetting back to normal, ready to be charged
+again.
 
 ## Lessons carried over from Desolate Apes (goofy-horror)
 
@@ -220,8 +225,9 @@ rather than re-deriving them:
   runs" has to mean *any* file, including just double-clicking it.
 - **A bestiary belongs *in* the game, not as a separate page.** An earlier
   attempt at a standalone "monsterpedia" page got cut — it was redundant
-  and easy to let go stale. Putting miniatures in a safe room inside the
-  world itself keeps it discoverable and in-context instead.
+  and easy to let go stale. A real in-world computer you walk up to (now
+  doubling as the bestiary, after starting as pedestals in their own
+  room) keeps it discoverable and in-context instead.
 - **Danger communicated visually, not just by distance.** A red vignette
   that intensifies as a threat closes in gives a constant, readable warning
   regardless of whether you've spotted the thing causing it yet.

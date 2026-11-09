@@ -6,9 +6,9 @@
 
 /* ----------------------------------------------------------------------
  * Hollowtread — free roam, no objective. Spawn is a treehouse (safe zone,
- * holds the bestiary alcove); everything below it — hills, trees, jump
- * pads, the things that hunt at night — is one connected ground, no level
- * breaks, no loading screens.
+ * holds the old computer desk, which doubles as the bestiary now); below
+ * it — hills, trees, jump pads, the things that hunt at night — is one
+ * connected ground, no level breaks, no loading screens.
  * ------------------------------------------------------------------- */
 
 // Everything is wrapped in boot() and only invoked once `THREE` genuinely
@@ -273,14 +273,21 @@ const hills = [
   { x: JUNGLE_X + 8, z: JUNGLE_Z - 18, amp: 4, r: 9 },
   { x: JUNGLE_X - 5, z: JUNGLE_Z + 20, amp: 5, r: 9 },
   // Winter Wonderland's own snow hills -- gentle drifts, not real
-  // mountains (amp 7-12, between Jungle's small bumps and the forest's
-  // big ones), spread around WINTER_X/Z. Gingerbread-house interiors and
-  // the tunnel mouth stay flat regardless, since the snow ground mesh
-  // below is flatZone-aware the same way the forest's and Jungle's are.
-  { x: WINTER_X - 35, z: WINTER_Z + 5, amp: 10, r: 22 },
-  { x: WINTER_X + 30, z: WINTER_Z + 30, amp: 12, r: 24 },
-  { x: WINTER_X - 10, z: WINTER_Z + 50, amp: 8, r: 20 },
-  { x: WINTER_X + 40, z: WINTER_Z - 25, amp: 7, r: 18 },
+  // mountains (amp 7-10, between Jungle's small bumps and the forest's
+  // big ones), pushed well out toward the corners of the map (90-100+
+  // units out) so they can't loom over anything placed near the middle.
+  // The first version of these sat only 15-20 units from the summon
+  // house (WINTER_X-18, WINTER_Z-10) -- close enough, combined with a
+  // 10-unit amplitude, for the *surrounding* terrain to rise taller than
+  // the house's own 4-unit walls, which is why the house looked "built
+  // into the ground" despite its own flatZone-forced floor staying flat.
+  // Each of these is now kept at least ~2.1x its own radius from every
+  // house, the frozen pond, and the brick path, the distance past which
+  // a gaussian bump has decayed under a unit of height.
+  { x: WINTER_X - 85, z: WINTER_Z - 50, amp: 8, r: 18 },
+  { x: WINTER_X + 88, z: WINTER_Z + 38, amp: 10, r: 18 },
+  { x: WINTER_X - 65, z: WINTER_Z + 75, amp: 7, r: 16 },
+  { x: WINTER_X + 55, z: WINTER_Z - 78, amp: 9, r: 18 },
 ];
 
 function baseHillHeight(x, z) {
@@ -353,6 +360,21 @@ const hoppableColliders = []; // { circle: bool, ...bounds, maxY }
 function addCircleCollider(x, z, r) { circleColliders.push({ x, z, r }); }
 function addHoppableCircle(x, z, r, maxY) { hoppableColliders.push({ circle: true, x, z, r, maxY }); }
 
+// The circular tunnels (see makeCorridorBuilder) aren't walled with boxes
+// at all -- a round tube has no flat sides to put a wallBox on. Instead
+// each straight leg and each turn's round bay registers itself here, and
+// collidesAt() below treats them as containment, not obstruction: get
+// near one and you're blocked UNLESS you're still within its own radius,
+// the exact inverse of every other collider in this file. Two overlapping
+// tubes/rooms at a shared turn point just both report "contained" there,
+// which is what makes stepping from one into the next seamless.
+const tunnelTubes = []; // { x0, z0, x1, z1, r } -- straight legs
+const tunnelRooms = []; // { x, z, r } -- round turn bays
+// How far past a tube/room's own radius its containment check still
+// applies -- close enough to be "obviously trying to walk its length",
+// far enough that it never reaches out and clips unrelated open terrain.
+const TUNNEL_NEAR_MARGIN = 3;
+
 function collidesAt(x, z, footY = -Infinity) {
   for (const c of circleColliders) {
     const dx = x - c.x, dz = z - c.z;
@@ -369,6 +391,27 @@ function collidesAt(x, z, footY = -Infinity) {
       if (dx * dx + dz * dz < (h.r + PLAYER_R) * (h.r + PLAYER_R)) return true;
     }
   }
+
+  let nearTunnel = false;
+  for (const t of tunnelTubes) {
+    const dx = t.x1 - t.x0, dz = t.z1 - t.z0;
+    const lenSq = dx * dx + dz * dz;
+    let tt = lenSq > 1e-6 ? ((x - t.x0) * dx + (z - t.z0) * dz) / lenSq : 0;
+    tt = Math.max(0, Math.min(1, tt));
+    const cx = t.x0 + dx * tt, cz = t.z0 + dz * tt;
+    const dist = Math.hypot(x - cx, z - cz);
+    if (dist > t.r + TUNNEL_NEAR_MARGIN) continue;
+    nearTunnel = true;
+    if (dist <= t.r - PLAYER_R) return false; // inside this tube -- walkable regardless of anything else nearby
+  }
+  for (const r of tunnelRooms) {
+    const dist = Math.hypot(x - r.x, z - r.z);
+    if (dist > r.r + TUNNEL_NEAR_MARGIN) continue;
+    nearTunnel = true;
+    if (dist <= r.r - PLAYER_R) return false;
+  }
+  if (nearTunnel) return true; // close to a tube/room but outside its own radius -- blocked
+
   return false;
 }
 
@@ -455,118 +498,94 @@ buildEntranceSign(WINTER_X, WALL_R - 1.05, 0, -1, 'WINTER WONDERLAND', '#bfe8ff'
 // the jogs land -- no maze-solving needed, just pick random jogs and let
 // the last leg close the gap.
 //
-// Two real bugs lived here before this version: (1) the ceiling got its
-// own collider "above head height" -- but collidesAt() only ever checks
-// x/z, never y, so that collider blocked the *entire corridor* at every
-// height, including the floor, which read as an invisible wall right at
-// the entrance. (2) each straight leg only covered its own exact span,
-// which left a real gap -- missing floor, walls, and ceiling alike --
-// at every turn, wide enough to see or fall through. Ceilings are now
-// visual-only, and every turn gets an explicit junction() room sized to
-// the full corridor width with solid walls on every side except the two
-// the corridor actually continues through.
-// Shared by buildWindingTunnel() and any one-off elbow joint built outside
-// it: the primitives for a corridor's straight legs and its 90-degree
-// turn rooms.
-function makeCorridorBuilder(holeHalfW, wallH, mat) {
-  const wallT = 0.5;
+// A real round tunnel, on request -- each leg is an open-ended cylinder
+// (BackSide material, so you see its inner wall from inside) lying on its
+// side, radius holeHalfW, and each turn is a matching vertical cylinder
+// "bay" of the same radius. Collision isn't wallBox()es at all here
+// (a circle has no flat side to put one on); it's containment, registered
+// into tunnelTubes/tunnelRooms and checked by collidesAt() itself -- see
+// that function's own comment. Because a round bay is open in every
+// direction by construction, turns no longer need the old openDirs
+// bookkeeping (which side is closed/open) at all: the player simply can't
+// wander out of a bay in a direction nothing continues in, because
+// nothing continues there to BE contained in.
+function makeCorridorBuilder(holeHalfW, mat) {
+  const tubeMat = mat.clone();
+  tubeMat.side = THREE.BackSide;
+  const r = holeHalfW;
 
-  function wallBox(bx0, bx1, bz0, bz1) {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(bx1 - bx0, wallH, bz1 - bz0), mat);
-    mesh.position.set((bx0 + bx1) / 2, wallH / 2, (bz0 + bz1) / 2);
-    scene.add(mesh);
-    boxColliders.push(new THREE.Box3(new THREE.Vector3(bx0, 0, bz0), new THREE.Vector3(bx1, wallH, bz1)));
-  }
-  function floorCeil(minX, maxX, minZ, maxZ) {
+  function segment(p0, p1) {
+    const sx = p1.x - p0.x, sz = p1.z - p0.z;
+    const len = Math.hypot(sx, sz);
+    if (len < 0.05) return;
+
+    const dir = new THREE.Vector3(sx, 0, sz).normalize();
+    const tube = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 14, 1, true), tubeMat);
+    tube.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+    tube.position.set((p0.x + p1.x) / 2, r, (p0.z + p1.z) / 2);
+    scene.add(tube);
+
+    const minX = Math.min(p0.x, p1.x) - r, maxX = Math.max(p0.x, p1.x) + r;
+    const minZ = Math.min(p0.z, p1.z) - r, maxZ = Math.max(p0.z, p1.z) + r;
     const floor = new THREE.Mesh(new THREE.BoxGeometry(maxX - minX, 0.15, maxZ - minZ), mat);
     floor.position.set((minX + maxX) / 2, 0.08, (minZ + maxZ) / 2);
     scene.add(floor);
     registerFlatZone(minX, maxX, minZ, maxZ);
-    const ceil = new THREE.Mesh(new THREE.BoxGeometry(maxX - minX, 0.2, maxZ - minZ), mat);
-    ceil.position.set((minX + maxX) / 2, wallH, (minZ + maxZ) / 2);
-    scene.add(ceil); // visual only -- collidesAt() has no y-axis, a collider here would block the floor too
-  }
 
-  function segment(p0, p1) {
-    const sx = p1.x - p0.x, sz = p1.z - p0.z;
-    if (Math.hypot(sx, sz) < 0.05) return;
-    const alongX = Math.abs(sx) >= Math.abs(sz);
-    const minX = Math.min(p0.x, p1.x), maxX = Math.max(p0.x, p1.x);
-    const minZ = Math.min(p0.z, p1.z), maxZ = Math.max(p0.z, p1.z);
-    if (alongX) {
-      const cz = p0.z;
-      wallBox(minX, maxX, cz - holeHalfW - wallT, cz - holeHalfW);
-      wallBox(minX, maxX, cz + holeHalfW, cz + holeHalfW + wallT);
-      floorCeil(minX, maxX, cz - holeHalfW, cz + holeHalfW);
-      const light = new THREE.PointLight(0xd8c8a0, 0.8, 16, 2);
-      light.position.set((minX + maxX) / 2, wallH * 0.75, cz);
-      scene.add(light);
-    } else {
-      const cx = p0.x;
-      wallBox(cx - holeHalfW - wallT, cx - holeHalfW, minZ, maxZ);
-      wallBox(cx + holeHalfW, cx + holeHalfW + wallT, minZ, maxZ);
-      floorCeil(cx - holeHalfW, cx + holeHalfW, minZ, maxZ);
-      const light = new THREE.PointLight(0xd8c8a0, 0.8, 16, 2);
-      light.position.set(cx, wallH * 0.75, (minZ + maxZ) / 2);
-      scene.add(light);
-    }
-  }
+    tunnelTubes.push({ x0: p0.x, z0: p0.z, x1: p1.x, z1: p1.z, r });
 
-  // A room at each turn, lit so the turn is actually visible coming
-  // (unlike before), solid on every side except the two directions (unit
-  // vectors, always axis-aligned here) a corridor actually continues
-  // through. Deliberately the SAME width as the corridor itself
-  // (holeHalfW, not wider) -- a wider turning bay was tried and pulled
-  // again: its walls sat at a different offset than the connecting
-  // segment's own narrower walls, and the gap between the two read as
-  // an invisible platform / a way to walk past the wall, not a room.
-  function junction(p, openDirs) {
-    const minX = p.x - holeHalfW, maxX = p.x + holeHalfW;
-    const minZ = p.z - holeHalfW, maxZ = p.z + holeHalfW;
-    const isOpen = (ddx, ddz) => openDirs.some((d) => d.x === ddx && d.z === ddz);
-    if (!isOpen(-1, 0)) wallBox(minX - wallT, minX, minZ - wallT, maxZ + wallT);
-    if (!isOpen(1, 0)) wallBox(maxX, maxX + wallT, minZ - wallT, maxZ + wallT);
-    if (!isOpen(0, -1)) wallBox(minX - wallT, maxX + wallT, minZ - wallT, minZ);
-    if (!isOpen(0, 1)) wallBox(minX - wallT, maxX + wallT, maxZ, maxZ + wallT);
-    floorCeil(minX - wallT, maxX + wallT, minZ - wallT, maxZ + wallT);
-    const light = new THREE.PointLight(0xd8c8a0, 1.1, holeHalfW * 7, 2);
-    light.position.set(p.x, wallH * 0.75, p.z);
+    const light = new THREE.PointLight(0xd8c8a0, 0.8, r * 7, 2);
+    light.position.set((p0.x + p1.x) / 2, r * 1.5, (p0.z + p1.z) / 2);
     scene.add(light);
   }
 
-  return { segment, junction, wallT };
+  // A round bay at each turn, lit so the turn is actually visible coming,
+  // same radius as the tubes it connects so there's never a seam/offset
+  // between a leg's own wall and the bay's.
+  function junction(p) {
+    const bay = new THREE.Mesh(new THREE.CylinderGeometry(r, r, r * 2, 16, 1, true), tubeMat);
+    bay.position.set(p.x, r, p.z);
+    scene.add(bay);
+
+    const floor = new THREE.Mesh(new THREE.CircleGeometry(r, 16), mat);
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.set(p.x, 0.08, p.z);
+    scene.add(floor);
+    registerFlatZone(p.x - r, p.x + r, p.z - r, p.z + r);
+
+    tunnelRooms.push({ x: p.x, z: p.z, r });
+
+    const light = new THREE.PointLight(0xd8c8a0, 1.1, r * 7, 2);
+    light.position.set(p.x, r * 1.5, p.z);
+    scene.add(light);
+  }
+
+  return { segment, junction };
 }
 
-function buildWindingTunnel(x0, z0, x1, z1, holeHalfW, wallH, mat) {
+function buildWindingTunnel(x0, z0, x1, z1, holeHalfW, mat) {
   const dx = x1 - x0, dz = z1 - z0;
   const dist = Math.hypot(dx, dz);
   const fx = dx / dist, fz = dz / dist; // forward unit vector
   const rx = -fz, rz = fx;              // right unit vector (90deg rotate)
-  const { segment, junction, wallT } = makeCorridorBuilder(holeHalfW, wallH, mat);
+  const { segment, junction } = makeCorridorBuilder(holeHalfW, mat);
 
   const L1 = dist * (0.2 + rand() * 0.12);
   const L2 = dist * (0.2 + rand() * 0.12);
   // The jog leg (p1->p2, then its mirror p3->p4) shares its own exact x
   // (or z) with the straight legs immediately before and after it, since
   // the jog is purely perpendicular -- no offset along the direction of
-  // travel. That means the straight legs' own confining walls (built to
-  // keep THEM within holeHalfW, same as every other leg) reach right up
-  // to that shared coordinate, each eating wallT past its own edge, and
-  // the player's own radius eats further still into whatever's left
-  // between them. A jog magnitude picked without that in mind (this used
-  // to be a flat 5..9) could leave less than 2*PLAYER_R of real clearance
-  // there -- passable in theory, not in practice -- which is exactly why
-  // "can't get into Badland/Jungle/Winter Wonderland, there's a wall in
-  // the way" came and went depending on the random seed of the page load
-  // (roughly 45% of the old range was too tight) rather than failing
-  // every time. +3 of slack on top of the bare minimum so it's never a
-  // photo finish even at the low end of the random range.
-  const jogClearance = holeHalfW * 2 + wallT * 2 + PLAYER_R * 2 + 3;
+  // travel. A jog magnitude picked without enough clearance in mind could
+  // leave less than 2*PLAYER_R of real passable radius at that shared
+  // point once both legs' own containment circles were accounted for --
+  // passable in theory, not in practice. +3 of slack on top of the bare
+  // minimum so it's never a photo finish even at the low end of the
+  // random range.
+  const jogClearance = holeHalfW * 2 + PLAYER_R * 2 + 3;
   const jogMag = jogClearance + rand() * 4;
   const side = rand() < 0.5 ? 1 : -1;
 
   const fwd = { x: fx, z: fz };
-  const back = { x: -fx, z: -fz };
   const right = { x: rx * side, z: rz * side };
   const left = { x: -rx * side, z: -rz * side };
 
@@ -583,10 +602,10 @@ function buildWindingTunnel(x0, z0, x1, z1, holeHalfW, wallH, mat) {
   segment(p3, p4);
   segment(p4, p5);
 
-  junction(p1, [back, right]);
-  junction(p2, [left, fwd]);
-  junction(p3, [back, left]);
-  junction(p4, [right, fwd]);
+  junction(p1);
+  junction(p2);
+  junction(p3);
+  junction(p4);
 }
 
 /* ---------------- spawn perimeter: wooden stockade wall ---------------- */
@@ -743,24 +762,6 @@ railing(-6, -5.7, -6, 6);   // -x edge
 railing(-6, -RAMP_HALF_W - 0.3, -6, -5.7);
 railing(RAMP_HALF_W + 0.3, 6, -6, -5.7);
 
-// Bestiary alcove: a small walled room on the deck, opposite the ramp.
-const alcove = { x0: -6, x1: -2, z0: 2, z1: 6 };
-function alcoveWall(x0, x1, z0, z1) {
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 2.6, z1 - z0), woodDarkMat);
-  mesh.position.set((x0 + x1) / 2, PLATFORM_H + 1.3, (z0 + z1) / 2);
-  scene.add(mesh);
-  boxColliders.push(new THREE.Box3(
-    new THREE.Vector3(x0, PLATFORM_H, z0), new THREE.Vector3(x1, PLATFORM_H + 2.6, z1)
-  ));
-}
-alcoveWall(alcove.x0 - 0.15, alcove.x0, alcove.z0, alcove.z1);           // west wall
-alcoveWall(alcove.x0, alcove.x1, alcove.z1, alcove.z1 + 0.15);           // north wall
-alcoveWall(alcove.x0, alcove.x0 + 1.1, alcove.z0, alcove.z0 + 0.15);     // south wall, east stub (leaves a doorway)
-alcoveWall(alcove.x1 - 1.1, alcove.x1, alcove.z0, alcove.z0 + 0.15);     // south wall, west stub
-const campLight = new THREE.PointLight(0xffb15c, 1.1, 10, 2);
-campLight.position.set(-4, PLATFORM_H + 2, 4);
-scene.add(campLight);
-
 /* ---------------- monster model factory (shared by minis + full size) ---------------- */
 /* Every creature is the same shape language: a chimp with no legs, torso
  * tapering straight down to a point and hovering off the ground instead of
@@ -809,18 +810,24 @@ function createChimpModel({
   // Muzzle + ears are what actually read as "chimp" instead of "blob" --
   // the muzzle is skipped below with the rest of the face for a blank-head
   // monster, but ears stay either way (they're part of the head's own
-  // silhouette, not a facial feature).
+  // silhouette, not a facial feature). Both pulled toward a Gorilla-Tag
+  // face on request: that avatar's muzzle is wide and fairly flat rather
+  // than a pointed chimp snout (x-scale up to 1.35, z-protrusion down
+  // from 1.2 to 0.9, pulled in closer to the head), and its ears are
+  // small and tucked close rather than big and flared (radius down,
+  // pulled inward) -- the big round head and thick arms/hands are doing
+  // the "Gorilla Tag" work, not a snout or floppy ears.
   if (faceDetails) {
     const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.205 * headScale, 6, 5), mat);
-    muzzle.scale.set(1, 0.75, 1.2);
-    muzzle.position.set(0, headY - 0.12 * headScale, 0.39 * headScale);
+    muzzle.scale.set(1.35, 0.72, 0.9);
+    muzzle.position.set(0, headY - 0.12 * headScale, 0.33 * headScale);
     g.add(muzzle);
   }
 
   for (const side of [-1, 1]) {
-    const ear = new THREE.Mesh(new THREE.SphereGeometry(0.12 * headScale, 6, 5), mat);
+    const ear = new THREE.Mesh(new THREE.SphereGeometry(0.095 * headScale, 6, 5), mat);
     ear.scale.set(0.55, 1, 0.35);
-    ear.position.set(side * 0.41 * headScale, headY + 0.04 * headScale, -0.03);
+    ear.position.set(side * 0.37 * headScale, headY + 0.02 * headScale, -0.03);
     g.add(ear);
   }
 
@@ -843,12 +850,14 @@ function createChimpModel({
       pivot.position.copy(shoulder);
       g.add(pivot);
 
-      // Thick, Gorilla-Tag-ish arms -- these are the whole point of that
-      // look (the hands are what you actually grab/move with), so they're
-      // noticeably chunkier than a realistic ape's: upper arm 0.1->0.15,
-      // forearm 0.085->0.13, hand 0.1->0.17.
+      // Thick, Gorilla-Tag-ish arms -- the single most important trait of
+      // that look (that game is entirely about swinging around by them),
+      // so they're pushed well past a realistic ape's proportions:
+      // original 0.1/0.085/0.1 -> 0.15/0.13/0.17 (the generic "chunkier"
+      // pass) -> 0.19/0.17/0.21 here on direct request to actually commit
+      // to the Gorilla Tag look rather than just gesture at it.
       const upperDir = new THREE.Vector3(Math.sin(armAngle), -Math.cos(armAngle), 0);
-      const upperArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.15, upperLen, 4, 6), mat);
+      const upperArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.19, upperLen, 4, 6), mat);
       upperArm.rotation.z = armAngle;
       upperArm.position.copy(upperDir.clone().multiplyScalar(upperLen / 2 + 0.05));
       pivot.add(upperArm);
@@ -857,11 +866,11 @@ function createChimpModel({
       elbow.position.copy(upperDir.clone().multiplyScalar(upperLen + 0.08));
       pivot.add(elbow);
 
-      const foreArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.13, foreLen, 4, 6), mat);
+      const foreArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.17, foreLen, 4, 6), mat);
       foreArm.position.y = -foreLen / 2 - 0.05;
       elbow.add(foreArm);
 
-      const hand = new THREE.Mesh(new THREE.SphereGeometry(0.17, 6, 5), mat);
+      const hand = new THREE.Mesh(new THREE.SphereGeometry(0.21, 6, 5), mat);
       hand.position.y = -foreLen - 0.09;
       elbow.add(hand);
 
@@ -1024,12 +1033,18 @@ function createCranglerModel() {
   });
 }
 
+// Every add*() head-prop helper below positions itself as a fraction of
+// headScale, calibrated against createChimpModel's head radius -- bumped
+// from 0.38 to 0.46 (see its own comment) when the whole factory went
+// Gorilla-Tag-chunky, so every one of these offsets is scaled up by that
+// same ~1.21 ratio to sit on the new, bigger head the way it used to sit
+// on the old one, instead of reading as a small hat sunk into a big skull.
 function addElfHat(g, headY, headScale, mat) {
-  const hat = new THREE.Mesh(new THREE.ConeGeometry(0.22 * headScale, 0.5 * headScale, 8), mat);
-  hat.position.set(0, headY + 0.55 * headScale, 0);
+  const hat = new THREE.Mesh(new THREE.ConeGeometry(0.266 * headScale, 0.605 * headScale, 8), mat);
+  hat.position.set(0, headY + 0.665 * headScale, 0);
   g.add(hat);
-  const trim = new THREE.Mesh(new THREE.TorusGeometry(0.2 * headScale, 0.05 * headScale, 6, 10), icingMat);
-  trim.position.set(0, headY + 0.32 * headScale, 0);
+  const trim = new THREE.Mesh(new THREE.TorusGeometry(0.242 * headScale, 0.0605 * headScale, 6, 10), icingMat);
+  trim.position.set(0, headY + 0.387 * headScale, 0);
   trim.rotation.x = Math.PI / 2;
   g.add(trim);
 }
@@ -1053,27 +1068,27 @@ function createElfModelRed() { return createElfModel('red'); }
 function createElfModelGreen() { return createElfModel('green'); }
 
 function addBeard(g, headY, headScale, mat = krampusPropMat) {
-  const beard = new THREE.Mesh(new THREE.ConeGeometry(0.18 * headScale, 0.4 * headScale, 8), mat);
-  beard.position.set(0, headY - 0.3 * headScale, 0.25 * headScale);
+  const beard = new THREE.Mesh(new THREE.ConeGeometry(0.218 * headScale, 0.484 * headScale, 8), mat);
+  beard.position.set(0, headY - 0.363 * headScale, 0.3025 * headScale);
   beard.rotation.x = Math.PI;
   g.add(beard);
 }
 function addSantaHat(g, headY, headScale) {
-  const hat = new THREE.Mesh(new THREE.ConeGeometry(0.24 * headScale, 0.55 * headScale, 8), elfRedMat);
-  hat.position.set(0.05 * headScale, headY + 0.58 * headScale, 0);
+  const hat = new THREE.Mesh(new THREE.ConeGeometry(0.29 * headScale, 0.665 * headScale, 8), elfRedMat);
+  hat.position.set(0.06 * headScale, headY + 0.702 * headScale, 0);
   g.add(hat);
-  const trim = new THREE.Mesh(new THREE.TorusGeometry(0.22 * headScale, 0.05 * headScale, 6, 10), icingMat);
-  trim.position.set(0, headY + 0.34 * headScale, 0);
+  const trim = new THREE.Mesh(new THREE.TorusGeometry(0.266 * headScale, 0.0605 * headScale, 6, 10), icingMat);
+  trim.position.set(0, headY + 0.411 * headScale, 0);
   trim.rotation.x = Math.PI / 2;
   g.add(trim);
-  const pom = new THREE.Mesh(new THREE.SphereGeometry(0.08 * headScale, 6, 5), icingMat);
-  pom.position.set(0.25 * headScale, headY + 0.85 * headScale, 0);
+  const pom = new THREE.Mesh(new THREE.SphereGeometry(0.097 * headScale, 6, 5), icingMat);
+  pom.position.set(0.302 * headScale, headY + 1.029 * headScale, 0);
   g.add(pom);
 }
 function addHorns(g, headY, headScale) {
   for (const side of [-1, 1]) {
-    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.06 * headScale, 0.35 * headScale, 6), krampusHornMat);
-    horn.position.set(side * 0.2 * headScale, headY + 0.5 * headScale, -0.1 * headScale);
+    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.0726 * headScale, 0.4235 * headScale, 6), krampusHornMat);
+    horn.position.set(side * 0.242 * headScale, headY + 0.605 * headScale, -0.121 * headScale);
     horn.rotation.z = side * -0.4;
     horn.rotation.x = -0.3;
     g.add(horn);
@@ -1176,28 +1191,28 @@ const boneMat = new THREE.MeshStandardMaterial({ color: 0xe8e2d0, roughness: 0.8
 const bandanaMat = new THREE.MeshStandardMaterial({ color: 0x7a1f1f, roughness: 0.9 });
 
 function addCowboyHat(g, headY, headScale) {
-  const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.42 * headScale, 0.42 * headScale, 0.05, 12), westernPropMat);
-  brim.position.set(0, headY + 0.34 * headScale, 0);
+  const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.508 * headScale, 0.508 * headScale, 0.06 * headScale, 12), westernPropMat);
+  brim.position.set(0, headY + 0.411 * headScale, 0);
   g.add(brim);
-  const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.2 * headScale, 0.24 * headScale, 0.26 * headScale, 10), westernPropMat);
-  crown.position.set(0, headY + 0.5 * headScale, 0);
+  const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.242 * headScale, 0.29 * headScale, 0.3146 * headScale, 10), westernPropMat);
+  crown.position.set(0, headY + 0.605 * headScale, 0);
   g.add(crown);
 }
 
 function addBandana(g, headY, headScale) {
-  const band = new THREE.Mesh(new THREE.TorusGeometry(0.2 * headScale, 0.045 * headScale, 6, 10), bandanaMat);
-  band.position.set(0, headY - 0.1 * headScale, 0.03 * headScale);
+  const band = new THREE.Mesh(new THREE.TorusGeometry(0.242 * headScale, 0.0545 * headScale, 6, 10), bandanaMat);
+  band.position.set(0, headY - 0.121 * headScale, 0.0363 * headScale);
   band.rotation.x = Math.PI / 2;
   g.add(band);
 }
 
 function addSkullHead(g, headY, headScale) {
-  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.22 * headScale, 7, 6), boneMat);
-  skull.position.set(0, headY + 0.4 * headScale, 0);
+  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.266 * headScale, 7, 6), boneMat);
+  skull.position.set(0, headY + 0.484 * headScale, 0);
   g.add(skull);
   for (const side of [-1, 1]) {
-    const socket = new THREE.Mesh(new THREE.SphereGeometry(0.05 * headScale, 5, 4), faceDetailMat);
-    socket.position.set(side * 0.08 * headScale, headY + 0.38 * headScale, 0.18 * headScale);
+    const socket = new THREE.Mesh(new THREE.SphereGeometry(0.0605 * headScale, 5, 4), faceDetailMat);
+    socket.position.set(side * 0.097 * headScale, headY + 0.46 * headScale, 0.218 * headScale);
     g.add(socket);
   }
 }
@@ -1247,88 +1262,38 @@ function createOutlawModel() {
   return g; // same size as the player's own chimp body
 }
 
-function makeLabel(text) {
-  const canvas = document.createElement('canvas');
-  canvas.width = 256; canvas.height = 64;
-  const ctx = canvas.getContext('2d');
-  ctx.font = '700 30px Segoe UI, sans-serif';
-  ctx.fillStyle = '#e6e6ea';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(text, 128, 32);
-  const tex = new THREE.CanvasTexture(canvas);
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false }));
-  sprite.scale.set(1.5, 0.38, 1);
-  return sprite;
-}
-
-/* ---------------- bestiary pedestals (inside the alcove) ---------------- */
-/* Pedestals are fixed furniture and stay put; which monsters stand on them
- * is a "page" that switches when you're standing close and press E --
- * one page per map (this forest, then Badland) rather than cramming
- * every monster from every area onto the same stands forever. */
-
+/* ---------------- bestiary roster (viewed on the computer, not pedestals) ---------------- */
+/* Used to be physical pedestals in their own alcove, cycled by standing
+ * close and pressing E; moved onto the same computer screen used to
+ * customize your own look instead (see the "bestiary viewer" section
+ * further down, near the rest of the computer-desk code) -- one roster
+ * per map, same grouping as before, just not furniture anymore. Nothing
+ * here builds any 3D geometry in the world; this is pure data, read by
+ * the bestiary viewer's own lazy model cache. */
+// `type` matches the exact string triggerJumpscare()/playScare() use for
+// that monster -- the bestiary viewer's own discovery check keys off it.
 const bestiaryPages = [
   { title: 'THIS FOREST', monsters: [
-      { name: 'Supersonic', make: createSupersonicModel },
-      { name: 'Hot Cheeto', make: createHotCheetoModel },
-      { name: 'Peanut', make: createPeanutModel },
+      { name: 'Supersonic', type: 'supersonic', make: createSupersonicModel },
+      { name: 'Hot Cheeto', type: 'hotcheeto', make: createHotCheetoModel },
+      { name: 'Peanut', type: 'peanut', make: createPeanutModel },
     ] },
   { title: 'BADLAND', monsters: [
-      { name: 'Lizard', make: createLizardModel },
-      { name: 'Gunslinger', make: createGunslingerModel },
-      { name: 'Outlaw', make: createOutlawModel },
+      { name: 'Lizard', type: 'lizard', make: createLizardModel },
+      { name: 'Gunslinger', type: 'gunslinger', make: createGunslingerModel },
+      { name: 'Outlaw', type: 'outlaw', make: createOutlawModel },
     ] },
   { title: 'JUNGLE', monsters: [
-      { name: 'Stalker', make: createStalkerModel },
-      { name: 'Wanderer', make: createWandererModel },
+      { name: 'Stalker', type: 'stalker', make: createStalkerModel },
+      { name: 'Wanderer', type: 'wanderer', make: createWandererModel },
     ] },
   { title: 'WINTERLAND', monsters: [
-      { name: 'Gingy', make: createGingyModel },
-      { name: 'Crangler', make: createCranglerModel },
-      { name: 'Elf', make: createElfModelRed },
-      { name: 'Krampus', make: createKrampusModel },
+      { name: 'Gingy', type: 'gingy', make: createGingyModel },
+      { name: 'Crangler', type: 'crangler', make: createCranglerModel },
+      { name: 'Elf', type: 'elf', make: createElfModelRed },
+      { name: 'Krampus', type: 'krampus', make: createKrampusModel },
     ] },
 ];
-const BESTIARY_SLOT_X = [-5.9, -4.8, -3.7, -2.6];
-const BESTIARY_Z = 4;
-
-for (const x of BESTIARY_SLOT_X) {
-  const pedestal = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.45, 0.8, 10), woodDarkMat);
-  pedestal.position.set(x, PLATFORM_H + 0.4, BESTIARY_Z);
-  scene.add(pedestal);
-}
-
-const spinningMinis = [];
-const bestiaryPageGroups = bestiaryPages.map((page) => {
-  const group = new THREE.Group();
-  page.monsters.forEach((entry, i) => {
-    const x = BESTIARY_SLOT_X[i];
-    const mini = entry.make();
-    mini.scale.set(0.4, 0.4, 0.4);
-    mini.position.set(x, PLATFORM_H + 0.8, BESTIARY_Z);
-    group.add(mini);
-    spinningMinis.push(mini);
-
-    const label = makeLabel(entry.name);
-    label.position.set(x, PLATFORM_H + 2.15, BESTIARY_Z);
-    group.add(label);
-  });
-  const title = makeLabel(page.title);
-  title.scale.set(1.9, 0.45, 1);
-  title.position.set(-4.0, PLATFORM_H + 2.75, BESTIARY_Z);
-  group.add(title);
-  scene.add(group);
-  return group;
-});
-
-let bestiaryPageIndex = 0;
-function showBestiaryPage(i) {
-  bestiaryPageIndex = ((i % bestiaryPageGroups.length) + bestiaryPageGroups.length) % bestiaryPageGroups.length;
-  bestiaryPageGroups.forEach((g, idx) => { g.visible = idx === bestiaryPageIndex; });
-}
-showBestiaryPage(0);
-const bestiaryCenter = new THREE.Vector3(-4.0, PLATFORM_H + EYE_H, BESTIARY_Z);
 
 /* ---------------- old computer + keyboard (color/name customizer) ---------------- */
 /* An old CRT-style desk setup on the deck, in the one quadrant nothing
@@ -1416,7 +1381,7 @@ while (treesPlaced < 70) {
   const z = (rand() - 0.5) * 140 + 10;
   if (isInSafeZone(x, z)) continue;
   const h = groundHeight(x, z);
-  const TREE_SCALE = 2; // trees stand twice as tall/thick as they used to
+  const TREE_SCALE = 4; // 2x taller again on request (was already 2x once before)
   const trunkH = (3 + rand() * 2.5) * TREE_SCALE;
   const r = (0.3 + rand() * 0.25) * TREE_SCALE;
   const t = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.7, r, trunkH, 7), trunkMat);
@@ -1503,7 +1468,12 @@ scatterProp(9, makeScarecrow);
  * (just above a normal jump) to reach straight from the ground. */
 
 function addFlatPlatform(cx, cz, half) {
-  const cy = groundHeight(cx, cz) + 2.2;
+  // Raised well past the old height (2.2 -> 4.0), on request -- still
+  // just within a jump pad's own max apex (PAD_JUMP_V -> ~5.1 units,
+  // see top-of-file constants) so the network stays reachable rather than
+  // stranding the player, but a normal unboosted jump (~4.7 at best) no
+  // longer clears it from a dead stop on flat ground.
+  const cy = groundHeight(cx, cz) + 4.0;
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(half * 2, 0.3, half * 2), woodMat);
   mesh.position.set(cx, cy, cz);
   scene.add(mesh);
@@ -1516,9 +1486,12 @@ function addFlatPlatform(cx, cz, half) {
   return cy;
 }
 
-function addBridge(x0, z0, y0, x1, z1, y1) {
+// One straight plank -- what addBridge() used to be in full, now just the
+// piece it calls twice per bridge to build the two legs of a bend.
+function addBridgeSegment(x0, z0, y0, x1, z1, y1) {
   const dx = x1 - x0, dz = z1 - z0;
   const len = Math.hypot(dx, dz);
+  if (len < 0.05) return;
   const midY = (y0 + y1) / 2;
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.25, len), woodMat);
   mesh.position.set((x0 + x1) / 2, midY, (z0 + z1) / 2);
@@ -1530,6 +1503,31 @@ function addBridge(x0, z0, y0, x1, z1, y1) {
     z0: Math.min(z0, z1) - margin, z1: Math.max(z0, z1) + margin,
     y: midY + 0.15,
   });
+}
+
+// A bent bridge, on request, instead of one dead-straight plank: a single
+// kink partway across, sideways off the direct line by up to ~18% of the
+// span, with its own support post underneath the bend -- two straight
+// legs (addBridgeSegment above) rather than a smooth curve, same
+// low-poly-straight-pieces language as literally everything else in this
+// file. The bend is randomized per bridge (rand(), the same seeded RNG
+// the tunnels use) so the network doesn't read as one repeated template.
+function addBridge(x0, z0, y0, x1, z1, y1) {
+  const dx = x1 - x0, dz = z1 - z0;
+  const len = Math.hypot(dx, dz);
+  if (len < 0.05) return;
+  const nx = -dz / len, nz = dx / len; // perpendicular to the straight line
+  const bend = (rand() - 0.5) * 2 * (len * 0.18);
+  const midX = (x0 + x1) / 2 + nx * bend;
+  const midZ = (z0 + z1) / 2 + nz * bend;
+  const midY = (y0 + y1) / 2;
+
+  addBridgeSegment(x0, z0, y0, midX, midZ, midY);
+  addBridgeSegment(midX, midZ, midY, x1, z1, y1);
+
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, midY, 6), woodDarkMat);
+  post.position.set(midX, midY / 2, midZ);
+  scene.add(post);
 }
 
 // One loop builder, called at several spots across the map instead of
@@ -1640,7 +1638,7 @@ function badlandWallBox(x0, x1, y0, y1, z0, z1) {
 
 // The winding tunnel connecting the forest's own boundary-wall hole to
 // this one.
-buildWindingTunnel(WALL_R + 1, BADLAND_Z, BADLAND_X - BADLAND_HALF, BADLAND_Z, BADLAND_HOLE_HALF_W, 4.5, tunnelWallMat);
+buildWindingTunnel(WALL_R + 1, BADLAND_Z, BADLAND_X - BADLAND_HALF, BADLAND_Z, BADLAND_HOLE_HALF_W, tunnelWallMat);
 
 // Hollow false-front buildings -- walls + a doorway + a roof you can see
 // under but never collide with (no ceiling anywhere else in this game
@@ -1740,27 +1738,23 @@ function jungleWallBox(x0, x1, y0, y1, z0, z1) {
 
 // The winding tunnel connecting the forest's own boundary-wall hole to
 // this one.
-buildWindingTunnel(-(WALL_R + 1), JUNGLE_Z, JUNGLE_X + JUNGLE_HALF, JUNGLE_Z, JUNGLE_HOLE_HALF_W, 4.5, tunnelWallMat);
+buildWindingTunnel(-(WALL_R + 1), JUNGLE_Z, JUNGLE_X + JUNGLE_HALF, JUNGLE_Z, JUNGLE_HOLE_HALF_W, tunnelWallMat);
 
-// Temples: a stepped stone exterior with a single south-facing doorway
-// into a main room, then a corridor, then a windowless back chamber --
-// the "dungeon" the main room alone doesn't cover. The whole interior
-// footprint (room + corridor + chamber) is registered as a flat zone
-// (see groundHeight() / registerFlatZone() above) and given its own
-// floor slab, so the floor reads level even where a nearby hill bulges
-// up -- the same trick Badland's sand plane uses for its whole zone,
-// just scoped to one building here instead.
+// Temples: a stepped stone exterior around a single enclosed room, one
+// south-facing doorway in, no other way through. Used to also lead back
+// through a corridor into a windowless "dungeon" chamber -- removed on
+// request, so a temple is just the one room now. The room's footprint is
+// registered as a flat zone (see groundHeight() / registerFlatZone()
+// above) and given its own floor slab, so the floor reads level even
+// where a nearby hill bulges up -- the same trick Badland's sand plane
+// uses for its whole zone, just scoped to one building here instead.
 const templeBounds = []; // { minX, maxX, minZ, maxZ } -- Stalker can never enter any of these
 
 function buildTemple(cx, cz) {
   const wallT = 0.5, wallH = 4.5, doorHalfW = 1.3;
-  const halfW = 6, halfD = 6; // main room
-  const corridorHalfW = 1.1, corridorLen = 6;
-  const chHalfW = 4, chHalfD = 4; // back chamber (the dungeon proper)
+  const halfW = 6, halfD = 6;
 
   const minX = cx - halfW, maxX = cx + halfW, minZ = cz - halfD, maxZ = cz + halfD;
-  const corZ0 = maxZ, corZ1 = maxZ + corridorLen;
-  const chMinX = cx - chHalfW, chMaxX = cx + chHalfW, chMinZ = corZ1, chMaxZ = corZ1 + chHalfD * 2;
 
   function wall(x0, x1, z0, z1, h = wallH) {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, h, z1 - z0), templeStoneMat);
@@ -1769,61 +1763,35 @@ function buildTemple(cx, cz) {
     boxColliders.push(new THREE.Box3(new THREE.Vector3(x0, 0, z0), new THREE.Vector3(x1, h, z1)));
   }
 
-  // Main room: south wall carries the only outside-facing door; north
-  // wall has its own opening straight into the corridor.
+  // Four walls, the south one split around the only doorway -- fully
+  // enclosed otherwise, including the north wall (solid now that there's
+  // no corridor behind it to open into).
   wall(minX, cx - doorHalfW, minZ, minZ + wallT);
   wall(cx + doorHalfW, maxX, minZ, minZ + wallT);
   wall(minX, minX + wallT, minZ, maxZ);
   wall(maxX - wallT, maxX, minZ, maxZ);
-  wall(minX, cx - corridorHalfW, maxZ - wallT, maxZ);
-  wall(cx + corridorHalfW, maxX, maxZ - wallT, maxZ);
+  wall(minX, maxX, maxZ - wallT, maxZ);
   const doorLintel = new THREE.Mesh(new THREE.BoxGeometry(doorHalfW * 2, 1.2, wallT), templeStoneMat);
   doorLintel.position.set(cx, wallH - 0.6, minZ + wallT / 2);
   scene.add(doorLintel);
 
-  // Corridor leading back into the dungeon chamber.
-  wall(cx - corridorHalfW - wallT, cx - corridorHalfW, corZ0, corZ1);
-  wall(cx + corridorHalfW, cx + corridorHalfW + wallT, corZ0, corZ1);
-
-  // Back chamber: fully enclosed, no second exit -- every dungeon here is
-  // a there-and-back trip, not a loop.
-  wall(chMinX, chMaxX, chMaxZ - wallT, chMaxZ);
-  wall(chMinX, chMinX + wallT, chMinZ, chMaxZ);
-  wall(chMaxX - wallT, chMaxX, chMinZ, chMaxZ);
-
-  // Tiered stepped-pyramid roof over the main room -- visual only, no
-  // collider, same "no ceiling anywhere" rule every other building here
-  // follows (so walking in is just walking in).
+  // Tiered stepped-pyramid roof -- visual only, no collider, same "no
+  // ceiling anywhere" rule every other building here follows (so walking
+  // in is just walking in).
   for (let t = 0; t < 3; t++) {
     const s = 1 - t * 0.28;
     const tier = new THREE.Mesh(new THREE.BoxGeometry((halfW * 2 + 1) * s, 1.1, (halfD * 2 + 1) * s), templeStoneMat);
     tier.position.set(cx, wallH + 0.1 + t * 1.1, cz);
     scene.add(tier);
   }
-  // A flat roof over the corridor and chamber too -- visual only, same as
-  // the tiers above, but without it there was nothing overhead back
-  // there at all: looking up inside the dungeon showed open sky straight
-  // past the edge of the map instead of a ceiling.
-  const dungeonRoof = new THREE.Mesh(new THREE.BoxGeometry(chHalfW * 2 + 1, 0.3, (chMaxZ - maxZ) + 1), templeStoneMat);
-  dungeonRoof.position.set(cx, wallH + 0.15, (maxZ + chMaxZ) / 2);
-  scene.add(dungeonRoof);
 
-  // Floor slabs, flat regardless of nearby hills.
-  registerFlatZone(Math.min(minX, chMinX), Math.max(maxX, chMaxX), minZ, chMaxZ);
+  // Floor slab, flat regardless of nearby hills.
+  registerFlatZone(minX, maxX, minZ, maxZ);
   const mainFloor = new THREE.Mesh(new THREE.BoxGeometry(halfW * 2 - wallT * 2, 0.15, halfD * 2 - wallT * 2), templeStoneMat);
   mainFloor.position.set(cx, 0.08, cz);
   scene.add(mainFloor);
-  const corFloor = new THREE.Mesh(new THREE.BoxGeometry(corridorHalfW * 2, 0.15, corridorLen), templeStoneMat);
-  corFloor.position.set(cx, 0.08, (corZ0 + corZ1) / 2);
-  scene.add(corFloor);
-  const chFloor = new THREE.Mesh(new THREE.BoxGeometry(chHalfW * 2 - wallT * 2, 0.15, chHalfD * 2 - wallT * 2), templeStoneMat);
-  chFloor.position.set(cx, 0.08, (chMinZ + chMaxZ) / 2);
-  scene.add(chFloor);
 
-  // Deliberately no light back here at all -- it's a dungeon, dark except
-  // for whatever the player's own flashlight reaches.
-
-  templeBounds.push({ minX: Math.min(minX, chMinX), maxX: Math.max(maxX, chMaxX), minZ, maxZ: chMaxZ });
+  templeBounds.push({ minX, maxX, minZ, maxZ });
 }
 
 buildTemple(JUNGLE_X - 12, JUNGLE_Z - 10);
@@ -1891,7 +1859,7 @@ const vineMat = new THREE.MeshStandardMaterial({ color: 0x33551f, roughness: 0.9
 // branches too (same makeBranch() the forest's own trees use -- a
 // climbable platform, not just decoration), plus vines hanging down
 // from somewhere in the canopy.
-const JUNGLE_TREE_SCALE = 3;
+const JUNGLE_TREE_SCALE = 6; // 2x taller again on request, same as the forest's own trees
 function makeJungleTree(x, z) {
   const h = groundHeight(x, z);
   const trunkH = (3.5 + rand() * 2) * JUNGLE_TREE_SCALE;
@@ -1977,7 +1945,7 @@ const winterWallMat = new THREE.MeshStandardMaterial({ color: 0xd8e4ea, roughnes
 
 // The corridor down from the forest's own north gate, same technique as
 // Badland's/Jungle's.
-buildWindingTunnel(WINTER_X, WALL_R + 1, WINTER_X, WINTER_Z - WINTER_HALF, WINTER_HOLE_HALF_W, 4.5, tunnelWallMat);
+buildWindingTunnel(WINTER_X, WALL_R + 1, WINTER_X, WINTER_Z - WINTER_HALF, WINTER_HOLE_HALF_W, tunnelWallMat);
 
 // The actual rendered forest ground — groundHeight() above only ever
 // drove collision/placement math; without a mesh that follows it, the
@@ -2329,24 +2297,25 @@ function makePresent(x, z, size, colorMat) {
 // and Jungle's canopy, so Winter Wonderland doesn't read as a reskin.
 const pineMat = new THREE.MeshStandardMaterial({ color: 0x1f4a33, roughness: 0.85, map: makeGrainTexture({ dark: 20, light: 235, repeat: 10, blotch: 3 }) });
 const pineTrunkMat = new THREE.MeshStandardMaterial({ color: 0x3a2a1a, roughness: 0.9 });
+const PINE_SCALE = 2; // 2x taller, same request as the forest's/Jungle's own trees
 function makePineTree(x, z) {
   const h = terrainHeight(x, z);
-  const trunkH = 1.0;
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, trunkH, 6), pineTrunkMat);
+  const trunkH = 1.0 * PINE_SCALE;
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18 * PINE_SCALE, 0.22 * PINE_SCALE, trunkH, 6), pineTrunkMat);
   trunk.position.set(x, h + trunkH / 2, z);
   scene.add(trunk);
   const tierCount = 3;
   let y = h + trunkH;
-  let r = 1.5;
+  let r = 1.5 * PINE_SCALE;
   for (let t = 0; t < tierCount; t++) {
-    const tierH = 1.6 - t * 0.3;
+    const tierH = (1.6 - t * 0.3) * PINE_SCALE;
     const cone = new THREE.Mesh(new THREE.ConeGeometry(r, tierH, 8), pineMat);
     cone.position.set(x, y + tierH / 2, z);
     scene.add(cone);
     y += tierH * 0.65;
     r *= 0.72;
   }
-  addCircleCollider(x, z, 0.5);
+  addCircleCollider(x, z, 0.5 * PINE_SCALE);
 }
 {
   const placed = [];
@@ -2445,6 +2414,28 @@ function clampKrampusFromHouses(pos) {
 function clampKrampusZone(pos) {
   clampToWinter(pos);
   clampKrampusFromHouses(pos);
+}
+
+// The summon house (house #1, which actually holds the shrine) is a safe
+// zone for everyone, not just Krampus -- Gingy/Crangler/Elf used to be
+// able to walk straight in and catch you there, same push-to-nearest-edge
+// trick as clampKrampusFromHouses, just scoped to this one house.
+function clampFromShrineHouse(pos) {
+  const b = SHRINE_HOUSE;
+  const minX = b.cx - b.halfW, maxX = b.cx + b.halfW, minZ = b.cz - b.halfD, maxZ = b.cz + b.halfD;
+  if (pos.x > minX && pos.x < maxX && pos.z > minZ && pos.z < maxZ) {
+    const dLeft = pos.x - minX, dRight = maxX - pos.x;
+    const dBack = pos.z - minZ, dFront = maxZ - pos.z;
+    const m = Math.min(dLeft, dRight, dBack, dFront);
+    if (m === dLeft) pos.x = minX - 0.6;
+    else if (m === dRight) pos.x = maxX + 0.6;
+    else if (m === dBack) pos.z = minZ - 0.6;
+    else pos.z = maxZ + 0.6;
+  }
+}
+function clampWinterRegular(pos) {
+  clampToWinter(pos);
+  clampFromShrineHouse(pos);
 }
 
 /* ---------------- monsters ---------------- */
@@ -2864,9 +2855,9 @@ const krampus = makeWinterMonster(createKrampusModel, 2.6); // 6x the model, so 
 clampKrampusFromHouses(krampus.group.position);
 krampus.group.position.y = groundHeight(krampus.group.position.x, krampus.group.position.z) + (krampus.group.userData.hoverHeight || 0);
 
-function tickGingy(dt, p) { return tickGenericMonster(gingy, dt, p, GINGY_SPEED, GINGY_TURN_RATE, 'gingy', 16, 0.85, 6, 8, clampToWinter); }
-function tickCrangler(dt, p) { return tickGenericMonster(crangler, dt, p, CRANGLER_SPEED, CRANGLER_TURN_RATE, 'crangler', 42, 0.82, 9, 10, clampToWinter); }
-function tickElf(m, dt, p) { return tickGenericMonster(m, dt, p, ELF_SPEED, ELF_TURN_RATE, 'elf', 15, 0.86, 5, 7, clampToWinter); }
+function tickGingy(dt, p) { return tickGenericMonster(gingy, dt, p, GINGY_SPEED, GINGY_TURN_RATE, 'gingy', 16, 0.85, 6, 8, clampWinterRegular); }
+function tickCrangler(dt, p) { return tickGenericMonster(crangler, dt, p, CRANGLER_SPEED, CRANGLER_TURN_RATE, 'crangler', 42, 0.82, 9, 10, clampWinterRegular); }
+function tickElf(m, dt, p) { return tickGenericMonster(m, dt, p, ELF_SPEED, ELF_TURN_RATE, 'elf', 15, 0.86, 5, 7, clampWinterRegular); }
 function tickKrampus(dt, p) { return tickGenericMonster(krampus, dt, p, KRAMPUS_SPEED, KRAMPUS_TURN_RATE, 'krampus', 22, 0.86, 7, 11, clampKrampusZone); }
 
 /* ---------------- summon: the shrine + the god it calls down ---------------- */
@@ -2955,7 +2946,14 @@ function tickSantaGod(dt, playerPos) {
   const flyHeight = THREE.MathUtils.lerp(SANTA_FLY_LOW, SANTA_FLY_HIGH, flyT);
   s.group.position.y = playerPos.y + flyHeight + Math.sin(performance.now() * 0.0015) * 0.35;
 
-  return { dist: horizDist, danger: Math.max(0, 1 - horizDist / 20), catchR: s.catchR, type: 'santagod', instance: s };
+  // The summon house is a safe zone even from the god it summoned -- Santa
+  // flies and otherwise ignores walls entirely (unlike every ground-bound
+  // monster, which already can't walk through the house's own colliders),
+  // so it needs this pushed-out-to-the-nearest-edge clamp explicitly.
+  clampFromShrineHouse(s.group.position);
+  const realDist = Math.hypot(playerPos.x - s.group.position.x, playerPos.z - s.group.position.z);
+
+  return { dist: realDist, danger: Math.max(0, 1 - realDist / 20), catchR: s.catchR, type: 'santagod', instance: s };
 }
 
 /* ---------------- audio ---------------- */
@@ -3433,6 +3431,141 @@ customizeDoneBtn.addEventListener('click', () => {
   closeCustomizePanel();
 });
 
+/* ---------------- bestiary viewer (the computer's second "page") ---------------- */
+/* What used to be physical pedestals is now a tab on this same panel: a
+ * small second THREE.js renderer, pointed at its own tiny scene holding
+ * exactly one real monster model (the same createXModel() factories
+ * everything in the world uses -- not a screenshot, not a sprite), swapped
+ * out and reframed every time Prev/Next changes the selection. Built once
+ * the panel's own DOM exists, lazily -- most players may never open this
+ * tab in a given session, so there's no reason to stand up a renderer for
+ * it before it's actually looked at. */
+const tabButtons = document.querySelectorAll('.customize-tab');
+const customizePages = document.querySelectorAll('.customize-page');
+function showCustomizeTab(name) {
+  tabButtons.forEach((btn) => btn.classList.toggle('active', btn.dataset.tab === name));
+  customizePages.forEach((page) => { page.hidden = page.dataset.page !== name; });
+}
+tabButtons.forEach((btn) => btn.addEventListener('click', () => {
+  showCustomizeTab(btn.dataset.tab);
+  if (btn.dataset.tab === 'bestiary') showBestiaryEntry(bestiaryIndex);
+}));
+
+// Flattened once, in the same forest/Badland/Jungle/Winterland order the
+// old pedestal pages used, with the zone title riding along per entry so
+// the viewer doesn't need to re-derive which page a given index is on.
+const bestiaryFlat = bestiaryPages.flatMap((page) =>
+  page.monsters.map((m) => ({ zone: page.title, name: m.name, type: m.type, make: m.make }))
+);
+const bestiaryModelCache = new Array(bestiaryFlat.length).fill(null);
+let bestiaryIndex = 0;
+let bestiaryScene = null, bestiaryCamera = null, bestiaryRenderer = null, bestiaryCurrent = null;
+
+// You can't see a monster on the computer until you've died to it once --
+// persisted the same way the hue/name are. markDiscovered() is called
+// from triggerJumpscare() itself, so the unlock lands the instant a catch
+// happens, not just the next time the panel opens.
+const DISCOVERED_KEY = 'hollowtread_discovered';
+let discoveredMonsters = new Set();
+try {
+  const savedDiscovered = localStorage.getItem(DISCOVERED_KEY);
+  if (savedDiscovered) discoveredMonsters = new Set(JSON.parse(savedDiscovered));
+} catch (err) { /* localStorage unavailable -- nothing stays unlocked across a reload */ }
+function markDiscovered(type) {
+  if (discoveredMonsters.has(type)) return;
+  discoveredMonsters.add(type);
+  try { localStorage.setItem(DISCOVERED_KEY, JSON.stringify([...discoveredMonsters])); } catch (err) { /* ignore */ }
+}
+
+// A locked entry's "model" -- a featureless dark silhouette with a
+// glowing question mark, built once and reused for every undiscovered
+// roster slot, so nothing about the real shape leaks through before
+// you've actually died to it.
+let bestiaryLockedPlaceholder = null;
+function makeBestiaryLockedPlaceholder() {
+  const g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 1 });
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 7), mat);
+  body.scale.set(1, 1.3, 0.9);
+  body.position.y = 0.4;
+  g.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.26, 8, 7), mat);
+  head.position.y = 0.95;
+  g.add(head);
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#c0392b';
+  ctx.font = '900 96px "Segoe UI", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('?', 64, 70);
+  const tex = new THREE.CanvasTexture(canvas);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false }));
+  sprite.scale.set(0.8, 0.8, 1);
+  sprite.position.set(0, 0.95, 0.35);
+  g.add(sprite);
+  return g;
+}
+
+function ensureBestiaryRenderer() {
+  if (bestiaryRenderer) return;
+  const canvas = document.getElementById('bestiary-canvas');
+  bestiaryScene = new THREE.Scene();
+  bestiaryScene.background = new THREE.Color(0x0a0e14);
+  bestiaryCamera = new THREE.PerspectiveCamera(40, canvas.width / canvas.height, 0.1, 100);
+  bestiaryRenderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  bestiaryRenderer.setSize(canvas.width, canvas.height, false);
+  bestiaryScene.add(new THREE.AmbientLight(0xffffff, 0.55));
+  const key = new THREE.DirectionalLight(0xffffff, 0.9);
+  key.position.set(2, 3, 4);
+  bestiaryScene.add(key);
+  const rim = new THREE.DirectionalLight(0x6ab0ff, 0.4);
+  rim.position.set(-3, 1, -2);
+  bestiaryScene.add(rim);
+}
+
+function showBestiaryEntry(i) {
+  ensureBestiaryRenderer();
+  bestiaryIndex = ((i % bestiaryFlat.length) + bestiaryFlat.length) % bestiaryFlat.length;
+  const entry = bestiaryFlat[bestiaryIndex];
+  const discovered = discoveredMonsters.has(entry.type);
+
+  if (bestiaryCurrent) bestiaryScene.remove(bestiaryCurrent);
+  if (discovered) {
+    if (!bestiaryModelCache[bestiaryIndex]) bestiaryModelCache[bestiaryIndex] = entry.make();
+    bestiaryCurrent = bestiaryModelCache[bestiaryIndex];
+  } else {
+    if (!bestiaryLockedPlaceholder) bestiaryLockedPlaceholder = makeBestiaryLockedPlaceholder();
+    bestiaryCurrent = bestiaryLockedPlaceholder;
+  }
+  bestiaryScene.add(bestiaryCurrent);
+
+  // Every monster is built at wildly different scales (Peanut vs. a 6x
+  // Krampus vs. a 10x Santa), so frame each one by its own bounding box
+  // rather than a single fixed camera distance -- otherwise most of the
+  // roster would be a speck or a wall of fur.
+  const box = new THREE.Box3().setFromObject(bestiaryCurrent);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  const radius = Math.max(size.x, size.y, size.z, 0.3);
+  bestiaryCamera.position.set(center.x, center.y + radius * 0.15, center.z + radius * 1.6);
+  bestiaryCamera.lookAt(center);
+
+  document.getElementById('bestiary-zone').textContent = entry.zone;
+  document.getElementById('bestiary-name').textContent = discovered ? entry.name : '???';
+  document.getElementById('bestiary-count').textContent = `${bestiaryIndex + 1} / ${bestiaryFlat.length}`;
+}
+
+function tickBestiaryViewer(dt) {
+  if (!bestiaryRenderer || document.querySelector('.customize-page[data-page="bestiary"]').hidden) return;
+  if (bestiaryCurrent) bestiaryCurrent.rotation.y += dt * 0.6;
+  bestiaryRenderer.render(bestiaryScene, bestiaryCamera);
+}
+
+document.getElementById('bestiary-prev').addEventListener('click', () => showBestiaryEntry(bestiaryIndex - 1));
+document.getElementById('bestiary-next').addEventListener('click', () => showBestiaryEntry(bestiaryIndex + 1));
+
 renderer.domElement.addEventListener('mousedown', () => { if (fallbackLook) dragging = true; });
 window.addEventListener('mouseup', () => { dragging = false; });
 document.addEventListener('mousemove', (e) => {
@@ -3448,9 +3581,7 @@ document.addEventListener('keydown', (e) => {
     blocker.style.display = 'flex';
   }
   if (customizeOpen) return; // typing in the name field shouldn't also trigger game shortcuts
-  if (e.code === 'KeyE' && camera.position.distanceTo(bestiaryCenter) < 3.2) {
-    showBestiaryPage(bestiaryPageIndex + 1);
-  } else if (e.code === 'KeyE' && camera.position.distanceTo(keyboardCenter) < 3.2) {
+  if (e.code === 'KeyE' && camera.position.distanceTo(keyboardCenter) < 3.2) {
     openCustomizePanel();
   }
 });
@@ -3648,10 +3779,13 @@ const jumpscareEl = document.getElementById('jumpscare-flash');
 const interactHint = document.getElementById('interact-hint');
 
 function resetAfterCatch() {
-  // Any catch ends the god event (not just Santa's own) -- everything
-  // else resets to baseline here too, so a world still stuck red with no
-  // way back would be the odd one out.
-  if (godEventActive) endGodEvent();
+  // Only Santa's own catch ends the god event -- getting caught by
+  // something else (Krampus, say) mid-event just does the normal reset
+  // (on request): the sky stays red, the music keeps playing, and Santa
+  // keeps existing and chasing whatever the player's new post-reset
+  // position is. scareType is still whatever triggerJumpscare() set it
+  // to for this catch; it's only overwritten by the *next* one.
+  if (godEventActive && scareType === 'santagod') endGodEvent();
   camera.position.copy(SPAWN);
   velocity.set(0, 0, 0);
   onGround = true;
@@ -3712,6 +3846,7 @@ function triggerJumpscare(type, instance) {
   if (scareActive) return;
   scareActive = true;
   scareType = type;
+  markDiscovered(type);
   scareStart = performance.now();
   const m = instance || monstersByType[type]; // statue has 5 instances -- needs the specific one that caught you
 
@@ -3776,7 +3911,7 @@ function animate() {
   const dt = Math.min((now - last) / 1000, 0.05);
   last = now;
 
-  for (const mini of spinningMinis) mini.rotation.y += dt * 0.6;
+  if (customizeOpen) tickBestiaryViewer(dt);
 
   if (scareActive) {
     const t = (now - scareStart) / 1000;
@@ -3798,13 +3933,9 @@ function animate() {
     tickShrine(dt, camera.position);
     if (godEventActive) tickGodMusic(dt);
 
-    const nearBestiary = camera.position.distanceTo(bestiaryCenter) < 3.2;
     const nearKeyboard = camera.position.distanceTo(keyboardCenter) < 3.2;
-    if (nearBestiary) {
-      interactHint.textContent = 'Press E to switch map';
-      interactHint.classList.add('show');
-    } else if (nearKeyboard) {
-      interactHint.textContent = 'Press E to customize';
+    if (nearKeyboard) {
+      interactHint.textContent = 'Press E to use the computer';
       interactHint.classList.add('show');
     } else {
       interactHint.classList.remove('show');
@@ -3824,7 +3955,15 @@ function animate() {
     ];
     const danger = Math.max(...results.map((r) => r.danger));
     vignette.style.opacity = String(danger);
-    const caught = results.find((r) => {
+    // Belt-and-suspenders on top of every monster's own clampFromShrineHouse:
+    // no catch of any kind lands while you're actually standing inside the
+    // summon house, full stop, regardless of how any one monster's own
+    // positioning logic behaves.
+    const inShrineHouse = (() => {
+      const b = SHRINE_HOUSE;
+      return Math.abs(camera.position.x - b.cx) < b.halfW && Math.abs(camera.position.z - b.cz) < b.halfD;
+    })();
+    const caught = inShrineHouse ? undefined : results.find((r) => {
       if (r.dist >= r.catchR) return false;
       // Supersonic's short -- clear its back with a well-timed jump and it
       // doesn't count, even if you're still within catch range horizontally.
