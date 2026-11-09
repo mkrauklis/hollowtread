@@ -192,20 +192,23 @@ canvas.game-canvas {
   margin-top: 2px;
 }
 
-/* The camera's own viewfinder -- four corner brackets, always visible,
- * the one piece of persistent HUD that says "you're always holding this,
- * click anywhere to use it" without needing an on-screen prompt. */
+/* The camera's own viewfinder -- four corner brackets -- and the VHS
+ * overlay that comes with it, both hidden until js/world.js toggles
+ * .show on (R to equip/unequip; see setCameraEquipped there). Camcorder,
+ * not always-on vision, on request. */
 #viewfinder {
+  display: none;
   position: absolute;
   inset: 12%;
   pointer-events: none;
   z-index: 2;
 }
+#viewfinder.show { display: block; }
 .vf-corner {
   position: absolute;
   width: 22px;
   height: 22px;
-  border-color: rgba(230,226,212,0.55);
+  border-color: rgba(230,226,212,0.75);
   border-style: solid;
   border-width: 0;
 }
@@ -226,6 +229,66 @@ canvas.game-canvas {
 }
 #camera-flash.show { animation: camera-flash-anim 0.3s ease-out; }
 @keyframes camera-flash-anim { 0% { opacity: 0.9; } 100% { opacity: 0; } }
+
+/* VHS camcorder look, on while the camera's equipped. .vhs-on (applied to
+ * the game canvas itself alongside this overlay) does the actual color
+ * work -- desaturated, slightly warm, a bit of contrast punch; everything
+ * in here is the overlay dressing on top of that: scanlines, a REC dot,
+ * a running timestamp, and an occasional tracking-glitch bar. */
+canvas.game-canvas.vhs-on {
+  filter: saturate(0.65) contrast(1.2) brightness(1.05) sepia(0.12) hue-rotate(-6deg);
+}
+#vhs-overlay {
+  display: none;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  color: #e8e8d8;
+  text-shadow: 0 0 4px #000;
+}
+#vhs-overlay.show { display: block; }
+.vhs-scanlines {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, rgba(0,0,0,0.18) 0px, rgba(0,0,0,0.18) 1px, transparent 1px, transparent 3px);
+  mix-blend-mode: multiply;
+  animation: vhs-roll 9s linear infinite;
+}
+@keyframes vhs-roll { 0% { background-position-y: 0; } 100% { background-position-y: 300px; } }
+.vhs-tracking {
+  position: absolute;
+  left: 0; right: 0;
+  height: 14px;
+  background: rgba(255,255,255,0.08);
+  opacity: 0;
+  animation: vhs-tracking-glitch 7s ease-in-out infinite;
+}
+@keyframes vhs-tracking-glitch {
+  0%, 92%, 100% { opacity: 0; top: -20px; }
+  93% { opacity: 0.8; top: 18%; }
+  95% { opacity: 0.6; top: 61%; }
+  96% { opacity: 0; top: 80%; }
+}
+.vhs-rec {
+  position: absolute;
+  top: 16px;
+  right: 22px;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  color: #e5423a;
+  animation: vhs-blink 1s steps(1) infinite;
+}
+@keyframes vhs-blink { 0%, 60% { opacity: 1; } 61%, 100% { opacity: 0; } }
+.vhs-timestamp {
+  position: absolute;
+  bottom: 16px;
+  right: 22px;
+  font-size: 0.8rem;
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+}
 
 /* Customize panel: a real cursor-driven overlay, not a 3D in-world pick --
  * pointer lock is released while it's open (see js/world.js) so the mouse

@@ -34,7 +34,7 @@
       <div>THE SUB-LIMINAL</div>
       <div id="player-name-tag"></div>
     </div>
-    <div class="hint">WASD move · mouse look · Space jump · Shift sprint · C crouch · click to photograph · E to interact</div>
+    <div class="hint">WASD move · mouse look · Space jump · Shift sprint · C crouch · R equip camera · click to photograph · E to interact</div>
     <div id="relock-hint">Mouse not locked — click to try again</div>
     <div id="interact-hint">Press E to switch map</div>
   </div>
@@ -46,6 +46,16 @@
     <span class="vf-corner vf-tr"></span>
     <span class="vf-corner vf-bl"></span>
     <span class="vf-corner vf-br"></span>
+  </div>
+  <!-- The VHS look while the camera's equipped -- scanlines, a REC dot,
+       a running timestamp, a tracking-glitch bar -- all CSS, toggled by
+       js/world.js alongside a color-filter class on the canvas itself
+       (see .vhs-on in css/style.css). -->
+  <div id="vhs-overlay">
+    <div class="vhs-scanlines"></div>
+    <div class="vhs-tracking"></div>
+    <div class="vhs-rec">● REC</div>
+    <div class="vhs-timestamp" id="vhs-timestamp">00:00:00</div>
   </div>
 
   <div id="customize-panel">
@@ -103,6 +113,6 @@
 <!-- cache-bust on every deploy: bump this version string any time
      js/world.js changes, so a returning player's browser can't keep
      running a stale cached copy against the current markup/CSS. -->
-<script src="js/world.js?v=3" defer></script>
+<script src="js/world.js?v=6" defer></script>
 </body>
 </html>

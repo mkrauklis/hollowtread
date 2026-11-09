@@ -46,7 +46,7 @@ const rand = mulberry32(1337);
 const scene = new THREE.Scene();
 const SKY_COLOR = new THREE.Color(0x1c1708); // near-black with a dirty yellow cast, not a clean night-sky black
 scene.background = SKY_COLOR;
-scene.fog = new THREE.FogExp2(0x2a2410, 0.052); // tight and dingy -- the backrooms never reads as open space
+scene.fog = new THREE.FogExp2(0x2a2410, 0.04); // still tight and dingy, just eased off a little now the lights themselves are brighter -- the two together were making rooms read as darker than intended
 
 const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.05, 150);
 
@@ -66,20 +66,44 @@ function resizeRenderer() {
 }
 resizeRenderer();
 
-scene.add(new THREE.AmbientLight(0x3a331c, 0.55)); // dim, warm, sickly -- "dim lights" was explicit, this is not a fluorescent-bright level
-const flashlight = new THREE.SpotLight(0xfff1cf, 6.5, 26, Math.PI / 4.6, 0.55, 1.3);
+scene.add(new THREE.AmbientLight(0x4a4126, 1.0)); // still warm and a little sickly, just brighter -- "dim" shouldn't mean "can't see", on request
+const flashlight = new THREE.SpotLight(0xfff1cf, 9.5, 30, Math.PI / 4.6, 0.55, 1.3);
 camera.add(flashlight);
 flashlight.target.position.set(0, 0, -1);
 camera.add(flashlight.target);
 scene.add(camera);
 
+// Hazmat suit sleeves (armMat -- the color the Appearance tab's hue
+// slider actually changes) ending in thick rubber gloves (gloveMat, a
+// fixed rubber-yellow that doesn't follow the hue slider -- the gloves
+// read as PPE, not skin, so recoloring the suit shouldn't recolor them
+// too).
 const armGroup = new THREE.Group();
-const armMat = new THREE.MeshStandardMaterial({ color: 0x4a3324, roughness: 0.9 });
+const armMat = new THREE.MeshStandardMaterial({ color: 0xcfd0b8, roughness: 0.85 });
+const gloveMat = new THREE.MeshStandardMaterial({ color: 0xe0c62a, roughness: 0.55 });
 function makeArm(side) {
-  const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.42, 4, 8), armMat);
-  arm.position.set(side * 0.26, -0.42, -0.5);
-  arm.rotation.z = side * 0.35;
-  return arm;
+  const sleeve = new THREE.Mesh(new THREE.CapsuleGeometry(0.095, 0.4, 4, 8), armMat);
+  sleeve.position.set(side * 0.26, -0.42, -0.5);
+  sleeve.rotation.z = side * 0.35;
+
+  // Cuff, palm, and three fused finger lobes -- all children of the
+  // sleeve, so they inherit its position/rotation.z automatically and
+  // sit at the sleeve's own "down" end without needing separate world-
+  // space trig to place them.
+  const cuff = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.022, 5, 10), gloveMat);
+  cuff.rotation.x = Math.PI / 2;
+  cuff.position.set(0, -0.19, 0);
+  sleeve.add(cuff);
+  const palm = new THREE.Mesh(new THREE.SphereGeometry(0.125, 8, 7), gloveMat);
+  palm.scale.set(1, 1.1, 0.75);
+  palm.position.set(0, -0.27, 0);
+  sleeve.add(palm);
+  for (let i = -1; i <= 1; i++) {
+    const finger = new THREE.Mesh(new THREE.CapsuleGeometry(0.028, 0.1, 3, 5), gloveMat);
+    finger.position.set(i * 0.055, -0.37, 0.02);
+    sleeve.add(finger);
+  }
+  return sleeve;
 }
 armGroup.add(makeArm(-1), makeArm(1));
 camera.add(armGroup);
@@ -154,12 +178,21 @@ const ceilingMat = new THREE.MeshStandardMaterial({ color: 0x6b5c2a, roughness: 
 const trimMat = new THREE.MeshStandardMaterial({ color: 0x4a3f1c, roughness: 0.9 });
 
 /* ---------------- the maze: a grid of rooms, doorways, and crawlspaces ---------------- */
+/* GRID_N up and CELL down from the first pass (7x16 -> 9x12, about the
+ * same total footprint) plus a narrower DOOR_HALF and far fewer extra
+ * loop connections (see openEdges below) -- the first version read more
+ * like a grid of open rooms than an actual maze: wide doorways and lots
+ * of loops made it hard to ever feel lost or boxed into a corridor. More,
+ * smaller cells means more turns per unit of distance crossed; narrower
+ * doorways and a tree-like (mostly loop-free) layout means a wrong turn
+ * actually costs you a real backtrack instead of just cutting through
+ * the next room over. */
 
-const GRID_N = 7;
-const CELL = 16;
+const GRID_N = 9;
+const CELL = 12;
 const WALL_T = 0.4;
 const WALL_H = 3.4;
-const DOOR_HALF = 1.5;
+const DOOR_HALF = 1.1;
 const CRAWL_HALF = 0.85;
 const CRAWL_H = 1.15; // visual header height over a crawlspace gap -- the actual collision rule is just "crouching or not", this just makes that legible
 
@@ -170,9 +203,12 @@ function edgeKeyX(cx, cz) { return 'x,' + cx + ',' + cz; } // edge between (cx,c
 function edgeKeyZ(cx, cz) { return 'z,' + cx + ',' + cz; } // edge between (cx,cz) and (cx,cz+1)
 
 // A randomized-DFS spanning tree first (guarantees every room reachable
-// from every other), then a handful of extra connections knocked through
-// on top of it so the result isn't one single corridor with no loops --
-// real backrooms exploration doubles back on itself constantly.
+// from every other, with zero loops -- the actual "maze" part), then a
+// SMALL number of extra connections knocked through on top so it isn't
+// completely loop-free (real backrooms exploration still doubles back on
+// itself sometimes), without opening up so many shortcuts that the tree
+// structure stops mattering. Kept deliberately low (was 14%) so getting
+// turned around is the normal experience, not the exception.
 const openEdges = new Set();
 {
   const visited = Array.from({ length: GRID_N }, () => new Array(GRID_N).fill(false));
@@ -192,8 +228,8 @@ const openEdges = new Set();
     stack.push([pick.nx, pick.nz]);
   }
   for (let cx = 0; cx < GRID_N; cx++) for (let cz = 0; cz < GRID_N; cz++) {
-    if (cx + 1 < GRID_N) { const k = edgeKeyX(cx, cz); if (!openEdges.has(k) && rand() < 0.14) openEdges.add(k); }
-    if (cz + 1 < GRID_N) { const k = edgeKeyZ(cx, cz); if (!openEdges.has(k) && rand() < 0.14) openEdges.add(k); }
+    if (cx + 1 < GRID_N) { const k = edgeKeyX(cx, cz); if (!openEdges.has(k) && rand() < 0.05) openEdges.add(k); }
+    if (cz + 1 < GRID_N) { const k = edgeKeyZ(cx, cz); if (!openEdges.has(k) && rand() < 0.05) openEdges.add(k); }
   }
 }
 // Of the edges the maze itself left closed, some become crawlspaces
@@ -303,8 +339,11 @@ for (let ez = 0; ez <= GRID_N; ez++) {
 }
 for (let cx = 0; cx < GRID_N; cx++) for (let cz = 0; cz < GRID_N; cz++) buildCellShell(cx, cz);
 
-// Dim ceiling light fixtures, one per room, each with its own slow
-// flicker so the level never looks evenly, comfortably lit.
+// Ceiling light fixtures, one per room, each with its own slow flicker so
+// the level never looks perfectly evenly lit -- brighter overall than the
+// first pass (base bumped up, range widened so a room's light actually
+// reaches into its own doorways) since "dim" had tipped into "can't
+// actually see", which wasn't the intent.
 const cellLights = [];
 for (let cx = 0; cx < GRID_N; cx++) for (let cz = 0; cz < GRID_N; cz++) {
   if (cx === PIT_CELL.cx && cz === PIT_CELL.cz) continue; // the pit room has its own lighting below
@@ -312,8 +351,8 @@ for (let cx = 0; cx < GRID_N; cx++) for (let cz = 0; cz < GRID_N; cz++) {
   const fixture = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.12, 1.1), trimMat);
   fixture.position.set(c.x, WALL_H - 0.1, c.z);
   scene.add(fixture);
-  const base = 0.55 + rand() * 0.35;
-  const light = new THREE.PointLight(0xd8c27a, base, CELL * 1.05, 2);
+  const base = 1.1 + rand() * 0.5;
+  const light = new THREE.PointLight(0xe8d090, base, CELL * 1.8, 2);
   light.position.set(c.x, WALL_H - 0.4, c.z);
   scene.add(light);
   cellLights.push({ light, base, seed: rand() * 1000, broken: rand() < 0.18 });
@@ -607,36 +646,110 @@ function tickMonsterMove(m, dt, speed) {
   return false;
 }
 
-/* ---------------- The Bacteria: a wire creature ---------------- */
-/* Built from thin, chaotically-angled cylinders radiating out of a dense
- * tangled core instead of any solid-surface body -- "made entirely out of
- * wires" was explicit, so there's deliberately no skin/mesh shell at all,
- * just the wires themselves. */
+// Shared by both entities (they're built on the same shoulder/elbow,
+// hip/knee pivot-group rig -- see createBacteriaModel/createMannequinModel)
+// -- a simple opposite-phase limb swing, eased in/out by m.walkAmp rather
+// than snapping to a pose the instant movement starts/stops, so freezing
+// (the Mannequin, mid-stride, the moment it's looked at) reads as an
+// actual freeze instead of a reset to a neutral idle pose.
+function animateWalkCycle(m, dt, moving) {
+  if (m.walkPhase === undefined) { m.walkPhase = 0; m.walkAmp = 0; }
+  m.walkAmp += ((moving ? 1 : 0) - m.walkAmp) * Math.min(1, dt * 6);
+  if (moving) m.walkPhase += dt * 8;
+  const swing = Math.sin(m.walkPhase) * 0.7 * m.walkAmp;
+  const ud = m.group.userData;
+  if (ud.armPivots) {
+    ud.armPivots[0].rotation.x = swing;
+    ud.armPivots[1].rotation.x = -swing;
+    ud.elbowPivots[0].rotation.x = Math.max(0, -swing) * 0.8;
+    ud.elbowPivots[1].rotation.x = Math.max(0, swing) * 0.8;
+  }
+  if (ud.legPivots) {
+    ud.legPivots[0].rotation.x = -swing;
+    ud.legPivots[1].rotation.x = swing;
+    ud.kneePivots[0].rotation.x = Math.max(0, swing) * 0.9;
+    ud.kneePivots[1].rotation.x = Math.max(0, -swing) * 0.9;
+  }
+}
 
-const wireMat = new THREE.MeshStandardMaterial({ color: 0x8a8a8a, roughness: 0.4, metalness: 0.7, emissive: 0x111111 });
-const bacteriaEyeMat = new THREE.MeshStandardMaterial({ color: 0x2affd8, emissive: 0x2affd8, emissiveIntensity: 3 });
+/* ---------------- The Bacteria: a wire creature ---------------- */
+/* A real humanoid rig -- head, torso, two jointed arms, two jointed legs,
+ * same shoulder/elbow and hip/knee pivot-group technique as the hollowed-
+ * out chimp factory the previous version of this game used, so it can
+ * actually walk-cycle (see animateWalkCycle()) and so the kill animation
+ * has real limbs to pose -- but every single piece is a thin black wire
+ * (a dull, near-zero-reflectance cylinder, no skin/shell mesh at all) and
+ * deliberately faceless: no eyes, nothing looking back. */
+
+const wireMat = new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.85, metalness: 0.1 });
+function wireBone(r0, r1, len) { return new THREE.Mesh(new THREE.CylinderGeometry(r0, r1, len, 5), wireMat); }
+
 function createBacteriaModel() {
   const g = new THREE.Group();
-  const coreWires = 40;
-  for (let i = 0; i < coreWires; i++) {
-    const len = 0.3 + rand() * 0.9;
-    const wire = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.025, len, 4), wireMat);
-    wire.position.set((rand() - 0.5) * 0.5, 0.5 + (rand() - 0.5) * 0.9, (rand() - 0.5) * 0.5);
-    wire.rotation.set(rand() * Math.PI, rand() * Math.PI, rand() * Math.PI);
-    g.add(wire);
+
+  const torso = wireBone(0.1, 0.14, 0.72);
+  torso.position.y = 1.0;
+  g.add(torso);
+  // A handful of thin cross-wires over the torso read as a ribcage
+  // silhouette without needing a real mesh there at all.
+  for (let i = 0; i < 4; i++) {
+    const rib = new THREE.Mesh(new THREE.TorusGeometry(0.135, 0.01, 4, 8), wireMat);
+    rib.rotation.x = Math.PI / 2;
+    rib.position.y = 0.7 + i * 0.18;
+    g.add(rib);
   }
-  // A tighter inner knot so there's still a visual "center of mass".
-  for (let i = 0; i < 16; i++) {
-    const wire = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.25 + rand() * 0.2, 4), wireMat);
-    wire.position.set((rand() - 0.5) * 0.15, 0.55 + (rand() - 0.5) * 0.2, (rand() - 0.5) * 0.15);
-    wire.rotation.set(rand() * Math.PI, rand() * Math.PI, rand() * Math.PI);
-    g.add(wire);
-  }
+  const neck = wireBone(0.035, 0.045, 0.1);
+  neck.position.y = 1.41;
+  g.add(neck);
+  const head = new THREE.Mesh(new THREE.IcosahedronGeometry(0.13, 0), wireMat); // angular, cage-like, no face
+  head.position.y = 1.55;
+  g.add(head);
+
+  const armPivots = [], elbowPivots = [];
   for (const side of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 5), bacteriaEyeMat);
-    eye.position.set(side * 0.12, 0.65, 0.2);
-    g.add(eye);
+    const shoulder = new THREE.Group();
+    shoulder.position.set(side * 0.16, 1.28, 0);
+    g.add(shoulder);
+    const upper = wireBone(0.035, 0.045, 0.38);
+    upper.position.y = -0.19;
+    shoulder.add(upper);
+    const elbow = new THREE.Group();
+    elbow.position.y = -0.38;
+    shoulder.add(elbow);
+    const fore = wireBone(0.028, 0.035, 0.34);
+    fore.position.y = -0.17;
+    elbow.add(fore);
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.045, 6, 5), wireMat);
+    hand.position.y = -0.36;
+    elbow.add(hand);
+    armPivots.push(shoulder);
+    elbowPivots.push(elbow);
   }
+
+  const legPivots = [], kneePivots = [];
+  for (const side of [-1, 1]) {
+    const hip = new THREE.Group();
+    hip.position.set(side * 0.09, 0.64, 0);
+    g.add(hip);
+    const thigh = wireBone(0.045, 0.05, 0.4);
+    thigh.position.y = -0.2;
+    hip.add(thigh);
+    const knee = new THREE.Group();
+    knee.position.y = -0.4;
+    hip.add(knee);
+    const shin = wireBone(0.032, 0.045, 0.38);
+    shin.position.y = -0.19;
+    knee.add(shin);
+    legPivots.push(hip);
+    kneePivots.push(knee);
+  }
+
+  g.userData.armPivots = armPivots;
+  g.userData.elbowPivots = elbowPivots;
+  g.userData.legPivots = legPivots;
+  g.userData.kneePivots = kneePivots;
+  g.userData.head = head;
+  g.userData.grabPoint = { y: 1.0 }; // torso height -- where the kill animation "grabs"
   return g;
 }
 const BACTERIA_ROAM_SPEED = RUN_SPEED * 0.25;
@@ -663,6 +776,7 @@ function tickBacteria(dt, playerPos) {
   else if (bacteria.alertTimer > 0) bacteria.alertTimer -= dt;
   else bacteria.alert = false;
 
+  let arrived;
   if (bacteria.alert) {
     const pc = cellOf(playerPos.x, playerPos.z);
     bacteriaRoamTimer -= dt;
@@ -670,7 +784,7 @@ function tickBacteria(dt, playerPos) {
       setMonsterPath(bacteria, pc.cx, pc.cz);
       bacteriaRoamTimer = 0.5;
     }
-    tickMonsterMove(bacteria, dt, BACTERIA_CHASE_SPEED);
+    arrived = tickMonsterMove(bacteria, dt, BACTERIA_CHASE_SPEED);
   } else {
     bacteriaRoamTimer -= dt;
     if (bacteriaRoamTimer <= 0 || !bacteria.waypoints || bacteria.wpIndex >= bacteria.waypoints.length) {
@@ -678,11 +792,11 @@ function tickBacteria(dt, playerPos) {
       setMonsterPath(bacteria, tx, tz);
       bacteriaRoamTimer = 4 + rand() * 3;
     }
-    tickMonsterMove(bacteria, dt, BACTERIA_ROAM_SPEED);
+    arrived = tickMonsterMove(bacteria, dt, BACTERIA_ROAM_SPEED);
   }
   bacteria.group.position.set(bacteria.pos.x, 0, bacteria.pos.z);
   bacteria.group.rotation.y = bacteria.facing;
-  bacteria.group.rotation.x += dt * 1.5; // the wire tangle itself keeps slowly tumbling, independent of facing
+  animateWalkCycle(bacteria, dt, !arrived);
   return { dist, danger: bacteria.alert ? Math.max(0, 1 - dist / 14) : 0, catchR: BACTERIA_CATCH_R, type: 'bacteria', instance: bacteria };
 }
 
@@ -692,23 +806,81 @@ function tickBacteria(dt, playerPos) {
  * that first sighting "activates" it. */
 
 const mannequinMat = new THREE.MeshStandardMaterial({ color: 0xd8d2c0, roughness: 0.55 });
+// Same jointed-pivot rig shape as the Bacteria (shoulder/elbow,
+// hip/knee groups), so both share one walk-cycle animator and one kill-
+// animation technique -- a smooth-skinned mannequin body on it instead of
+// wire bones, with a visible joint ring at each pivot (a real mannequin's
+// own articulation points, and a free place to hide the seam between two
+// capsule segments).
+const mannequinJointMat = new THREE.MeshStandardMaterial({ color: 0x8a8370, roughness: 0.5 });
+function mannequinJoint(r) { return new THREE.Mesh(new THREE.TorusGeometry(r, r * 0.22, 6, 10), mannequinJointMat); }
+
 function createMannequinModel() {
   const g = new THREE.Group();
-  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.26, 0.9, 8), mannequinMat);
-  torso.position.y = 1.0;
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.25, 0.85, 8), mannequinMat);
+  torso.position.y = 1.03;
   g.add(torso);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 7), mannequinMat);
+  const neckJoint = mannequinJoint(0.09);
+  neckJoint.rotation.x = Math.PI / 2;
+  neckJoint.position.y = 1.47;
+  g.add(neckJoint);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 8), mannequinMat);
   head.position.y = 1.62;
   g.add(head); // deliberately featureless -- no eyes, no muzzle, a blank mannequin head
+
+  const armPivots = [], elbowPivots = [];
   for (const side of [-1, 1]) {
-    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.75, 4, 6), mannequinMat);
-    arm.position.set(side * 0.32, 0.95, 0);
-    arm.rotation.z = side * 0.12;
-    g.add(arm);
-    const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.85, 4, 6), mannequinMat);
-    leg.position.set(side * 0.13, 0.05, 0);
-    g.add(leg);
+    const shoulder = new THREE.Group();
+    shoulder.position.set(side * 0.26, 1.35, 0);
+    g.add(shoulder);
+    const shoulderJoint = mannequinJoint(0.075);
+    shoulder.add(shoulderJoint);
+    const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.065, 0.36, 4, 6), mannequinMat);
+    upper.position.y = -0.2;
+    shoulder.add(upper);
+    const elbow = new THREE.Group();
+    elbow.position.y = -0.38;
+    shoulder.add(elbow);
+    const elbowJoint = mannequinJoint(0.06);
+    elbow.add(elbowJoint);
+    const fore = new THREE.Mesh(new THREE.CapsuleGeometry(0.055, 0.34, 4, 6), mannequinMat);
+    fore.position.y = -0.18;
+    elbow.add(fore);
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.07, 7, 6), mannequinMat);
+    hand.position.y = -0.37;
+    elbow.add(hand);
+    armPivots.push(shoulder);
+    elbowPivots.push(elbow);
   }
+
+  const legPivots = [], kneePivots = [];
+  for (const side of [-1, 1]) {
+    const hip = new THREE.Group();
+    hip.position.set(side * 0.12, 0.6, 0);
+    g.add(hip);
+    const hipJoint = mannequinJoint(0.08);
+    hip.add(hipJoint);
+    const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.4, 4, 6), mannequinMat);
+    thigh.position.y = -0.22;
+    hip.add(thigh);
+    const knee = new THREE.Group();
+    knee.position.y = -0.44;
+    hip.add(knee);
+    const kneeJoint = mannequinJoint(0.065);
+    knee.add(kneeJoint);
+    const shin = new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.38, 4, 6), mannequinMat);
+    shin.position.y = -0.2;
+    knee.add(shin);
+    legPivots.push(hip);
+    kneePivots.push(knee);
+  }
+
+  g.userData.armPivots = armPivots;
+  g.userData.elbowPivots = elbowPivots;
+  g.userData.legPivots = legPivots;
+  g.userData.kneePivots = kneePivots;
+  g.userData.head = head;
+  g.userData.grabPoint = { y: 1.6 }; // head/neck height -- where the kill animation "grabs"
   return g;
 }
 const MANNEQUIN_SEE_RANGE = 16;
@@ -728,6 +900,7 @@ function tickMannequin(dt, playerPos, camForward) {
   const lookedAt = dist < MANNEQUIN_SEE_RANGE && dist > 0.01 &&
     camForward.dot(dirToM.clone().normalize()) > MANNEQUIN_SEE_COS;
 
+  let creeping = false;
   if (lookedAt) {
     mannequin.discovered = true;
   } else if (mannequin.discovered) {
@@ -737,10 +910,12 @@ function tickMannequin(dt, playerPos, camForward) {
       setMonsterPath(mannequin, pc.cx, pc.cz);
       mannequinRetarget = 0.6;
     }
-    tickMonsterMove(mannequin, dt, MANNEQUIN_CREEP_SPEED);
+    const arrived = tickMonsterMove(mannequin, dt, MANNEQUIN_CREEP_SPEED);
+    creeping = !arrived;
   }
   mannequin.group.position.set(mannequin.pos.x, 0, mannequin.pos.z);
   mannequin.group.rotation.y = mannequin.facing;
+  animateWalkCycle(mannequin, dt, creeping);
   const dist2 = Math.hypot(playerPos.x - mannequin.pos.x, playerPos.z - mannequin.pos.z);
   return { dist: dist2, danger: mannequin.discovered ? Math.max(0, 1 - dist2 / 12) : 0, catchR: MANNEQUIN_CATCH_R, type: 'mannequin', instance: mannequin };
 }
@@ -763,19 +938,29 @@ function resetAfterCatch(awayFromPos) {
   const bc = cellCenter(bacteriaCell.cx, bacteriaCell.cz);
   bacteria.pos.set(bc.x, 0, bc.z); bacteria.cx = bacteriaCell.cx; bacteria.cz = bacteriaCell.cz;
   bacteria.alert = false; bacteria.alertTimer = 0; bacteria.waypoints = null;
-  const mc = cellCenter(mannequinCell.cx, mannequinCell.cz);
-  mannequin.pos.set(mc.x, 0, mc.z); mannequin.cx = mannequinCell.cx; mannequin.cz = mannequinCell.cz;
+  // The Mannequin is deliberately NOT sent back to its spawn point here,
+  // and its own .discovered flag was already never reset either -- once
+  // it's active, dying doesn't give you a clean break from it. It just
+  // keeps existing wherever it already was, and immediately re-paths
+  // toward your new position (mannequinRetarget forced to 0, instead of
+  // waiting up to its own 0.6s refresh) so it's visibly still coming.
   mannequin.waypoints = null;
-  // Deliberately NOT resetting mannequin.discovered -- once it's seen you, it stays active.
+  mannequinRetarget = 0;
 }
 
 const monstersByType = { bacteria, mannequin };
-const SCARE_DURATION = { bacteria: 0.8, mannequin: 0.9 };
+// Longer than a generic shake needs, since each one is now a real few-
+// beat sequence (see updateScareCamera) -- Mannequin's "grab, lift, snap,
+// drop" and Bacteria's "entangle, yank, release" both need the room to
+// actually read as those beats rather than one blurred jolt.
+const SCARE_DURATION = { bacteria: 1.0, mannequin: 1.3 };
 let scareActive = false;
 let scareType = null;
+let scareInstance = null;
 let scareStart = 0;
 let scareCamBase = new THREE.Vector3();
 let scareCamDir = new THREE.Vector3();
+const UP = new THREE.Vector3(0, 1, 0);
 
 function triggerJumpscare(type, instance) {
   if (scareActive) return;
@@ -784,12 +969,20 @@ function triggerJumpscare(type, instance) {
   scareStart = performance.now();
   markDied(type);
   const m = instance || monstersByType[type];
+  scareInstance = m;
 
   scareCamBase.copy(camera.position);
   scareCamDir.set(0, 0, -1).applyQuaternion(camera.quaternion);
   const facePos = scareCamBase.clone().addScaledVector(scareCamDir, 0.85);
   m.group.position.copy(facePos);
   m.group.lookAt(scareCamBase);
+  // Neutral pose going in -- the per-type animation below poses limbs
+  // itself from here, so a leftover walk-cycle angle doesn't bleed in.
+  const ud = m.group.userData;
+  for (const list of [ud.armPivots, ud.elbowPivots, ud.legPivots, ud.kneePivots]) {
+    if (!list) continue;
+    for (const piv of list) { piv.rotation.set(0, 0, 0); }
+  }
 
   playScare(type);
   jumpscareEl.className = '';
@@ -807,9 +1000,49 @@ function triggerJumpscare(type, instance) {
 
 function updateScareCamera(p) {
   const shake = (amt) => (Math.random() - 0.5) * amt;
-  camera.position.copy(scareCamBase);
-  camera.position.x += shake(0.05);
-  camera.position.y += shake(0.05);
+  const ud = scareInstance ? scareInstance.group.userData : null;
+
+  if (scareType === 'mannequin') {
+    // Grab (arms raised toward you) -> lift straight up -> a violent
+    // multi-axis snap-shake (the neck snap) held at the top -> a sudden
+    // drop back down. Camera position only, never rotation -- see the
+    // note on that further down, by applyLookDelta.
+    if (p < 0.2) {
+      const t = p / 0.2;
+      if (ud && ud.armPivots) { ud.armPivots[0].rotation.x = -t * 2.1; ud.armPivots[1].rotation.x = -t * 2.1; }
+      camera.position.copy(scareCamBase).addScaledVector(scareCamDir, t * 0.15);
+    } else if (p < 0.45) {
+      const t = (p - 0.2) / 0.25;
+      camera.position.copy(scareCamBase).addScaledVector(UP, t * 1.3).addScaledVector(scareCamDir, 0.15);
+    } else if (p < 0.72) {
+      camera.position.copy(scareCamBase).addScaledVector(UP, 1.3).addScaledVector(scareCamDir, 0.15);
+      camera.position.x += shake(0.32); camera.position.y += shake(0.32); camera.position.z += shake(0.32);
+    } else {
+      const t = (p - 0.72) / 0.28;
+      camera.position.copy(scareCamBase).addScaledVector(UP, 1.3 * (1 - t)).addScaledVector(scareCamDir, 0.15 * (1 - t));
+      camera.position.x += shake(0.06 * (1 - t));
+    }
+  } else if (scareType === 'bacteria') {
+    // Entangle (limbs swing in, fast jittery shake) -> a hard yank down
+    // and to one side -> release and settle.
+    if (p < 0.3) {
+      const t = p / 0.3;
+      if (ud && ud.armPivots) { ud.armPivots[0].rotation.z = t * 1.6; ud.armPivots[1].rotation.z = -t * 1.6; }
+      camera.position.copy(scareCamBase);
+      camera.position.x += shake(0.16); camera.position.y += shake(0.16);
+    } else if (p < 0.65) {
+      const t = (p - 0.3) / 0.35;
+      camera.position.copy(scareCamBase).addScaledVector(new THREE.Vector3(0.7, -0.7, 0), t * 0.55);
+      camera.position.x += shake(0.08); camera.position.y += shake(0.08);
+    } else {
+      const t = (p - 0.65) / 0.35;
+      camera.position.copy(scareCamBase).addScaledVector(new THREE.Vector3(0.7, -0.7, 0), 0.55 * (1 - t));
+    }
+  } else {
+    camera.position.copy(scareCamBase);
+    camera.position.x += shake(0.05);
+    camera.position.y += shake(0.05);
+  }
 }
 
 /* ---------------- "you fell" (pit room) ---------------- */
@@ -1192,9 +1425,36 @@ function tickCatalogViewer(dt) {
 document.getElementById('bestiary-prev').addEventListener('click', () => showCatalogEntry(catalogIndex - 1));
 document.getElementById('bestiary-next').addEventListener('click', () => showCatalogEntry(catalogIndex + 1));
 
+// The camera is equipped/unequipped (R), not always out -- the
+// viewfinder and the VHS look (see css/style.css .vhs-on / #vhs-overlay)
+// both ride on this one flag, and a shutter click only does anything
+// while it's true.
+let cameraEquipped = false;
+const viewfinderEl = document.getElementById('viewfinder');
+const vhsOverlayEl = document.getElementById('vhs-overlay');
+const vhsTimestampEl = document.getElementById('vhs-timestamp');
+function setCameraEquipped(on) {
+  cameraEquipped = on;
+  viewfinderEl.classList.toggle('show', on);
+  vhsOverlayEl.classList.toggle('show', on);
+  renderer.domElement.classList.toggle('vhs-on', on);
+}
+// A "recording length" counter, not the wall clock -- only runs while
+// the camera's actually equipped, ticking once a second rather than every
+// render frame since a DOM text write doesn't need to keep up with 60fps.
+let vhsSeconds = 0;
+setInterval(() => {
+  if (!cameraEquipped) return;
+  vhsSeconds++;
+  const h = String(Math.floor(vhsSeconds / 3600)).padStart(2, '0');
+  const m = String(Math.floor((vhsSeconds % 3600) / 60)).padStart(2, '0');
+  const s = String(vhsSeconds % 60).padStart(2, '0');
+  vhsTimestampEl.textContent = h + ':' + m + ':' + s;
+}, 1000);
+
 renderer.domElement.addEventListener('mousedown', (e) => {
   if (fallbackLook) dragging = true;
-  if (isLocked() && !customizeOpen) takePhoto();
+  if (isLocked() && !customizeOpen && cameraEquipped) takePhoto();
 });
 window.addEventListener('mouseup', () => { dragging = false; });
 document.addEventListener('mousemove', (e) => {
@@ -1206,6 +1466,7 @@ document.addEventListener('keydown', (e) => {
   if (customizeOpen) return;
   if (e.code === 'KeyE' && camera.position.distanceTo(keyboardCenter) < 3.2) openCustomizePanel();
   if (e.code === 'KeyC') crouching = !crouching;
+  if (e.code === 'KeyR') setCameraEquipped(!cameraEquipped);
 });
 
 const keys = { w: false, a: false, s: false, d: false, shift: false };
@@ -1381,7 +1642,8 @@ function animate() {
 
   if (scareActive) {
     const t = (now - scareStart) / 1000;
-    updateScareCamera(t);
+    const duration = SCARE_DURATION[scareType] || 0.6;
+    updateScareCamera(Math.min(t / duration, 1));
   } else if ((isLocked() || fallbackLook) && !customizeOpen) {
     movePlayer(dt);
 
