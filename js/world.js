@@ -194,6 +194,11 @@ const WALL_T = 0.4;
 const WALL_H = 3.4;
 const DOOR_HALF = 1.1;
 const CRAWL_H = 1.15; // visual header height over a crawlspace -- the actual collision rule is just "crouching or not", this just makes that legible
+// Declared this early (rather than down by buildCellShell, where it's
+// mainly used) specifically so the crawl-tunnel-cell selection below --
+// which needs to exclude it -- can reference it without a temporal-dead-
+// zone error; everything else about the pit room still lives further down.
+const PIT_CELL = { cx: Math.floor(GRID_N / 2), cz: Math.floor(GRID_N / 2) };
 
 function boundaryX(ex) { return (ex - GRID_N / 2) * CELL; }
 function boundaryZ(ez) { return (ez - GRID_N / 2) * CELL; }
@@ -241,6 +246,44 @@ for (let cx = 0; cx < GRID_N; cx++) for (let cz = 0; cz < GRID_N; cz++) {
   if (cx + 1 < GRID_N) { const k = edgeKeyX(cx, cz); if (!openEdges.has(k) && rand() < 0.3) crawlEdges.add(k); }
   if (cz + 1 < GRID_N) { const k = edgeKeyZ(cx, cz); if (!openEdges.has(k) && rand() < 0.3) crawlEdges.add(k); }
 }
+
+// Crawlspaces are real dead-end tunnel pockets now, on request -- "dark
+// small long paths, some with turns" -- not just a low section in an
+// otherwise-normal shared wall. A handful of cells that were only ever a
+// single-doorway dead end in the spanning tree anyway (degree 1 -- not a
+// through-route for anything else, so converting them can't disconnect
+// any other room) get their one doorway downgraded to a crawl entrance,
+// and the room itself replaced by a narrow, low, unlit winding corridor
+// (see buildCrawlTunnelCell, built once the normal wall loops below have
+// run) instead of a normal 12-unit room.
+function cellOpenDegree(cx, cz) {
+  let d = 0;
+  if (cx + 1 < GRID_N && openEdges.has(edgeKeyX(cx, cz))) d++;
+  if (cx - 1 >= 0 && openEdges.has(edgeKeyX(cx - 1, cz))) d++;
+  if (cz + 1 < GRID_N && openEdges.has(edgeKeyZ(cx, cz))) d++;
+  if (cz - 1 >= 0 && openEdges.has(edgeKeyZ(cx, cz - 1))) d++;
+  return d;
+}
+const crawlTunnelCells = []; // { cx, cz, entryAxis: 'x'|'z', entrySign: 1|-1 }
+{
+  const candidates = [];
+  for (let cx = 1; cx < GRID_N - 1; cx++) for (let cz = 1; cz < GRID_N - 1; cz++) {
+    if (cx === PIT_CELL.cx && cz === PIT_CELL.cz) continue;
+    if (cellOpenDegree(cx, cz) === 1) candidates.push({ cx, cz });
+  }
+  const pickCount = Math.min(6, candidates.length);
+  for (let i = 0; i < pickCount; i++) {
+    const idx = Math.floor(rand() * candidates.length);
+    const { cx, cz } = candidates.splice(idx, 1)[0];
+    let entryAxis, entrySign;
+    if (cx + 1 < GRID_N && openEdges.has(edgeKeyX(cx, cz))) { entryAxis = 'x'; entrySign = 1; openEdges.delete(edgeKeyX(cx, cz)); crawlEdges.add(edgeKeyX(cx, cz)); }
+    else if (cx - 1 >= 0 && openEdges.has(edgeKeyX(cx - 1, cz))) { entryAxis = 'x'; entrySign = -1; openEdges.delete(edgeKeyX(cx - 1, cz)); crawlEdges.add(edgeKeyX(cx - 1, cz)); }
+    else if (cz + 1 < GRID_N && openEdges.has(edgeKeyZ(cx, cz))) { entryAxis = 'z'; entrySign = 1; openEdges.delete(edgeKeyZ(cx, cz)); crawlEdges.add(edgeKeyZ(cx, cz)); }
+    else { entryAxis = 'z'; entrySign = -1; openEdges.delete(edgeKeyZ(cx, cz - 1)); crawlEdges.add(edgeKeyZ(cx, cz - 1)); }
+    crawlTunnelCells.push({ cx, cz, entryAxis, entrySign });
+  }
+}
+function isCrawlTunnelCell(cx, cz) { return crawlTunnelCells.some((t) => t.cx === cx && t.cz === cz); }
 
 const boxColliders = [];   // THREE.Box3 -- normal solid walls
 const crawlOnlyBoxes = []; // THREE.Box3 -- passable only while crouching
@@ -314,11 +357,11 @@ function edgeWallZ(wz, wx0, wx1, kind) {
   wallBox(midX + half, wx1, wz - WALL_T / 2, wz + WALL_T / 2);
 }
 
-// The pit room (see buildPitRoom() below) gets no default floor/ceiling --
-// everything else does.
-const PIT_CELL = { cx: Math.floor(GRID_N / 2), cz: Math.floor(GRID_N / 2) };
-
 function buildCellShell(cx, cz) {
+  // Crawl-tunnel cells get neither -- buildCrawlTunnelCell (called after
+  // the wall loops below) builds its own narrow floor strip(s) and its
+  // own full-cell ceiling instead of a normal 12-unit room.
+  if (isCrawlTunnelCell(cx, cz)) return;
   const c = cellCenter(cx, cz);
   if (cx !== PIT_CELL.cx || cz !== PIT_CELL.cz) {
     const floor = new THREE.Mesh(new THREE.BoxGeometry(CELL, 0.15, CELL), carpetMat);
@@ -348,6 +391,69 @@ for (let ez = 0; ez <= GRID_N; ez++) {
 }
 for (let cx = 0; cx < GRID_N; cx++) for (let cz = 0; cz < GRID_N; cz++) buildCellShell(cx, cz);
 
+// A crawl-tunnel cell's own interior: one straight leg in from the
+// entrance, then either a dead-end cap (most of the way across the
+// cell -- "long") or a 90-degree turn into a second leg before capping
+// ("some of them having turns"). Narrow (pathHalf*2 wide, ~1/6th a
+// normal room's width), low the whole way through (not just at the
+// entrance), and unlit throughout -- genuinely dark, not just dim.
+function buildCrawlTunnelCell(cx, cz, entryAxis, entrySign) {
+  const c = cellCenter(cx, cz);
+  const half = CELL / 2;
+  const pathHalf = 1.0;
+
+  const ceiling = new THREE.Mesh(new THREE.BoxGeometry(CELL, 0.15, CELL), ceilingMat);
+  ceiling.position.set(c.x, WALL_H + 0.075, c.z);
+  scene.add(ceiling);
+
+  let entryX, entryZ, dirX, dirZ;
+  if (entryAxis === 'x') { entryX = c.x + entrySign * half; entryZ = c.z; dirX = -entrySign; dirZ = 0; }
+  else { entryX = c.x; entryZ = c.z + entrySign * half; dirX = 0; dirZ = -entrySign; }
+
+  // One straight, axis-aligned leg -- floor, low unlit header, flanking
+  // solid walls on both long sides, and its own footprint registered as
+  // crouch-only the whole way (not just at the entrance).
+  function leg(x0, z0, x1, z1) {
+    const minX = Math.min(x0, x1) - pathHalf, maxX = Math.max(x0, x1) + pathHalf;
+    const minZ = Math.min(z0, z1) - pathHalf, maxZ = Math.max(z0, z1) + pathHalf;
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(maxX - minX, 0.15, maxZ - minZ), carpetMat);
+    floor.position.set((minX + maxX) / 2, -0.075, (minZ + maxZ) / 2);
+    scene.add(floor);
+    const header = new THREE.Mesh(new THREE.BoxGeometry(maxX - minX, WALL_H - CRAWL_H, maxZ - minZ), wallMat);
+    header.position.set((minX + maxX) / 2, CRAWL_H + (WALL_H - CRAWL_H) / 2, (minZ + maxZ) / 2);
+    scene.add(header);
+    crawlOnlyBoxes.push(new THREE.Box3(new THREE.Vector3(minX, 0, minZ), new THREE.Vector3(maxX, WALL_H, maxZ)));
+    if (x0 === x1) { wallBox(minX - WALL_T, minX, minZ, maxZ); wallBox(maxX, maxX + WALL_T, minZ, maxZ); }
+    else { wallBox(minX, maxX, minZ - WALL_T, minZ); wallBox(minX, maxX, maxZ, maxZ + WALL_T); }
+  }
+  function capEnd(x, z, dx, dz) {
+    if (dx !== 0) wallBox(x + dx * pathHalf, x + dx * (pathHalf + WALL_T), z - pathHalf, z + pathHalf);
+    else wallBox(x - pathHalf, x + pathHalf, z + dz * pathHalf, z + dz * (pathHalf + WALL_T));
+  }
+
+  const len1 = half * (0.35 + rand() * 0.25);
+  const p1x = entryX + dirX * len1, p1z = entryZ + dirZ * len1;
+  leg(entryX, entryZ, p1x, p1z);
+
+  if (rand() < 0.55) {
+    // Turn -- a second leg on the perpendicular axis, random left/right.
+    const turn = rand() < 0.5 ? 1 : -1;
+    const dir2X = dirX !== 0 ? 0 : turn, dir2Z = dirX !== 0 ? turn : 0;
+    const len2 = half * (0.3 + rand() * 0.25);
+    const p2x = p1x + dir2X * len2, p2z = p1z + dir2Z * len2;
+    leg(p1x, p1z, p2x, p2z);
+    capEnd(p2x, p2z, dir2X, dir2Z);
+  } else {
+    // Straight the rest of the way -- one long leg reads better than two
+    // flush straight ones, so this just extends leg 1's own endpoint.
+    const len2 = half * (0.2 + rand() * 0.2);
+    const p2x = p1x + dirX * len2, p2z = p1z + dirZ * len2;
+    leg(p1x, p1z, p2x, p2z);
+    capEnd(p2x, p2z, dirX, dirZ);
+  }
+}
+for (const t of crawlTunnelCells) buildCrawlTunnelCell(t.cx, t.cz, t.entryAxis, t.entrySign);
+
 // Ceiling light fixtures, one per room, each with its own slow flicker so
 // the level never looks perfectly evenly lit -- brighter overall than the
 // first pass (base bumped up, range widened so a room's light actually
@@ -356,6 +462,7 @@ for (let cx = 0; cx < GRID_N; cx++) for (let cz = 0; cz < GRID_N; cz++) buildCel
 const cellLights = [];
 for (let cx = 0; cx < GRID_N; cx++) for (let cz = 0; cz < GRID_N; cz++) {
   if (cx === PIT_CELL.cx && cz === PIT_CELL.cz) continue; // the pit room has its own lighting below
+  if (isCrawlTunnelCell(cx, cz)) continue; // no light at all -- these are deliberately dark
   const c = cellCenter(cx, cz);
   const fixture = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.12, 1.1), trimMat);
   fixture.position.set(c.x, WALL_H - 0.1, c.z);
@@ -446,7 +553,7 @@ const ARTIFACT_RED_ROOM = { pos: cellCenter(redRoomCell.cx, redRoomCell.cz), id:
 function pickPropCell(exclude) {
   let cx, cz;
   do { cx = 1 + Math.floor(rand() * (GRID_N - 2)); cz = 1 + Math.floor(rand() * (GRID_N - 2)); }
-  while (exclude.some((e) => e.cx === cx && e.cz === cz));
+  while (exclude.some((e) => e.cx === cx && e.cz === cz) || isCrawlTunnelCell(cx, cz));
   return { cx, cz };
 }
 const chairCell = pickPropCell(usedCells);
