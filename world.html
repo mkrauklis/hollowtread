@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Hollowtread — The Hollow</title>
-<meta name="description" content="A connected, open first-person horror map — free roam as a chimp with a flashlight, no objective, no loading screens.">
+<title>The Sub-liminal</title>
+<meta name="description" content="A first-person Backrooms exploration game — dim mustard-yellow rooms, crawlspaces, a camera, and two things that notice you. No objective but to photograph what's there.">
 <link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=">
 <link rel="stylesheet" href="css/style.css">
-<!-- Pixel-art display font for the customize panel only -- the game
-     canvas already renders pixelated (see canvas.game-canvas in
-     css/style.css); this is the same look applied to that one piece of
-     real UI instead of leaving it as smooth system-font text. -->
+<!-- Pixel-art display font for the computer panel only -- the game canvas
+     already renders pixelated (see canvas.game-canvas in css/style.css);
+     this is the same look applied to that one piece of real UI instead of
+     leaving it as smooth system-font text. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
@@ -31,21 +31,28 @@
 <div id="game-root">
   <div id="hud">
     <div class="top-left">
-      <div>HOLLOWTREAD</div>
+      <div>THE SUB-LIMINAL</div>
       <div id="player-name-tag"></div>
     </div>
-    <div class="hint">WASD move · mouse look · Space jump · Shift sprint · E to interact · jump pads glow teal</div>
+    <div class="hint">WASD move · mouse look · Space jump · Shift sprint · C crouch · click to photograph · E to interact</div>
     <div id="relock-hint">Mouse not locked — click to try again</div>
     <div id="interact-hint">Press E to switch map</div>
   </div>
   <div id="dread-vignette"></div>
   <div id="jumpscare-flash"></div>
+  <div id="camera-flash"></div>
+  <div id="viewfinder">
+    <span class="vf-corner vf-tl"></span>
+    <span class="vf-corner vf-tr"></span>
+    <span class="vf-corner vf-bl"></span>
+    <span class="vf-corner vf-br"></span>
+  </div>
 
   <div id="customize-panel">
     <div class="customize-box">
       <div class="customize-tabs">
         <button class="customize-tab active" id="tab-appearance" data-tab="appearance">Appearance</button>
-        <button class="customize-tab" id="tab-bestiary" data-tab="bestiary">Bestiary</button>
+        <button class="customize-tab" id="tab-bestiary" data-tab="bestiary">Catalog</button>
       </div>
 
       <div class="customize-page" data-page="appearance">
@@ -57,7 +64,7 @@
       </div>
 
       <div class="customize-page" data-page="bestiary" hidden>
-        <h2 id="bestiary-zone">THIS FOREST</h2>
+        <h2 id="bestiary-zone">ARTIFACT</h2>
         <canvas id="bestiary-canvas" width="252" height="170"></canvas>
         <div id="bestiary-name">—</div>
         <div class="bestiary-nav">
@@ -73,13 +80,14 @@
 
   <div id="blocker">
     <div class="msg">
-      <h2>The Hollow</h2>
+      <h2>The Sub-liminal</h2>
       <p>
-        Home is the treehouse — safe, lit, yours. Everything past the ramp is one
-        unbroken, free-roam forest: giant trees, connected platforms and
-        bridges, jump pads, pumpkins, and a few things the old computer's
-        bestiary doesn't list, by choice. No objective — just you, the dark,
-        and however far you want to go.
+        You're somewhere between where you were and where you're going —
+        the Backrooms: dim lights, damp yellow carpet, mustard wallpaper,
+        and rooms that don't stop. Some walls have crawlspaces low enough
+        you'll need to crouch. There's nothing to win — just a camera, and
+        three things worth photographing if you can find them. Two things
+        out there notice you back.
       </p>
       <p id="start-hint">Click to drop in. Esc to pause. (If your browser won't lock the mouse, click-and-drag to look instead.)</p>
     </div>
@@ -95,6 +103,6 @@
 <!-- cache-bust on every deploy: bump this version string any time
      js/world.js changes, so a returning player's browser can't keep
      running a stale cached copy against the current markup/CSS. -->
-<script src="js/world.js?v=35" defer></script>
+<script src="js/world.js?v=3" defer></script>
 </body>
 </html>

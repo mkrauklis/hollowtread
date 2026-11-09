@@ -1,7 +1,8 @@
-# Hollowtread
+# The Sub-liminal
 
-A browser-based, free-roam first-person horror game with no objective. Real
-JavaScript, no build step.
+A browser-based, first-person Backrooms exploration game. Real
+JavaScript, no build step. (This repo used to be a different game,
+Hollowtread, set in a forest — that's gone now, replaced entirely.)
 
 ## Running it
 
@@ -21,219 +22,87 @@ Serving the folder with a static server works too, if you'd rather:
 npx serve .
 ```
 
-## The world
+## The place
 
-There's one connected ground — no level select, no loading screens — but
-four distinct map areas on it. You spawn on a **treehouse deck**, built up
-on stilts around a big tree. That deck, and a walled yard around its base,
-is a safe zone: nothing that hunts at night can cross onto it or come
-within 20 units of its center. A **wooden stockade wall**, sharpened logs
-carved to a point along the top, rings the yard, with four open gates (one
-at each compass point — the south one's right where the ramp down from the
-deck lands) so leaving never means walking the fence looking for a way out.
+One connected space — no level select, no separate maps, no loading
+screens. A grid of mustard-yellow rooms (damp carpet floor, dim ceiling
+lights that never quite stop flickering, wallpaper in a monochromatic,
+dingy yellow) connects through doorways and, in some walls, **real
+crawlspaces** — gaps low enough that you have to crouch (**C**) to fit
+through. Both of the things loose in here are too big to follow you into
+one.
 
-Past the wall: **the forest** — giant rolling hills, towering bare trees
-(real climbable branches), several loops of connected elevated platforms —
-raised well past a normal jump's reach now, so a jump pad or a bridge is
-the real way up — linked by bent, kinked bridges instead of dead-straight
-planks, glowing jump pads, and autumn clutter (pumpkins, leaf piles,
-scarecrows) scattered out toward a perimeter wall that rings the whole
-forest. A small sign is mounted above each gap, but nothing points you
-toward any of them in the first place. That wall isn't fully sealed —
-three single holes, one on each remaining side, each lead into a round,
-winding tunnel (a real circular bore, lit, with real turns through a
-matching round turning bay at each one so the bend itself is visible, not
-a blind corner — the exact path is different every time the page loads)
-that comes out into a section that doesn't share the forest's own ground
-at all. On the east side, behind a sign reading **BADLAND**: a desert
-town behind its own perimeter wall with a matching hole at the far end of
-the tunnel, hollow walk-in western buildings, cactus scrub, and air that
-fades to a dark sunrise orange the moment you're actually inside. On the
-west side, behind a sign reading **JUNGLE**: small hills, dense
-broad-leafed canopy strung with hanging vines, and two stone temples,
-single-room and windowless, lit only by your own flashlight — the sky
-here fades to a dark blue instead. On the north side, behind a sign
-reading **WINTER WONDERLAND**: the biggest of the three by a clear
-margin — rolling snow hills, thickening fog, a lamp-lit brick path, candy
-canes and jagged ice spikes everywhere, snow-dusted pine trees, snowmen,
-piles of wrapped presents, a frozen pond, and three gingerbread houses you
-can walk into — under a pale, overcast-white sky instead of the forest's
-black one.
+One room holds a grid of square floor pits. Walk onto one without
+noticing and you fall — all the way out of the level, back to a random
+spot far from wherever you fell.
 
-An old desk sits in a corner of the deck, an equally old CRT monitor
-glowing on top of it. Stand at the keyboard and press **E** to open a
-panel with two tabs: **Appearance** (a hue slider for the color of your
-own first-person arms, and a name field that shows up under the
-HOLLOWTREAD logo in the corner — both persist in your browser,
-`localStorage`, across visits) and **Bestiary** — a real, live, slowly
-turning 3D render of every monster in the game (rendered to its own small
-canvas right there in the panel, the same procedural models every
-creature in the world actually uses, not a picture), Prev/Next buttons to
-page through the roster. Catch is: you can't actually *see* one until
-you've died to it — an entry you haven't been caught by yet shows as a
-dark, featureless silhouette with a glowing "?" and no name, unlocking
-permanently (saved in `localStorage`) the instant whatever it is gets you
-for real. Nothing in the panel itself can catch you either way.
+## The camera
+
+You're not here to fight anything. You're here to document it. A
+viewfinder sits on screen at all times; click to take a photo. Line up
+one of the three things worth photographing, close enough and roughly
+centered, and it's captured — permanently, the first time, saved in your
+browser. There's no film to run out and no wrong way to frame a shot,
+just whether the thing you were aiming at was actually in range.
+
+**The Glitched Chair** — an ordinary chair, half-sunk into a wall at a
+crooked angle, like the room forgot it wasn't supposed to be there.
+
+**The Red Room** — a sealed side-room with no light of its own except one
+small, dim red bulb in a corner. Everything else in it is exactly as dark
+as that leaves it.
+
+**The House in the Wall** — a cutaway in a wall's own thickness,
+lit from inside, with a tiny house — roof, windows, all of it — sitting
+where the wall should just be wall.
+
+## The computer
+
+An old desk, an old CRT monitor, tucked into one of the rooms like
+someone's abandoned office furniture. Stand at the keyboard and press
+**E** for a panel with two tabs: **Appearance** (a hue slider for your
+own first-person arms, a name field under the title in the corner — both
+saved in your browser) and **Catalog** — a real, live, slowly turning 3D
+render of each artifact and each entity, Prev/Next to page through all
+five. An entry you haven't photographed (artifacts) or been caught by
+(entities) yet shows as a dark silhouette with a glowing "?" and no name;
+it unlocks permanently the moment you actually get it.
 
 ## Controls
 
 `W` `A` `S` `D` to move, mouse to look, **Space** to jump, **Shift** to
-sprint, **E** to interact — opens the computer panel when you're standing
-at the keyboard. Click the start screen to lock the pointer; `Esc`
-releases it (or closes the computer panel, if that's open instead).
-Walking onto one of the teal jump pads launches you hard into the air.
+sprint, **C** to toggle crouch (slower, but the only way into a
+crawlspace), **click** to take a photo, **E** to interact — opens the
+computer panel when you're standing at the keyboard. Click the start
+screen to lock the pointer; `Esc` releases it (or closes the computer
+panel, if that's open instead).
 
 ## Objective
 
-There isn't one. This is free roam — explore the forest, the hidden maps,
-the jump pads, the autumn clutter, at your own pace. Getting caught just
-resets you (and whatever caught you) back to the treehouse deck; there's
-nothing to lose and nothing to win.
+There isn't one beyond the three photographs. Explore, find the
+crawlspace routes, avoid the two things that notice you, document what's
+actually here. Getting caught (or falling into a pit) just sends you back
+to a spot far from whatever got you; there's nothing to lose and nothing
+to win.
 
 ## What's out there
 
-Nothing patrols anymore — everything below roams a loose area around its
-own spot until it notices you, then gives chase; lose it and it wanders
-back to roaming near home, not back to standing frozen in one spot.
+**The Bacteria** — a creature built entirely out of wires, no skin, no
+solid body at all, just a tangled, slowly-turning knot of them with two
+small glowing eyes somewhere in the mess. It roams on its own at a
+quarter of your own speed — easy to outpace, easy to lose — but the
+instant it has line of sight on you, it closes that gap fast, 1.2x your
+own speed, and keeps coming for a while even if you break contact. It
+cannot fit through a crawlspace; finding one is a guaranteed way to lose
+it.
 
-### This forest
-
-**Supersonic** — a chimp with no legs, hovering instead of standing on
-anything, neon blue and stretched tall. Once alert, it's just barely
-faster than you can run (1.05x your own top speed) and it's kinda bad at
-turning, so outrunning it in a straight line never works but circling
-around it does. It's also short enough that a well-timed jump clears its
-back entirely. A faint arpeggio plays and gets louder the closer it is,
-even before it's actively hunting you — your only real warning. Catches
-you by grabbing you and screaming in your face.
-
-**Hot Cheeto** — the same no-legs chimp shape as Supersonic, scaled up 4x:
-maroon, with glowing neon red eyes. Same top speed as Supersonic, turns
-slowly — a straight sprint still won't outrun it, but circling around it
-works. Its jumpscare is it picking you up and putting you in its mouth.
-
-**Peanut** — light brown, no arms. Noticeably slower than you (0.7x your
-speed) but turns faster than anything else out there — it can't catch you
-in a straight line, but don't expect to lose it by weaving either. Its
-jumpscare is a quick, sharp tackle.
-
-### Badland (hidden, past the forest's own east wall)
-
-A desert town that isn't part of the forest's ground at all — reached by
-finding the one hole in the forest's own outer perimeter wall, through the
-winding tunnel behind it, to the matching hole in Badland's own rugged
-wooden perimeter wall at the far end. Sand, cactus scrub, hollow
-false-front buildings you can actually walk into, and a sky that fades to
-a dark sunrise orange once you're inside.
-
-**Lizard** — 2x your size, a skull where its head should be, a tail. 1.02x
-your speed.
-
-**Gunslinger** — 1.2x your size, cowboy hat. 0.9x your speed.
-
-**Outlaws** — three of them, your own size, bandanas and cowboy hats. 0.7x
-your speed.
-
-### The Jungle (hidden, past the forest's own west wall)
-
-Like Badland, a section that doesn't share the forest's ground — reached
-by finding the one hole in the forest's own outer perimeter wall on its
-west side, through its own winding tunnel, to the matching hole in the
-Jungle's own rugged mossy stone wall at the far end. Small hills, dense
-broad-leafed canopy with vines hanging down out of it, real climbable
-branches on the trees same as the forest's own, and two single-room stone
-temples, each windowless and lit only by your own flashlight. The sky
-fades to a dark blue once you're inside.
-
-**Stalker** — a chimp whose whole body has been stretched far upward and
-then scaled up again on top of that, genuinely huge, near-black with pale
-glowing eyes. It can spot you from much farther off than anything else out
-there, but it's slower than you (0.75x your speed) — but it can't follow
-you into either temple; reaching a doorway is an instant, total out.
-
-**Wanderer** — three of them, dark grey chimps with no face at all (no
-eyes, no mouth, nothing looking back). Slower than you (0.75x your speed),
-and unlike Stalker, nothing stops one from following you in through a
-temple doorway.
-
-### Winter Wonderland (hidden, past the forest's own north wall)
-
-The biggest of the three sections, reached the same way as the other
-two — through the one hole in the forest's own outer wall on its north
-side, down its own winding tunnel, to a matching hole in Winter
-Wonderland's own perimeter wall. Rolling snow hills, thick fog, a
-lamp-lit brick path, candy canes and jagged translucent ice spikes
-scattered everywhere, snow-dusted pine trees, snowmen, small piles of
-wrapped presents, a frozen pond, and three gingerbread houses with icing
-trim you can actually walk into.
-
-**Gingy** — gingerbread brown, no face at all. Slower than you (0.7x your
-speed).
-
-**Crangler** — a chimp whose whole body *and* arms have been stretched 5x
-upward, a red-and-white candy-cane print down its body, glowing red eyes.
-Spots you from much farther off than almost anything else out there.
-
-**Elf** — three of them, red or green costume, pointed hat. The slowest
-thing in the game (0.5x your speed).
-
-**Krampus** — a chimp scaled up 6x, with its torso additionally stretched
-2x taller on top of that: beard, Santa hat, horns, pale blue glowing eyes
-with no pupils, dark bent claws, pale sickly green-grey skin blotched
-like it's rotting. The fastest thing in the game (1.5x your speed) — but
-it can never follow you into a gingerbread house; reaching the doorway is
-an instant, total out.
-
-Every monster is capped at a 20-unit radius from the treehouse, and the
-ones in Badland, the Jungle, or Winter Wonderland can't wander, or be
-chased, out of their own area at all — once you're back near home,
-you're safe, mid-chase or not.
-
-## The summon shrine
-
-Tucked against the back wall of Winter Wonderland's first gingerbread
-house (the one closest to the entrance) is a stone altar with a floating
-orb on top — the one way to summon a god. Standing close to it charges it
-up the longer you stay; the orb (and the light it casts) shifts from a
-neon white at zero charge to blood red as it fills, so you can watch the
-summon coming without any HUD telling you. Walk away before it's full and
-it bleeds back down instead of holding your progress — this takes
-committing to, not just a tap.
-
-The only god for now: once the shrine hits full charge, the sky turns
-blood red in *every* map at once (not just Winter Wonderland), a
-distorted, off-key rendition of Jingle Bells starts playing, and a giant
-Santa chimp riding a sleigh flies in and comes straight for you — 1.2x
-your own speed, unbound by the 20-unit leash and zone walls everything
-else respects, so there's nowhere on the whole map that's safe from it
-mid-chase, except the house the shrine itself lives in — that one stays a
-safe zone even from Santa. Getting caught by something else while the
-event is still going doesn't end it; only Santa's own catch does, sky,
-music, and the shrine resetting back to normal, ready to be charged
-again.
-
-## Lessons carried over from Desolate Apes (goofy-horror)
-
-This project reuses the working parts of an earlier browser horror game
-rather than re-deriving them:
-
-- **No build step, ever — and that means no ES modules either.** The first
-  version of this loaded Three.js as an ES module via a CDN import map,
-  which quietly meant the game could never actually be opened from disk —
-  only ES modules are blocked over `file://`, not classic scripts, so this
-  now loads Three.js's classic global build instead. "Open the file and it
-  runs" has to mean *any* file, including just double-clicking it.
-- **A bestiary belongs *in* the game, not as a separate page.** An earlier
-  attempt at a standalone "monsterpedia" page got cut — it was redundant
-  and easy to let go stale. A real in-world computer you walk up to (now
-  doubling as the bestiary, after starting as pedestals in their own
-  room) keeps it discoverable and in-context instead.
-- **Danger communicated visually, not just by distance.** A red vignette
-  that intensifies as a threat closes in gives a constant, readable warning
-  regardless of whether you've spotted the thing causing it yet.
-- **A safe home base** players can always retreat to, with a hard radius
-  nothing hostile can cross, makes losing (getting caught) low-stakes
-  enough that exploration stays the point.
+**The Mannequin** — pale, featureless, no face at all. It does nothing
+until the first time you actually look at it — that's what wakes it up.
+From then on, it holds perfectly still for as long as you're looking
+directly at it, and creeps toward you, fast, the instant you look away.
+Looking back freezes it again, wherever it's gotten to. It can't follow
+you into a crawlspace either, but by the time you've noticed it's
+already moving, you may not have the room to reach one.
 
 ## License
 
