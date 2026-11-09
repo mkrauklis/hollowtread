@@ -193,8 +193,7 @@ const CELL = 12;
 const WALL_T = 0.4;
 const WALL_H = 3.4;
 const DOOR_HALF = 1.1;
-const CRAWL_HALF = 0.85;
-const CRAWL_H = 1.15; // visual header height over a crawlspace gap -- the actual collision rule is just "crouching or not", this just makes that legible
+const CRAWL_H = 1.15; // visual header height over a crawlspace -- the actual collision rule is just "crouching or not", this just makes that legible
 
 function boundaryX(ex) { return (ex - GRID_N / 2) * CELL; }
 function boundaryZ(ez) { return (ez - GRID_N / 2) * CELL; }
@@ -278,31 +277,41 @@ function wallBox(x0, x1, z0, z1) {
 // (a normal doorway, no gap dressing), 'crawl' (a low gap, collision-
 // gated on crouching, with a visual header so it reads as low), or
 // 'solid' (no gap at all).
+// A crawlspace takes up the entire shared wall between the two rooms it
+// connects now, on request -- not a narrow slot in an otherwise-normal
+// doorway, the whole section. No flanking wallBox at all: just a header
+// spanning the full span, low enough to force a crouch, in the same
+// wallMat as every other wall (so it reads as "the wallpaper continues
+// low here", not a distinct, obviously-different crawlspace material) --
+// and deliberately no light placed anywhere in it, so it's genuinely dark
+// unless a neighboring room's own light happens to still reach that far.
 function edgeWallX(wx, wz0, wz1, kind) {
   if (kind === 'solid') { wallBox(wx - WALL_T / 2, wx + WALL_T / 2, wz0, wz1); return; }
-  const half = kind === 'crawl' ? CRAWL_HALF : DOOR_HALF;
+  if (kind === 'crawl') {
+    crawlOnlyBoxes.push(new THREE.Box3(new THREE.Vector3(wx - WALL_T, 0, wz0), new THREE.Vector3(wx + WALL_T, WALL_H, wz1)));
+    const header = new THREE.Mesh(new THREE.BoxGeometry(WALL_T * 2, WALL_H - CRAWL_H, wz1 - wz0), wallMat);
+    header.position.set(wx, CRAWL_H + (WALL_H - CRAWL_H) / 2, (wz0 + wz1) / 2);
+    scene.add(header);
+    return;
+  }
+  const half = DOOR_HALF;
   const midZ = (wz0 + wz1) / 2;
   wallBox(wx - WALL_T / 2, wx + WALL_T / 2, wz0, midZ - half);
   wallBox(wx - WALL_T / 2, wx + WALL_T / 2, midZ + half, wz1);
-  if (kind === 'crawl') {
-    crawlOnlyBoxes.push(new THREE.Box3(new THREE.Vector3(wx - WALL_T, 0, midZ - half), new THREE.Vector3(wx + WALL_T, WALL_H, midZ + half)));
-    const header = new THREE.Mesh(new THREE.BoxGeometry(WALL_T * 2, WALL_H - CRAWL_H, half * 2), trimMat);
-    header.position.set(wx, CRAWL_H + (WALL_H - CRAWL_H) / 2, midZ);
-    scene.add(header);
-  }
 }
 function edgeWallZ(wz, wx0, wx1, kind) {
   if (kind === 'solid') { wallBox(wx0, wx1, wz - WALL_T / 2, wz + WALL_T / 2); return; }
-  const half = kind === 'crawl' ? CRAWL_HALF : DOOR_HALF;
+  if (kind === 'crawl') {
+    crawlOnlyBoxes.push(new THREE.Box3(new THREE.Vector3(wx0, 0, wz - WALL_T), new THREE.Vector3(wx1, WALL_H, wz + WALL_T)));
+    const header = new THREE.Mesh(new THREE.BoxGeometry(wx1 - wx0, WALL_H - CRAWL_H, WALL_T * 2), wallMat);
+    header.position.set((wx0 + wx1) / 2, CRAWL_H + (WALL_H - CRAWL_H) / 2, wz);
+    scene.add(header);
+    return;
+  }
+  const half = DOOR_HALF;
   const midX = (wx0 + wx1) / 2;
   wallBox(wx0, midX - half, wz - WALL_T / 2, wz + WALL_T / 2);
   wallBox(midX + half, wx1, wz - WALL_T / 2, wz + WALL_T / 2);
-  if (kind === 'crawl') {
-    crawlOnlyBoxes.push(new THREE.Box3(new THREE.Vector3(midX - half, 0, wz - WALL_T), new THREE.Vector3(midX + half, WALL_H, wz + WALL_T)));
-    const header = new THREE.Mesh(new THREE.BoxGeometry(half * 2, WALL_H - CRAWL_H, WALL_T * 2), trimMat);
-    header.position.set(midX, CRAWL_H + (WALL_H - CRAWL_H) / 2, wz);
-    scene.add(header);
-  }
 }
 
 // The pit room (see buildPitRoom() below) gets no default floor/ceiling --
@@ -622,13 +631,51 @@ function cellOf(x, z) {
   cz = Math.max(0, Math.min(GRID_N - 1, cz));
   return { cx, cz };
 }
+// Two waypoints per room instead of one, on request ("monsters shouldn't
+// run on a grid, they walk around normally"): an exact, unjittered
+// doorway-crossing point (so every doorway/crawlspace is still always
+// threaded dead-on -- monsters have no wall collision of their own, so
+// missing one would mean visibly clipping through a wall) followed by
+// the room's own center with a random sideways jitter on it (skipped on
+// the very last stop, so the final destination -- the player, or a roam
+// target -- still lands precisely). The straight line between "jittered
+// center of room A" and "exact doorway" and "jittered center of room B"
+// is what actually reads as cutting across a room at an angle instead of
+// beelining dead-center through every single one of them.
 function setMonsterPath(m, toCx, toCz) {
   const path = bfsPath(m.cx, m.cz, toCx, toCz);
-  m.waypoints = path.map(([cx, cz]) => ({ ...cellCenter(cx, cz), cx, cz }));
+  const waypoints = [];
+  let prevCx = m.cx, prevCz = m.cz;
+  for (let i = 0; i < path.length; i++) {
+    const [cx, cz] = path[i];
+    const prevCenter = cellCenter(prevCx, prevCz);
+    let doorX, doorZ;
+    if (cx === prevCx + 1) { doorX = boundaryX(cx); doorZ = prevCenter.z; }
+    else if (cx === prevCx - 1) { doorX = boundaryX(prevCx); doorZ = prevCenter.z; }
+    else if (cz === prevCz + 1) { doorX = prevCenter.x; doorZ = boundaryZ(cz); }
+    else { doorX = prevCenter.x; doorZ = boundaryZ(prevCz); }
+    waypoints.push({ x: doorX, z: doorZ, cx: prevCx, cz: prevCz });
+
+    const c = cellCenter(cx, cz);
+    if (i < path.length - 1) {
+      c.x += (rand() - 0.5) * CELL * 0.4;
+      c.z += (rand() - 0.5) * CELL * 0.4;
+    }
+    waypoints.push({ ...c, cx, cz });
+    prevCx = cx; prevCz = cz;
+  }
+  m.waypoints = waypoints;
   m.wpIndex = 0;
 }
+function lerpAngle(a, b, t) {
+  const diff = ((b - a + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+  return a + diff * t;
+}
 // Advances a monster along its current waypoint list; returns true once
-// it has arrived (empty/finished path).
+// it has arrived (empty/finished path). Facing turns smoothly toward the
+// current direction of travel (lerpAngle) instead of snapping to it
+// instantly -- part of the same "doesn't move like it's on rails" goal
+// as the waypoint jitter above.
 function tickMonsterMove(m, dt, speed) {
   if (!m.waypoints || m.wpIndex >= m.waypoints.length) return true;
   const wp = m.waypoints[m.wpIndex];
@@ -642,7 +689,8 @@ function tickMonsterMove(m, dt, speed) {
   const nx = dx / d, nz = dz / d;
   m.pos.x += nx * speed * dt;
   m.pos.z += nz * speed * dt;
-  m.facing = Math.atan2(nx, nz);
+  if (m.facing === undefined) m.facing = Math.atan2(nx, nz);
+  m.facing = lerpAngle(m.facing, Math.atan2(nx, nz), Math.min(1, dt * 7));
   return false;
 }
 
@@ -652,11 +700,17 @@ function tickMonsterMove(m, dt, speed) {
 // than snapping to a pose the instant movement starts/stops, so freezing
 // (the Mannequin, mid-stride, the moment it's looked at) reads as an
 // actual freeze instead of a reset to a neutral idle pose.
-function animateWalkCycle(m, dt, moving) {
-  if (m.walkPhase === undefined) { m.walkPhase = 0; m.walkAmp = 0; }
+function animateWalkCycle(m, dt, moving, sprinting) {
+  if (m.walkPhase === undefined) { m.walkPhase = 0; m.walkAmp = 0; m.sprintAmp = 0; }
   m.walkAmp += ((moving ? 1 : 0) - m.walkAmp) * Math.min(1, dt * 6);
-  if (moving) m.walkPhase += dt * 8;
-  const swing = Math.sin(m.walkPhase) * 0.7 * m.walkAmp;
+  m.sprintAmp += ((moving && sprinting ? 1 : 0) - m.sprintAmp) * Math.min(1, dt * 5);
+  // A real sprint, not just a faster walk -- quicker cadence, a bigger
+  // swing, and a forward lean through the torso (if the rig exposes one;
+  // both of this game's do).
+  const cadence = 8 + m.sprintAmp * 7;
+  const amp = 0.7 + m.sprintAmp * 0.45;
+  if (moving) m.walkPhase += dt * cadence;
+  const swing = Math.sin(m.walkPhase) * amp * m.walkAmp;
   const ud = m.group.userData;
   if (ud.armPivots) {
     ud.armPivots[0].rotation.x = swing;
@@ -670,6 +724,7 @@ function animateWalkCycle(m, dt, moving) {
     ud.kneePivots[0].rotation.x = Math.max(0, swing) * 0.9;
     ud.kneePivots[1].rotation.x = Math.max(0, -swing) * 0.9;
   }
+  if (ud.torso) ud.torso.rotation.x = m.sprintAmp * 0.3 * m.walkAmp;
 }
 
 /* ---------------- The Bacteria: a wire creature ---------------- */
@@ -749,6 +804,7 @@ function createBacteriaModel() {
   g.userData.legPivots = legPivots;
   g.userData.kneePivots = kneePivots;
   g.userData.head = head;
+  g.userData.torso = torso;
   g.userData.grabPoint = { y: 1.0 }; // torso height -- where the kill animation "grabs"
   return g;
 }
@@ -796,7 +852,7 @@ function tickBacteria(dt, playerPos) {
   }
   bacteria.group.position.set(bacteria.pos.x, 0, bacteria.pos.z);
   bacteria.group.rotation.y = bacteria.facing;
-  animateWalkCycle(bacteria, dt, !arrived);
+  animateWalkCycle(bacteria, dt, !arrived, bacteria.alert);
   return { dist, danger: bacteria.alert ? Math.max(0, 1 - dist / 14) : 0, catchR: BACTERIA_CATCH_R, type: 'bacteria', instance: bacteria };
 }
 
@@ -880,6 +936,7 @@ function createMannequinModel() {
   g.userData.legPivots = legPivots;
   g.userData.kneePivots = kneePivots;
   g.userData.head = head;
+  g.userData.torso = torso;
   g.userData.grabPoint = { y: 1.6 }; // head/neck height -- where the kill animation "grabs"
   return g;
 }
@@ -915,7 +972,7 @@ function tickMannequin(dt, playerPos, camForward) {
   }
   mannequin.group.position.set(mannequin.pos.x, 0, mannequin.pos.z);
   mannequin.group.rotation.y = mannequin.facing;
-  animateWalkCycle(mannequin, dt, creeping);
+  animateWalkCycle(mannequin, dt, creeping, creeping);
   const dist2 = Math.hypot(playerPos.x - mannequin.pos.x, playerPos.z - mannequin.pos.z);
   return { dist: dist2, danger: mannequin.discovered ? Math.max(0, 1 - dist2 / 12) : 0, catchR: MANNEQUIN_CATCH_R, type: 'mannequin', instance: mannequin };
 }
@@ -998,45 +1055,63 @@ function triggerJumpscare(type, instance) {
   }, duration * 1000);
 }
 
+// Smoothstep -- eases a phase's own local progress in AND out, so
+// consecutive phases meet at matching velocity (effectively 0) as well
+// as matching position, instead of just matching position and leaving a
+// sudden change of speed at the seam. That mismatch was the main thing
+// making the previous (linear-per-phase) version read as jerky rather
+// than smooth.
+function ease(t) { return t * t * (3 - 2 * t); }
+
 function updateScareCamera(p) {
   const shake = (amt) => (Math.random() - 0.5) * amt;
   const ud = scareInstance ? scareInstance.group.userData : null;
 
   if (scareType === 'mannequin') {
-    // Grab (arms raised toward you) -> lift straight up -> a violent
-    // multi-axis snap-shake (the neck snap) held at the top -> a sudden
-    // drop back down. Camera position only, never rotation -- see the
-    // note on that further down, by applyLookDelta.
+    // Grab (arms raise toward you) -> lift straight up -> a violent
+    // multi-axis snap-shake (the neck snap), building in rather than
+    // starting at full intensity -> a drop back down that eases out
+    // instead of stopping dead. Camera position only, never rotation --
+    // see the note on that further down, by applyLookDelta.
     if (p < 0.2) {
-      const t = p / 0.2;
+      const t = ease(p / 0.2);
       if (ud && ud.armPivots) { ud.armPivots[0].rotation.x = -t * 2.1; ud.armPivots[1].rotation.x = -t * 2.1; }
       camera.position.copy(scareCamBase).addScaledVector(scareCamDir, t * 0.15);
     } else if (p < 0.45) {
-      const t = (p - 0.2) / 0.25;
+      const t = ease((p - 0.2) / 0.25);
       camera.position.copy(scareCamBase).addScaledVector(UP, t * 1.3).addScaledVector(scareCamDir, 0.15);
     } else if (p < 0.72) {
+      const t = (p - 0.45) / 0.27;
+      const amt = 0.32 * Math.sin(Math.min(t, 1) * Math.PI); // ramps in and back out across the hold, not a flat jitter the whole time
       camera.position.copy(scareCamBase).addScaledVector(UP, 1.3).addScaledVector(scareCamDir, 0.15);
-      camera.position.x += shake(0.32); camera.position.y += shake(0.32); camera.position.z += shake(0.32);
+      camera.position.x += shake(amt); camera.position.y += shake(amt); camera.position.z += shake(amt);
     } else {
-      const t = (p - 0.72) / 0.28;
+      const t = ease((p - 0.72) / 0.28);
       camera.position.copy(scareCamBase).addScaledVector(UP, 1.3 * (1 - t)).addScaledVector(scareCamDir, 0.15 * (1 - t));
       camera.position.x += shake(0.06 * (1 - t));
     }
   } else if (scareType === 'bacteria') {
-    // Entangle (limbs swing in, fast jittery shake) -> a hard yank down
-    // and to one side -> release and settle.
-    if (p < 0.3) {
-      const t = p / 0.3;
-      if (ud && ud.armPivots) { ud.armPivots[0].rotation.z = t * 1.6; ud.armPivots[1].rotation.z = -t * 1.6; }
-      camera.position.copy(scareCamBase);
-      camera.position.x += shake(0.16); camera.position.y += shake(0.16);
-    } else if (p < 0.65) {
-      const t = (p - 0.3) / 0.35;
-      camera.position.copy(scareCamBase).addScaledVector(new THREE.Vector3(0.7, -0.7, 0), t * 0.55);
-      camera.position.x += shake(0.08); camera.position.y += shake(0.08);
+    // It leaps onto you (limbs splaying wide, a hard forward-and-down
+    // lurch as the weight lands) -> one sharp head-slam impact (a single
+    // ramped shake burst, not a held jitter) -> everything goes black and
+    // holds (the CSS flash itself handles the hold; the camera just
+    // settles into the post-impact position rather than resetting).
+    const settlePos = scareCamBase.clone().addScaledVector(scareCamDir, 0.2).addScaledVector(UP, -0.25);
+    if (p < 0.35) {
+      const t = ease(p / 0.35);
+      if (ud && ud.armPivots) {
+        ud.armPivots[0].rotation.z = t * 2.0; ud.armPivots[1].rotation.z = -t * 2.0;
+        ud.legPivots[0].rotation.z = t * 1.1; ud.legPivots[1].rotation.z = -t * 1.1;
+      }
+      camera.position.copy(scareCamBase).lerp(settlePos, t);
+      camera.position.x += shake(0.05 * t); camera.position.y += shake(0.05 * t);
+    } else if (p < 0.55) {
+      const t = (p - 0.35) / 0.2;
+      const impact = Math.sin(Math.min(t, 1) * Math.PI); // one hit: ramps up then back down within this phase alone
+      camera.position.copy(settlePos);
+      camera.position.x += shake(0.4 * impact); camera.position.y += shake(0.4 * impact); camera.position.z += shake(0.2 * impact);
     } else {
-      const t = (p - 0.65) / 0.35;
-      camera.position.copy(scareCamBase).addScaledVector(new THREE.Vector3(0.7, -0.7, 0), 0.55 * (1 - t));
+      camera.position.copy(settlePos);
     }
   } else {
     camera.position.copy(scareCamBase);
@@ -1458,6 +1533,9 @@ renderer.domElement.addEventListener('mousedown', (e) => {
 });
 window.addEventListener('mouseup', () => { dragging = false; });
 document.addEventListener('mousemove', (e) => {
+  // No look control during the kill animation -- on request -- same
+  // reason scareActive already gates movePlayer in animate() below.
+  if (scareActive) return;
   if (isLocked() || (fallbackLook && dragging)) applyLookDelta(e.movementX, e.movementY);
 });
 document.addEventListener('keydown', (e) => {
@@ -1633,7 +1711,21 @@ function animate() {
 
   if (customizeOpen) tickCatalogViewer(dt);
 
+  // Culling, not just dimming: with ~80 rooms each holding their own
+  // PointLight, leaving every one of them permanently in the scene meant
+  // every fragment the GPU ever shaded was paying for ~80 lights' worth
+  // of per-pixel lighting math regardless of how many were actually
+  // nearby -- the single biggest cost in the whole scene by far, and the
+  // actual cause of the lag. A light more than ~1.6 rooms away is set
+  // invisible outright (excluded from the renderer's active-light list
+  // for the frame, not just zeroed), so only the handful of rooms around
+  // the player are ever actually lit at once.
+  const CULL_R2 = (CELL * 1.6) * (CELL * 1.6);
   for (const cl of cellLights) {
+    const dx = cl.light.position.x - camera.position.x, dz = cl.light.position.z - camera.position.z;
+    const near = dx * dx + dz * dz < CULL_R2;
+    cl.light.visible = near;
+    if (!near) continue;
     let t = cl.base * (0.85 + 0.15 * Math.sin(now * 0.004 + cl.seed));
     if (cl.broken && Math.sin(now * 0.0017 + cl.seed * 3) > 0.985) t *= 0.15;
     cl.light.intensity = t;

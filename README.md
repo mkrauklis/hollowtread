@@ -30,9 +30,11 @@ open rooms with a few extra walls knocked out — narrow doorways, mostly
 dead ends, the rare loop) of mustard-yellow rooms (damp carpet floor,
 ceiling lights that flicker but are bright enough to actually see by,
 wallpaper in a monochromatic, dingy yellow) connects through doorways
-and, in some walls, **real crawlspaces** — gaps low enough that you have
-to crouch (**C**) to fit through. Both of the things loose in here are
-too big to follow you into one.
+and, in some walls, **real crawlspaces** — not a narrow slot cut into a
+normal doorway, but a whole dark, low section of wall (blends right into
+the same wallpaper until you're close) you have to crouch (**C**) to fit
+through. Both of the things loose in here are too big to follow you into
+one.
 
 One room holds a grid of square floor pits. Walk onto one without
 noticing and you fall — all the way out of the level, back to a random
@@ -95,8 +97,11 @@ to win.
 ## What's out there
 
 Both walk on real jointed limbs (shoulders, elbows, hips, knees) with
-their own walk-cycle, and both have a real multi-beat kill animation
-instead of a generic camera shake when they actually catch you.
+their own walk-cycle — a real sprint when they're actually after you, not
+just a faster version of the same walk — and wander room to room off the
+exact dead-center line, not visibly gridded. Both have a real, smooth
+multi-beat kill animation instead of a generic camera shake when they
+actually catch you, and you can't look around at all while it plays.
 
 **The Bacteria** — a humanoid shape built entirely out of thin black
 wire — a wire ribcage, a wire skull, jointed wire limbs, nothing solid
@@ -104,9 +109,9 @@ and deliberately no face or eyes at all. It roams on its own at a
 quarter of your own speed — easy to outpace, easy to lose — but the
 instant it has line of sight on you, it closes that gap fast, 1.2x your
 own speed, and keeps coming for a while even if you break contact. Catch
-you and it entangles you in its own limbs, yanks you off your feet, and
-lets go. It cannot fit through a crawlspace; finding one is a guaranteed
-way to lose it.
+you and it leaps onto you, slams its head into yours once, and the screen
+goes black. It cannot fit through a crawlspace; finding one is a
+guaranteed way to lose it.
 
 **The Mannequin** — pale, featureless, no face at all. It does nothing
 until the first time you actually look at it — that's what wakes it up.

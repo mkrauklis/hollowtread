@@ -515,12 +515,24 @@ canvas.game-canvas.vhs-on {
 
 #jumpscare-flash.show { opacity: 1; }
 
-@keyframes scare-flash-bacteria { 0% { opacity: 0; } 12% { opacity: 1; } 40% { opacity: 0.3; } 70% { opacity: 1; } 100% { opacity: 0; } }
-@keyframes scare-flash-mannequin { 0% { opacity: 0; } 8% { opacity: 1; } 30% { opacity: 0.15; } 55% { opacity: 1; } 100% { opacity: 0; } }
+/* Durations here have to match SCARE_DURATION in js/world.js exactly --
+ * that's the setTimeout that removes the class, this is what plays while
+ * it's on. They'd drifted out of sync once already (the JS side got
+ * lengthened for the fuller multi-beat animations and this didn't), which
+ * meant the CSS animation quietly finished and reset to its own resting
+ * state early, leaving a stretch of nothing before the class was actually
+ * removed. */
+@keyframes scare-flash-bacteria { 0% { opacity: 0; } 35% { opacity: 0.1; } 45% { opacity: 0.55; } 60% { opacity: 1; } 100% { opacity: 1; } }
+@keyframes scare-flash-mannequin { 0% { opacity: 0; } 20% { opacity: 0.2; } 45% { opacity: 0.4; } 60% { opacity: 1; } 85% { opacity: 0.6; } 100% { opacity: 0; } }
 @keyframes scare-flash-fell { 0% { opacity: 1; } 100% { opacity: 0; } }
 
-#jumpscare-flash.scare-bacteria { background: #2affd8; animation: scare-flash-bacteria 0.8s ease-in-out; }
-#jumpscare-flash.scare-mannequin { background: #d8d2c0; animation: scare-flash-mannequin 0.9s ease-in-out; }
+/* Bacteria's own ending is a hold, not a fade -- "it goes black", on
+ * request, and stays that way until the respawn teleport actually
+ * happens (resetAfterCatch(), then the class comes off) -- forwards so
+ * the animation doesn't snap back to the element's own resting opacity:0
+ * the instant it completes but before JS gets to it. */
+#jumpscare-flash.scare-bacteria { background: #000; animation: scare-flash-bacteria 1.0s ease-in forwards; }
+#jumpscare-flash.scare-mannequin { background: #d8d2c0; animation: scare-flash-mannequin 1.3s ease-in-out; }
 #jumpscare-flash.scare-fell { background: #000; animation: scare-flash-fell 0.5s ease-out; }
 
 /* Touch controls -- hidden entirely unless js/world.js adds .touch-ui to
