@@ -57,8 +57,10 @@ that lives down there waiting by the water.
 Somewhere else entirely, one of the maze's crawlspaces is a genuinely
 long one — much longer than any other crawl route in the place — and it
 doesn't lead back into the maze at all. It comes out in **the Mall**: one
-big tiled atrium, storefronts lining both long walls, a working fountain
-in the middle, and two more things down there that notice you.
+big tiled atrium, storefronts lining both long walls — several of them
+real, walk-in shops, stocked out with clothes or food depending on which
+door you take — a working fountain in the middle, a hall leading back to
+its own food court, and two more things down there that notice you.
 
 ## The camera
 
@@ -157,14 +159,16 @@ straight for wherever you respawn, discovered for good. It can't follow
 you into a crawlspace either, but by the time you've noticed it's already
 moving, you may not have the room to reach one.
 
-**The Mimitor** — down in the Pool Rooms. From a distance it's exactly
-what it looks like: a small rubber duck, drifting slowly toward you from
-wherever it already is. It never stops closing that distance, however
-slow, and it doesn't need to see you to do it. Let it get close and long
-black arms, legs, and a long distorted-faced neck grow straight out of
-it — and the instant they do, it's no longer slow, closing the rest of
-the gap at 1.1x your own speed. Catch you and the neck lunges the whole
-way into frame before everything judders and goes black.
+**The Wretch** — down in the Pool Rooms. A tall, lanky, pale flesh body
+with no head at all, just a rounded stump sealed over where one should
+be — no eyes, nothing looking back. It doesn't know where you are by
+default; it just wanders the Pool Rooms blind. The only things that give
+you away are sound (quiet footsteps carry a little, sprinting carries a
+lot further, crouching muffles you almost completely) and touch — bump
+into it, or it into you, in the dark. Hear something and it beelines
+straight for it at 1.1x your own speed; lose it and it goes back to
+wandering. Catch you and it lunges the rest of the way in by feel before
+everything judders and goes black.
 
 **Bloom** — the other thing in the Mall. A gaunt, grey, puppet-like
 giant on wheels instead of feet or legs, a ragged black cloth hanging

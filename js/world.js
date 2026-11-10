@@ -848,8 +848,19 @@ const mimitorSpawnPos = { x: (roomBx0 + roomBx1) / 2 + 4, z: roomBz1 - 3 };
 
 const mallFloorMat = new THREE.MeshStandardMaterial({ color: 0xb9b2a0, roughness: 0.35, map: makeGrainTexture({ size: 128, dark: 150, light: 235, repeat: 18, blotch: 4, tint: [0.85, 0.82, 0.74] }) }); // speckled terrazzo
 const mallWallMat = new THREE.MeshStandardMaterial({ color: 0xe6ddc8, roughness: 0.75, map: makeGrainTexture({ size: 128, dark: 205, light: 255, repeat: 10, blotch: 3, tint: [0.92, 0.88, 0.78] }) }); // cream plaster
-const mallCeilMat = new THREE.MeshStandardMaterial({ color: 0x343438, roughness: 0.85 }); // dark open-plan service ceiling, not a drop-tile grid like the maze
-const mallSkylightMat = new THREE.MeshStandardMaterial({ color: 0xdcecff, emissive: 0xcfe4ff, emissiveIntensity: 1.1, roughness: 0.3 });
+// A faint fixed emissive floor, not just a dark color -- the Mall's rooms
+// are far wider than one maze cell, and a real point light's intensity
+// falls off with the square of distance, so the ceiling (the surface
+// farthest from every sconce/skylight) was going fully, literally black
+// rather than just reading as a dim service ceiling. ("fix it why are
+// there black walls")
+const mallCeilMat = new THREE.MeshStandardMaterial({ color: 0x343438, roughness: 0.85, emissive: 0x1b1b1f, emissiveIntensity: 1 }); // dark open-plan service ceiling, not a drop-tile grid like the maze
+// Sickly green-white, not a clean daylight blue -- on request ("mall
+// should look something like this", a dead-mall reference photo: a dim
+// space lit mostly by a green-cast ceiling, warm light only at the
+// storefronts themselves).
+const mallSkylightMat = new THREE.MeshStandardMaterial({ color: 0xc9e0b4, emissive: 0xb8dc9c, emissiveIntensity: 1.1, roughness: 0.3 });
+const mallRunnerMat = new THREE.MeshStandardMaterial({ color: 0x2c3a28, roughness: 0.9, map: makeGrainTexture({ size: 128, dark: 20, light: 70, repeat: 14, blotch: 3, tint: [0.55, 0.62, 0.5] }) }); // a darker patterned-carpet runner down the main aisle, same reference
 const mallGlassMat = new THREE.MeshStandardMaterial({ color: 0x1a2430, roughness: 0.2, metalness: 0.3, transparent: true, opacity: 0.55 });
 const mallSignMats = [0xd43b3b, 0x2f8f4e, 0x2f6fdb, 0xd98a1f].map((c) => new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.5, roughness: 0.5 }));
 
@@ -883,24 +894,189 @@ function buildMallRoomShell(x0, x1, z0, z1) {
   ceil.position.set((x0 + x1) / 2, MALL_WALL_H + 0.075, (z0 + z1) / 2);
   scene.add(ceil);
 }
-// A storefront facade set into one of the atrium's long walls -- a thin
-// plaster face, a dark glass window, and a colored sign bar -- `side` is
-// +1 for a wall at the room's low-X edge (facade faces +x, into the
-// room) or -1 for the high-X edge (faces -x).
-function buildStorefront(wallX, cz, side, signMat) {
-  const facade = new THREE.Mesh(new THREE.BoxGeometry(0.4, 2.6, 5), mallWallMat);
-  facade.position.set(wallX + side * 0.2, 1.3, cz);
-  scene.add(facade);
-  boxColliders.push(new THREE.Box3(
-    new THREE.Vector3(Math.min(wallX, wallX + side * 0.4), 0, cz - 2.5),
-    new THREE.Vector3(Math.max(wallX, wallX + side * 0.4), 2.6, cz + 2.5)
-  ));
-  const glass = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.6, 4.1), mallGlassMat);
-  glass.position.set(wallX + side * 0.44, 1.1, cz);
-  scene.add(glass);
-  const sign = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.5, 4.6), signMat);
+// A storefront set into one of the atrium's long walls -- now a real
+// enterable room behind the facade, not just a decorative face, on
+// request ("make it so you can enter the stores with them having
+// clothes, food etc"). `side` is +1 for a wall at the room's low-X edge
+// (facade faces +x, into the atrium) or -1 for the high-X edge (faces
+// -x); `kind` ('clothes' | 'food') picks which props furnish it.
+const STORE_HALF_Z = 2.5, STORE_DOOR_HALF = 1.0, STORE_DEPTH = 6, STORE_H = 2.7;
+function buildStorefront(wallX, cz, side, signMat, kind) {
+  const z0 = cz - STORE_HALF_Z, z1 = cz + STORE_HALF_Z;
+  const doorZ0 = cz - STORE_DOOR_HALF, doorZ1 = cz + STORE_DOOR_HALF;
+  const roomX = wallX + side * STORE_DEPTH;
+
+  // Facade: two segments flanking a real doorway gap (used to be one
+  // solid block covering the whole footprint).
+  for (const [fz0, fz1] of [[z0, doorZ0], [doorZ1, z1]]) {
+    const facade = new THREE.Mesh(new THREE.BoxGeometry(0.4, 2.6, fz1 - fz0), mallWallMat);
+    facade.position.set(wallX + side * 0.2, 1.3, (fz0 + fz1) / 2);
+    scene.add(facade);
+    boxColliders.push(new THREE.Box3(
+      new THREE.Vector3(Math.min(wallX, wallX + side * 0.4), 0, fz0),
+      new THREE.Vector3(Math.max(wallX, wallX + side * 0.4), 2.6, fz1)
+    ));
+    const glass = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.6, fz1 - fz0 - 0.2), mallGlassMat);
+    glass.position.set(wallX + side * 0.44, 1.1, (fz0 + fz1) / 2);
+    scene.add(glass);
+  }
+  const lintel = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, doorZ1 - doorZ0), mallWallMat);
+  lintel.position.set(wallX + side * 0.2, 2.4, cz);
+  scene.add(lintel);
+  const sign = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.5, z1 - z0 + 0.1), signMat);
   sign.position.set(wallX + side * 0.5, 2.55, cz);
   scene.add(sign);
+
+  // The interior behind the doorway: floor/ceiling strip, a far wall,
+  // and two side walls, all real colliders -- the doorway gap is the
+  // only way in or out.
+  const floor = new THREE.Mesh(new THREE.BoxGeometry(Math.abs(roomX - wallX), 0.1, z1 - z0), mallFloorMat);
+  floor.position.set((wallX + roomX) / 2, -0.05, cz);
+  scene.add(floor);
+  const ceil = new THREE.Mesh(new THREE.BoxGeometry(Math.abs(roomX - wallX), 0.1, z1 - z0), mallCeilMat);
+  ceil.position.set((wallX + roomX) / 2, STORE_H, cz);
+  scene.add(ceil);
+  const farWall = new THREE.Mesh(new THREE.BoxGeometry(0.3, STORE_H, z1 - z0), mallWallMat);
+  farWall.position.set(roomX, STORE_H / 2, cz);
+  scene.add(farWall);
+  boxColliders.push(new THREE.Box3(
+    new THREE.Vector3(Math.min(roomX - 0.15, roomX + 0.15), 0, z0),
+    new THREE.Vector3(Math.max(roomX - 0.15, roomX + 0.15), STORE_H, z1)
+  ));
+  for (const sz of [z0, z1]) {
+    const wseg = new THREE.Mesh(new THREE.BoxGeometry(Math.abs(roomX - wallX), STORE_H, 0.2), mallWallMat);
+    wseg.position.set((wallX + roomX) / 2, STORE_H / 2, sz);
+    scene.add(wseg);
+    boxColliders.push(new THREE.Box3(
+      new THREE.Vector3(Math.min(wallX, roomX), 0, sz - 0.1),
+      new THREE.Vector3(Math.max(wallX, roomX), STORE_H, sz + 0.1)
+    ));
+  }
+  const lamp = new THREE.PointLight(0xfff4d6, 0.7, 9, 2);
+  lamp.position.set((wallX + roomX) / 2, STORE_H - 0.3, cz);
+  scene.add(lamp);
+  cellLights.push({ light: lamp, base: 1.0, seed: rand() * 1000, broken: false });
+
+  furnishStore(wallX, side, cz, z0, z1, kind);
+}
+
+/* Store interiors: clothes racks/shelves for 'clothes' stores, shelving
+ * and a checkout counter for 'food' stores. Also reused, below, for the
+ * food court's own stalls. */
+const clothesRackMat = new THREE.MeshStandardMaterial({ color: 0x7d776a, roughness: 0.5, metalness: 0.4 });
+const clothesItemMats = [0xb33a3a, 0x3a6fb3, 0x3ab38a, 0xb3963a, 0x6a3ab3, 0xb3519e].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.85 }));
+const foodItemMats = [0xc23b2e, 0xd9a332, 0x4f8f3e, 0x8a5a2e, 0xcdd0d4].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.6 }));
+
+function buildClothesRack(cx, cz) {
+  const g = new THREE.Group();
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.6, 6), clothesRackMat);
+  bar.rotation.z = Math.PI / 2;
+  bar.position.y = 1.3;
+  g.add(bar);
+  for (const lx of [-0.75, 0.75]) {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.3, 6), clothesRackMat);
+    leg.position.set(lx, 0.65, 0);
+    g.add(leg);
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.04, 0.3), clothesRackMat);
+    foot.position.set(lx, 0.02, 0);
+    g.add(foot);
+  }
+  for (let i = 0; i < 6; i++) {
+    const shirt = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.5, 0.1), clothesItemMats[(i * 2) % clothesItemMats.length]);
+    shirt.position.set(-0.65 + i * 0.26, 0.98, 0);
+    g.add(shirt);
+  }
+  g.position.set(cx, 0, cz);
+  scene.add(g);
+  addCircleCollider(cx, cz, 0.55);
+}
+function buildFoldedShelf(cx, cz, side) {
+  const g = new THREE.Group();
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.8, 0.4), trimMat);
+  frame.position.y = 0.9;
+  g.add(frame);
+  for (let row = 0; row < 3; row++) {
+    for (let col = 0; col < 3; col++) {
+      const fold = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.12, 0.3), clothesItemMats[(row * 3 + col) % clothesItemMats.length]);
+      fold.position.set(-0.38 + col * 0.38, 0.45 + row * 0.5, 0.15);
+      g.add(fold);
+    }
+  }
+  g.position.set(cx, 0, cz);
+  g.rotation.y = side > 0 ? Math.PI / 2 : -Math.PI / 2;
+  scene.add(g);
+  addCircleCollider(cx, cz, 0.7);
+}
+function buildFoodShelf(cx, cz, side) {
+  const g = new THREE.Group();
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.8, 0.45), trimMat);
+  frame.position.y = 0.9;
+  g.add(frame);
+  for (let row = 0; row < 3; row++) {
+    for (let col = 0; col < 2; col++) {
+      const item = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.26, 0.22), foodItemMats[(row * 2 + col) % foodItemMats.length]);
+      item.position.set(-0.22 + col * 0.44, 0.4 + row * 0.5, 0.2);
+      g.add(item);
+    }
+  }
+  g.position.set(cx, 0, cz);
+  g.rotation.y = side > 0 ? Math.PI / 2 : -Math.PI / 2;
+  scene.add(g);
+  addCircleCollider(cx, cz, 0.7);
+}
+function buildCounter(cx, cz, side) {
+  const g = new THREE.Group();
+  const base = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.0, 0.7), trimMat);
+  base.position.y = 0.5;
+  g.add(base);
+  const top = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.08, 0.8), clothesRackMat);
+  top.position.y = 1.02;
+  g.add(top);
+  const register = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.25, 0.3), foodItemMats[4]);
+  register.position.set(0.4, 1.17, 0);
+  g.add(register);
+  g.position.set(cx, 0, cz);
+  g.rotation.y = side > 0 ? Math.PI / 2 : -Math.PI / 2;
+  scene.add(g);
+  addCircleCollider(cx, cz, 0.95);
+}
+function furnishStore(wallX, side, cz, z0, z1, kind) {
+  const atDepth = (d) => wallX + side * (0.6 + d);
+  if (kind === 'clothes') {
+    buildClothesRack(atDepth(1.4), z0 + 1.1);
+    buildClothesRack(atDepth(1.4), z1 - 1.1);
+    buildFoldedShelf(atDepth(4.6), cz, side);
+  } else {
+    buildFoodShelf(atDepth(1.4), z0 + 1.0, side);
+    buildFoodShelf(atDepth(1.4), z1 - 1.0, side);
+    buildCounter(atDepth(4.6), cz, side);
+  }
+}
+function buildFoodCourtTable(cx, cz) {
+  const top = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.75, 0.08, 16), trimMat);
+  top.position.set(cx, 0.75, cz);
+  scene.add(top);
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.7, 8), trimMat);
+  pole.position.set(cx, 0.35, cz);
+  scene.add(pole);
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.06, 12), trimMat);
+  base.position.set(cx, 0.03, cz);
+  scene.add(base);
+  for (let i = 0; i < 4; i++) {
+    const ang = (i / 4) * Math.PI * 2 + Math.PI / 4;
+    const stool = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.45, 10), trimMat);
+    stool.position.set(cx + Math.sin(ang) * 1.1, 0.225, cz + Math.cos(ang) * 1.1);
+    scene.add(stool);
+  }
+  addCircleCollider(cx, cz, 0.85);
+}
+function buildFoodStall(wallX, cz, side, signMat) {
+  const sign = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.5, 3.2), signMat);
+  sign.position.set(wallX + side * 0.2, 2.3, cz);
+  scene.add(sign);
+  buildFoodShelf(wallX + side * 0.5, cz - 0.9, side);
+  buildFoodShelf(wallX + side * 0.5, cz + 0.9, side);
+  buildCounter(wallX + side * 1.3, cz, side);
 }
 function buildFountain(cx, cz) {
   const basin = new THREE.Mesh(new THREE.CylinderGeometry(3, 3.2, 0.5, 20), mallWallMat);
@@ -932,6 +1108,23 @@ function buildBench(cx, cz, rotY) {
   g.rotation.y = rotY;
   scene.add(g);
   addCircleCollider(cx, cz, 0.9);
+}
+// A recessed hexagonal ceiling coffer with a glowing panel sunk into it
+// and its own point light -- the dead-mall reference photo's ceiling is
+// a grid of these, not a couple of plain flat skylights, and there were
+// too few of the old skylights anyway to light a room this size evenly.
+const cofferRingMat = new THREE.MeshStandardMaterial({ color: 0x26282c, roughness: 0.9 });
+function buildCeilingCoffer(cx, cz) {
+  const ring = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 0.3, 6), cofferRingMat);
+  ring.position.set(cx, MALL_WALL_H - 0.15, cz);
+  scene.add(ring);
+  const panel = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 0.08, 6), mallSkylightMat);
+  panel.position.set(cx, MALL_WALL_H - 0.32, cz);
+  scene.add(panel);
+  const light = new THREE.PointLight(0xc9e8b0, 1.1, 18, 2);
+  light.position.set(cx, MALL_WALL_H - 0.9, cz);
+  scene.add(light);
+  cellLights.push({ light, base: 1.1, seed: rand() * 1000, broken: false });
 }
 
 const mallEntryX = cellCenter(MALL_DOOR_CX, 0).x;
@@ -980,40 +1173,125 @@ const mallTunnelEndZ = mallSouthZ - MALL_TUNNEL_LEN;
 const mallAx0 = mallEntryX - 22, mallAx1 = mallEntryX + 22;
 const mallAz1 = mallTunnelEndZ, mallAz0 = mallAz1 - 34;
 const MALL_BOUNDS = { x0: mallAx0, x1: mallAx1, z0: mallAz0, z1: mallAz1 };
+// The mall's own hall out to the food court -- declared up here (not down
+// by the food court itself) because the atrium's south wall needs to
+// know about this gap too.
+const hallHalf = 2.0;
+const hallCenterX = (mallAx0 + mallAx1) / 2;
 
 buildMallRoomShell(mallAx0, mallAx1, mallAz0, mallAz1);
 mallEdgeZ(mallAz1, mallAx0, mallAx1, mallEntryX, MALL_PATH_HALF + 0.3); // north wall -- the crawlway's own mouth
-mallEdgeZ(mallAz0, mallAx0, mallAx1, null); // south wall, solid
+mallEdgeZ(mallAz0, mallAx0, mallAx1, hallCenterX, hallHalf); // south wall -- the hall's own mouth, on to the food court
 mallEdgeX(mallAx0, mallAz0, mallAz1, null); // west wall, solid
 mallEdgeX(mallAx1, mallAz0, mallAz1, null); // east wall, solid
 
 const mallStorefrontZs = [mallAz0 + 5, mallAz0 + 13, mallAz0 + 21, mallAz0 + 29]; // 4 per side now (was 3), on request ("add more shops to mall")
-mallStorefrontZs.forEach((z, i) => buildStorefront(mallAx0, z, 1, mallSignMats[i % mallSignMats.length]));
-mallStorefrontZs.forEach((z, i) => buildStorefront(mallAx1, z, -1, mallSignMats[(i + 1) % mallSignMats.length]));
+const mallStoreKinds = ['clothes', 'food', 'clothes', 'food']; // on request ("enter the stores with them having clothes, food etc")
+mallStorefrontZs.forEach((z, i) => buildStorefront(mallAx0, z, 1, mallSignMats[i % mallSignMats.length], mallStoreKinds[i]));
+mallStorefrontZs.forEach((z, i) => buildStorefront(mallAx1, z, -1, mallSignMats[(i + 1) % mallSignMats.length], mallStoreKinds[(i + 1) % mallStoreKinds.length]));
 
 buildFountain((mallAx0 + mallAx1) / 2, (mallAz0 + mallAz1) / 2);
 buildBench((mallAx0 + mallAx1) / 2 - 5, (mallAz0 + mallAz1) / 2 + 6, 0);
 buildBench((mallAx0 + mallAx1) / 2 + 5, (mallAz0 + mallAz1) / 2 + 6, Math.PI);
 
+const mallMidX = (mallAx0 + mallAx1) / 2, mallMidZ = (mallAz0 + mallAz1) / 2;
 for (const [lx, lz] of [
-  [(mallAx0 + mallAx1) / 2 - 10, (mallAz0 + mallAz1) / 2 - 8],
-  [(mallAx0 + mallAx1) / 2 + 10, (mallAz0 + mallAz1) / 2 - 8],
-  [(mallAx0 + mallAx1) / 2, (mallAz0 + mallAz1) / 2 + 10],
-]) {
-  const sky = new THREE.Mesh(new THREE.BoxGeometry(6, 0.1, 6), mallSkylightMat);
-  sky.position.set(lx, MALL_WALL_H - 0.08, lz);
-  scene.add(sky);
-  const light = new THREE.PointLight(0xdfeeff, 1.4, 22, 2);
-  light.position.set(lx, MALL_WALL_H - 0.8, lz);
-  scene.add(light);
-  cellLights.push({ light, base: 1.4, seed: rand() * 1000, broken: false });
+  [mallMidX - 13, mallMidZ - 11], [mallMidX, mallMidZ - 11], [mallMidX + 13, mallMidZ - 11],
+  [mallMidX - 13, mallMidZ + 11], [mallMidX + 13, mallMidZ + 11],
+]) buildCeilingCoffer(lx, lz);
+
+// A darker patterned-carpet runner down the main aisle, same reference
+// photo -- the terrazzo floor alone read as one flat, even tone.
+{
+  const runner = new THREE.Mesh(new THREE.BoxGeometry(5, 0.02, mallAz1 - mallAz0 - 2), mallRunnerMat);
+  runner.position.set(mallMidX, 0.011, mallMidZ);
+  scene.add(runner);
 }
+
+// A wall sconce by every storefront -- the fountain and the three
+// skylights above are too few and far apart for a room this size (44x34,
+// much bigger than one 12-unit maze cell), so most of both long walls
+// were only getting the dim ambient fill, which read as flat black.
+// ("fix it why are there black walls" -- the room was real, just unlit.)
+mallStorefrontZs.forEach((z) => {
+  for (const wallX of [mallAx0, mallAx1]) {
+    const sconce = new THREE.PointLight(0xfff0d0, 0.75, 16, 2);
+    sconce.position.set(wallX + (wallX === mallAx0 ? 3 : -3), 3.4, z);
+    scene.add(sconce);
+    cellLights.push({ light: sconce, base: 0.75, seed: rand() * 1000, broken: false });
+  }
+});
 
 // Where Bloom and the Mannequin start -- opposite corners of the atrium,
 // not on the maze grid, so (like the Mimitor's own spawn point) these are
 // just plain coordinates.
 const bloomSpawnPos = { x: mallAx0 + 8, z: mallAz1 - 6 };
 const mallMannequinSpawnPos = { x: mallAx1 - 8, z: mallAz0 + 8 };
+
+/* ---------------- the mall's hall and food court ---------------- */
+/* On request -- "add halls and foodcourts to the mall" -- a short hall
+ * through the atrium's own south wall (previously solid, see hallHalf/
+ * hallCenterX above) leading to a food court: tables down the middle,
+ * two food-stall counters along its own far wall, its own skylights. */
+
+const hallLen = 10;
+const hallZ1 = mallAz0, hallZ0 = mallAz0 - hallLen;
+mallEdgeX(hallCenterX - hallHalf, hallZ0, hallZ1, null);
+mallEdgeX(hallCenterX + hallHalf, hallZ0, hallZ1, null);
+{
+  const floor = new THREE.Mesh(new THREE.BoxGeometry(hallHalf * 2, 0.15, hallLen), mallFloorMat);
+  floor.position.set(hallCenterX, -0.075, (hallZ0 + hallZ1) / 2);
+  scene.add(floor);
+  const ceil = new THREE.Mesh(new THREE.BoxGeometry(hallHalf * 2, 0.15, hallLen), mallCeilMat);
+  ceil.position.set(hallCenterX, MALL_WALL_H + 0.075, (hallZ0 + hallZ1) / 2);
+  scene.add(ceil);
+  for (const z of [hallZ1 - 2.5, hallZ1 - 7.5]) {
+    const light = new THREE.PointLight(0xfff0d0, 1.0, 10, 2);
+    light.position.set(hallCenterX, MALL_WALL_H - 0.8, z);
+    scene.add(light);
+    cellLights.push({ light, base: 1.0, seed: rand() * 1000, broken: false });
+  }
+}
+
+const fcHalfW = 15, fcDepth = 20;
+const fcX0 = hallCenterX - fcHalfW, fcX1 = hallCenterX + fcHalfW;
+const fcZ1 = hallZ0, fcZ0 = fcZ1 - fcDepth;
+const FOOD_COURT_BOUNDS = { x0: fcX0, x1: fcX1, z0: fcZ0, z1: fcZ1 };
+
+buildMallRoomShell(fcX0, fcX1, fcZ0, fcZ1);
+mallEdgeZ(fcZ1, fcX0, fcX1, hallCenterX, hallHalf); // north wall -- the hall's own mouth
+mallEdgeZ(fcZ0, fcX0, fcX1, null); // south wall, solid
+mallEdgeX(fcX0, fcZ0, fcZ1, null); // west wall, solid
+mallEdgeX(fcX1, fcZ0, fcZ1, null); // east wall, solid
+
+for (const [tx, tz] of [
+  [hallCenterX - 6, (fcZ0 + fcZ1) / 2 + 3],
+  [hallCenterX + 6, (fcZ0 + fcZ1) / 2 + 3],
+  [hallCenterX - 6, (fcZ0 + fcZ1) / 2 - 5],
+  [hallCenterX + 6, (fcZ0 + fcZ1) / 2 - 5],
+]) buildFoodCourtTable(tx, tz);
+
+buildFoodStall(fcX0 + 0.2, (fcZ0 + fcZ1) / 2 - 4, 1, mallSignMats[2]);
+buildFoodStall(fcX0 + 0.2, (fcZ0 + fcZ1) / 2 + 4, 1, mallSignMats[3]);
+
+for (const [lx, lz] of [
+  [hallCenterX - 7, fcZ0 + 5], [hallCenterX + 7, fcZ0 + 5],
+  [hallCenterX - 7, fcZ0 + 14], [hallCenterX + 7, fcZ0 + 14],
+]) buildCeilingCoffer(lx, lz);
+{
+  const runner = new THREE.Mesh(new THREE.BoxGeometry(4, 0.02, fcDepth - 2), mallRunnerMat);
+  runner.position.set(hallCenterX, 0.011, (fcZ0 + fcZ1) / 2);
+  scene.add(runner);
+}
+// Same reason as the atrium's own wall sconces above -- the food court's
+// skylights sit toward its north end, near the hall, leaving the south
+// wall and the stalls dark without their own fill light.
+for (const [lx, lz] of [[fcX0 + 3, (fcZ0 + fcZ1) / 2 - 4], [fcX0 + 3, (fcZ0 + fcZ1) / 2 + 4], [fcX1 - 4, (fcZ0 + fcZ1) / 2], [hallCenterX, fcZ0 + 2]]) {
+  const sconce = new THREE.PointLight(0xfff0d0, 0.75, 16, 2);
+  sconce.position.set(lx, 3.4, lz);
+  scene.add(sconce);
+  cellLights.push({ light: sconce, base: 0.75, seed: rand() * 1000, broken: false });
+}
 
 /* ---------------- the Safezone: a facility room behind a giant lever-door ---------------- */
 /* On request -- "a safezone thats like a facility with pipes and a giant
@@ -1029,7 +1307,7 @@ const mallMannequinSpawnPos = { x: mallAx1 - 8, z: mallAz0 + 8 };
 
 const safeFloorMat = new THREE.MeshStandardMaterial({ color: 0x3c3f42, roughness: 0.6, metalness: 0.3, map: makeGrainTexture({ size: 128, dark: 40, light: 120, repeat: 16, blotch: 3 }) });
 const safeWallMat = new THREE.MeshStandardMaterial({ color: 0x53585c, roughness: 0.55, metalness: 0.25, map: makeGrainTexture({ size: 128, dark: 70, light: 150, repeat: 12, blotch: 3 }) });
-const safeCeilMat = new THREE.MeshStandardMaterial({ color: 0x24262a, roughness: 0.8 });
+const safeCeilMat = new THREE.MeshStandardMaterial({ color: 0x24262a, roughness: 0.8, emissive: 0x121316, emissiveIntensity: 1 }); // same faint emissive floor as the Mall's own ceiling, same reason
 const pipeMatA = new THREE.MeshStandardMaterial({ color: 0x8a6b2a, roughness: 0.4, metalness: 0.6 });
 const pipeMatB = new THREE.MeshStandardMaterial({ color: 0x3a6b5a, roughness: 0.45, metalness: 0.5 });
 const safeDoorMat = new THREE.MeshStandardMaterial({ color: 0x6b1f1f, roughness: 0.5, metalness: 0.5 });
@@ -1260,33 +1538,50 @@ let housePos = null;
   // A real cutaway opening in the wall (two flanking segments, same
   // technique as a doorway) revealing a tiny lit diorama of a house
   // interior sitting inside the wall's own thickness.
-  const half = 1.1;
+  // "Up to scale" (on request) -- the house used to be a squat 0.8-unit
+  // blob with a single pinprick window, too small to actually read as a
+  // house rather than a smudge. Bigger niche, a body/roof with real house
+  // proportions (taller than it is wide, an overhanging eave), and a
+  // real door plus two windows on the face the player actually sees.
+  const half = 1.3;
   const wz0 = boundaryZ(houseCell.cz), wz1 = boundaryZ(houseCell.cz + 1);
   // (The normal solid wall for this edge was already built above; this
   // punches an additional opening into it by adding a dark recessed box
   // rather than re-deriving the edge's wall kind -- simplest way to carve
   // a one-off anomaly into an otherwise-solid wall.)
   const nicheMat = new THREE.MeshStandardMaterial({ color: 0x1a140a, roughness: 1 });
-  const niche = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.6, half * 2), nicheMat);
-  niche.position.set(wallX - 0.6, 1.1, c.z);
+  const niche = new THREE.Mesh(new THREE.BoxGeometry(1.4, 2.0, half * 2), nicheMat);
+  niche.position.set(wallX - 0.7, 1.1, c.z);
   scene.add(niche);
   const houseMat = new THREE.MeshStandardMaterial({ color: 0xcf8f4a, roughness: 0.8 });
   const roofMat = new THREE.MeshStandardMaterial({ color: 0x6b2f2a, roughness: 0.8 });
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.6, 0.8), houseMat);
-  body.position.set(wallX - 0.65, 0.9, c.z);
+  const bodyX = wallX - 0.8;
+  const bodyY = 0.85;
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.0, 1.1), houseMat);
+  body.position.set(bodyX, bodyY, c.z);
   scene.add(body);
-  const roof = new THREE.Mesh(new THREE.ConeGeometry(0.65, 0.5, 4), roofMat);
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(0.85, 0.65, 4), roofMat);
   roof.rotation.y = Math.PI / 4;
-  roof.position.set(wallX - 0.65, 1.45, c.z);
+  roof.position.set(bodyX, bodyY + 0.5 + 0.325, c.z);
   scene.add(roof);
-  const glow = new THREE.PointLight(0xffdca0, 0.8, 3, 2);
-  glow.position.set(wallX - 0.65, 1.0, c.z);
+  const glow = new THREE.PointLight(0xffdca0, 0.9, 3.5, 2);
+  glow.position.set(bodyX, bodyY, c.z);
   scene.add(glow);
+  // Door and windows all on the room-facing side -- the side the player
+  // is actually standing in front of -- rather than the original single
+  // window, which faced into the back of the niche instead.
+  const roomFaceX = bodyX - 0.5 - 0.02;
+  const doorMat = new THREE.MeshStandardMaterial({ color: 0x2a1a10, roughness: 0.9 });
+  const door = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.45, 0.22), doorMat);
+  door.position.set(roomFaceX, bodyY - 0.5 + 0.225, c.z);
+  scene.add(door);
   const windowMat = new THREE.MeshStandardMaterial({ color: 0xffdca0, emissive: 0xffdca0, emissiveIntensity: 1.2 });
-  const win = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.15), windowMat);
-  win.position.set(wallX - 0.25, 0.9, c.z);
-  win.rotation.y = Math.PI / 2;
-  scene.add(win);
+  for (const wz of [c.z - 0.32, c.z + 0.32]) {
+    const win = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.24), windowMat);
+    win.position.set(roomFaceX, bodyY + 0.15, wz);
+    win.rotation.y = Math.PI / 2;
+    scene.add(win);
+  }
 }
 const ARTIFACT_HOUSE = { pos: housePos, id: 'house', name: 'House in the Wall' };
 
@@ -1558,7 +1853,7 @@ function wireBone(r0, r1, len) { return new THREE.Mesh(new THREE.CylinderGeometr
 function createBacteriaModel() {
   const g = new THREE.Group();
 
-  const torso = wireBone(0.095, 0.13, 0.95);
+  const torso = wireBone(0.06, 0.24, 0.95); // tapered harder than before -- narrow at the neck, draping wide at the hip, closer to the real reference art than a uniform pole
   torso.position.y = 1.2;
   g.add(torso);
   // A handful of thin cross-wires over the torso read as a ribcage
@@ -1569,12 +1864,27 @@ function createBacteriaModel() {
     rib.position.y = 0.8 + i * 0.18;
     g.add(rib);
   }
+  // A draping cloak skirt over the hips -- on request ("look at pictures
+  // of the bacteria, heres a example"), the reference art reads as a
+  // wide, flowing dark drape over the body, not bare wire limbs the
+  // whole way down.
+  const cloak = new THREE.Mesh(new THREE.ConeGeometry(0.4, 0.75, 10, 1, true), wireMat);
+  cloak.position.y = 1.25;
+  g.add(cloak);
   const neck = wireBone(0.03, 0.04, 0.22); // noticeably longer than a human neck -- part of the "long" silhouette
   neck.position.y = 1.78;
   g.add(neck);
   const head = new THREE.Mesh(new THREE.IcosahedronGeometry(0.12, 0), wireMat); // angular, cage-like, no face
   head.position.y = 1.97;
   g.add(head);
+  // A wide flat-brimmed hat -- straight from the reference image, and it
+  // reads immediately as the right silhouette even at a glance/distance.
+  const hatBrim = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.015, 10), wireMat);
+  hatBrim.position.y = 2.05;
+  g.add(hatBrim);
+  const hatCrown = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 0.15, 8), wireMat);
+  hatCrown.position.y = 2.135;
+  g.add(hatCrown);
 
   const armPivots = [], elbowPivots = [];
   for (const side of [-1, 1]) {
@@ -1620,6 +1930,20 @@ function createBacteriaModel() {
     const shin = wireBone(0.03, 0.042, 0.5);
     shin.position.y = -0.25;
     knee.add(shin);
+    // A frizzy fan of thread-thin roots instead of a plain foot -- same
+    // reference image, where each leg frays apart into loose strands at
+    // the bottom rather than ending in a foot shape at all. Children of
+    // the knee, so they swing with the rest of the walk cycle.
+    const roots = new THREE.Group();
+    roots.position.y = -0.5;
+    knee.add(roots);
+    for (let i = 0; i < 6; i++) {
+      const root = wireBone(0.012, 0.002, 0.2 + rand() * 0.1);
+      root.position.y = -0.1;
+      root.rotation.x = (rand() - 0.5) * 1.3;
+      root.rotation.z = (rand() - 0.5) * 1.3;
+      roots.add(root);
+    }
     legPivots.push(hip);
     kneePivots.push(knee);
   }
@@ -1808,69 +2132,58 @@ function tickMannequin(dt, playerPos, camForward) {
   return { dist: dist2, danger: mannequin.discovered ? Math.max(0, 1 - dist2 / 12) : 0, catchR: MANNEQUIN_CATCH_R, type: 'mannequin', instance: mannequin };
 }
 
-/* ---------------- The Mimitor: a rubber duck, until it isn't ---------------- */
-/* Lives in the Pool Rooms, not the maze -- it always knows roughly where
- * the player is and creeps toward them from anywhere down there, slow and
- * harmless-looking, until they're close enough for it to "grow": long
- * black limbs and a long distorted-faced neck scale up out of its own
- * duck body (see applyMimitorGrow -- one wrapper group, grownGroup,
- * anchored at the duck's own center, scaled as a whole rather than each
- * limb animated into place separately), and from then on it closes the
- * rest of the distance fast. */
+/* ---------------- The Mimitor: a lanky, headless thing in the Pool Rooms ---------------- */
+/* Replaces the old rubber-duck/grow gimmick entirely, on request ("get
+ * rid of the monster in poolrooms and make it a lanky flesh body with no
+ * head that walks around and only relys on touch and sound"). It's a
+ * permanent, always-visible lanky flesh body down in the Pool Rooms, no
+ * head at all -- just a rounded stump of flesh where one should be -- and
+ * it has no eyes and no omniscient line on the player either. It doesn't
+ * know where the player is by default; it just wanders the Pool Rooms
+ * blind. The only things that give it away are sound (your own
+ * footsteps, carrying further the louder you're moving -- sprint and it
+ * can hear you from well across the room; crouch and it barely hears you
+ * at all) and touch (bumping into it, or it into you, which is the same
+ * contact-range catch every other entity in this game already uses). */
 
-const duckMat = new THREE.MeshStandardMaterial({ color: 0xe8c91a, roughness: 0.5 });
-const duckBeakMat = new THREE.MeshStandardMaterial({ color: 0xcf7a1a, roughness: 0.6 });
-const mimitorLimbMat = new THREE.MeshStandardMaterial({ color: 0x080808, roughness: 0.7 });
-const distortedMat = new THREE.MeshStandardMaterial({ color: 0x140d10, roughness: 0.8 });
-const mimitorEyeMat = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.3 });
+const fleshMat = new THREE.MeshStandardMaterial({ color: 0xab8e82, roughness: 0.8, map: makeGrainTexture({ size: 128, dark: 90, light: 180, repeat: 10, blotch: 5, tint: [0.78, 0.6, 0.55] }) }); // pale, mottled, not a clean skin tone
+const woundMat = new THREE.MeshStandardMaterial({ color: 0x5a1f1a, roughness: 0.9 });
 
-function createMimitorModel(startGrown) {
+function createMimitorModel() {
   const g = new THREE.Group();
 
-  const duckGroup = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), duckMat);
-  body.scale.set(1, 0.85, 1.25);
-  body.position.y = 0.22;
-  duckGroup.add(body);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 7), duckMat);
-  head.position.set(0, 0.42, 0.16);
-  duckGroup.add(head);
-  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.14, 6), duckBeakMat);
-  beak.rotation.x = Math.PI / 2;
-  beak.position.set(0, 0.4, 0.3);
-  duckGroup.add(beak);
-  for (const side of [-1, 1]) {
-    const wing = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 5), duckMat);
-    wing.scale.set(0.6, 1, 1.2);
-    wing.position.set(side * 0.2, 0.25, -0.02);
-    duckGroup.add(wing);
-  }
-  g.add(duckGroup);
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.16, 0.62, 5, 8), fleshMat);
+  torso.position.y = 1.05;
+  g.add(torso);
+  // Where a head should be -- just a rounded stump sealed over, no face,
+  // no eyes, nothing looking back at all.
+  const stump = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 7), fleshMat);
+  stump.scale.set(1, 0.65, 1);
+  stump.position.y = 1.44;
+  g.add(stump);
+  const scar = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.018, 5, 10), woundMat);
+  scar.rotation.x = Math.PI / 2;
+  scar.position.y = 1.4;
+  g.add(scar);
 
-  // Everything that "grows" lives in one wrapper group anchored at the
-  // duck's own body height -- scaling this single group is what sells
-  // "grows... arms and legs and a long neck" as one continuous thing
-  // rather than several separately-animated parts.
-  const grown = new THREE.Group();
-  grown.position.y = 0.22;
-  g.add(grown);
-
+  // Lanky -- noticeably longer arms and legs than a real human, the same
+  // silhouette trick the Bacteria uses.
   const armPivots = [], elbowPivots = [];
   for (const side of [-1, 1]) {
     const shoulder = new THREE.Group();
-    shoulder.position.set(side * 0.2, 0.1, 0);
-    grown.add(shoulder);
-    const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.05, 0.42, 4, 6), mimitorLimbMat);
-    upper.position.y = -0.22;
+    shoulder.position.set(side * 0.19, 1.32, 0);
+    g.add(shoulder);
+    const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.052, 0.5, 4, 7), fleshMat);
+    upper.position.y = -0.25;
     shoulder.add(upper);
     const elbow = new THREE.Group();
-    elbow.position.y = -0.44;
+    elbow.position.y = -0.5;
     shoulder.add(elbow);
-    const fore = new THREE.Mesh(new THREE.CapsuleGeometry(0.04, 0.38, 4, 6), mimitorLimbMat);
-    fore.position.y = -0.2;
+    const fore = new THREE.Mesh(new THREE.CapsuleGeometry(0.042, 0.52, 4, 7), fleshMat);
+    fore.position.y = -0.26;
     elbow.add(fore);
-    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.055, 6, 5), mimitorLimbMat);
-    hand.position.y = -0.4;
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 5), fleshMat);
+    hand.position.y = -0.53;
     elbow.add(hand);
     armPivots.push(shoulder);
     elbowPivots.push(elbow);
@@ -1879,95 +2192,95 @@ function createMimitorModel(startGrown) {
   const legPivots = [], kneePivots = [];
   for (const side of [-1, 1]) {
     const hip = new THREE.Group();
-    hip.position.set(side * 0.12, -0.05, 0);
-    grown.add(hip);
-    const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.4, 4, 6), mimitorLimbMat);
-    thigh.position.y = -0.21;
+    hip.position.set(side * 0.1, 0.74, 0);
+    g.add(hip);
+    const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.46, 4, 7), fleshMat);
+    thigh.position.y = -0.23;
     hip.add(thigh);
     const knee = new THREE.Group();
-    knee.position.y = -0.42;
+    knee.position.y = -0.46;
     hip.add(knee);
-    const shin = new THREE.Mesh(new THREE.CapsuleGeometry(0.05, 0.4, 4, 6), mimitorLimbMat);
-    shin.position.y = -0.21;
+    const shin = new THREE.Mesh(new THREE.CapsuleGeometry(0.05, 0.44, 4, 7), fleshMat);
+    shin.position.y = -0.22;
     knee.add(shin);
     legPivots.push(hip);
     kneePivots.push(knee);
   }
 
-  const neck = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.75, 4, 6), mimitorLimbMat);
-  neck.position.set(0, 0.68, 0.05);
-  grown.add(neck);
-  const faceGroup = new THREE.Group();
-  faceGroup.position.set(0, 1.08, 0.05);
-  grown.add(faceGroup);
-  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 7), distortedMat);
-  skull.scale.set(1, 1.2, 0.85);
-  faceGroup.add(skull);
-  // Distorted -- deliberately asymmetric eyes and a crooked mouth rather
-  // than a clean, centered face.
-  const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 5), mimitorEyeMat);
-  eyeL.position.set(-0.08, 0.02, 0.13);
-  faceGroup.add(eyeL);
-  const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 5), mimitorEyeMat);
-  eyeR.position.set(0.07, -0.03, 0.14);
-  faceGroup.add(eyeR);
-  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.03, 0.03), distortedMat);
-  mouth.position.set(0.01, -0.1, 0.15);
-  mouth.rotation.z = 0.3;
-  faceGroup.add(mouth);
-
-  grown.scale.setScalar(startGrown ? 1 : 0.001);
-
   g.userData.armPivots = armPivots;
   g.userData.elbowPivots = elbowPivots;
   g.userData.legPivots = legPivots;
   g.userData.kneePivots = kneePivots;
-  g.userData.torso = null;
-  g.userData.grownGroup = grown;
-  g.userData.duckBody = body;
-  g.userData.grabPoint = { y: 0.9 };
+  g.userData.torso = torso;
+  g.userData.grabPoint = { y: 1.05 };
   return g;
 }
-const MIMITOR_FOLLOW_SPEED = RUN_SPEED * 0.28;
+const MIMITOR_WANDER_SPEED = RUN_SPEED * 0.3;
 const MIMITOR_CHASE_SPEED = RUN_SPEED * 1.1;
-const MIMITOR_TRANSFORM_R = 7;
 const MIMITOR_CATCH_R = 1.0;
+const MIMITOR_BASE_NOISE_R = 3.2; // always audible this close -- footsteps, breathing
+const MIMITOR_SPRINT_NOISE_R = 15; // sprinting carries much further across the Pool Rooms
+const MIMITOR_CROUCH_NOISE_MUL = 0.4;
 
 const mimitor = {
-  group: createMimitorModel(false), pos: new THREE.Vector3(mimitorSpawnPos.x, 0, mimitorSpawnPos.z),
-  facing: 0, growAmp: 0, transformed: false,
+  group: createMimitorModel(), pos: new THREE.Vector3(mimitorSpawnPos.x, 0, mimitorSpawnPos.z),
+  facing: 0, alert: false, alertTimer: 0, wanderTarget: null, wanderTimer: 0,
 };
 scene.add(mimitor.group);
-
-function applyMimitorGrow(m, dt) {
-  const target = m.transformed ? 1 : 0;
-  m.growAmp += (target - m.growAmp) * Math.min(1, dt * 2.2);
-  m.group.userData.grownGroup.scale.setScalar(Math.max(0.001, m.growAmp));
-  // The duck body itself lifts as the legs grow in underneath it.
-  m.group.userData.duckBody.position.y = 0.22 + m.growAmp * 0.55;
-}
 
 function tickMimitor(dt, playerPos) {
   const dx = playerPos.x - mimitor.pos.x, dz = playerPos.z - mimitor.pos.z;
   const dist = Math.hypot(dx, dz);
-  mimitor.transformed = dist < MIMITOR_TRANSFORM_R;
-  const speed = mimitor.transformed ? MIMITOR_CHASE_SPEED : MIMITOR_FOLLOW_SPEED;
+
+  let noiseR = MIMITOR_BASE_NOISE_R;
+  if (crouching) noiseR *= MIMITOR_CROUCH_NOISE_MUL;
+  else if (keys.shift) noiseR = MIMITOR_SPRINT_NOISE_R;
+  if (dist < noiseR) { mimitor.alert = true; mimitor.alertTimer = 3; }
+  else if (mimitor.alertTimer > 0) mimitor.alertTimer -= dt;
+  else mimitor.alert = false;
+
   let moving = false;
-  if (dist > 0.3) {
-    const nx = dx / dist, nz = dz / dist;
-    const stepX = mimitor.pos.x + nx * speed * dt;
-    if (!collidesAt(stepX, mimitor.pos.z, false)) mimitor.pos.x = stepX;
-    const stepZ = mimitor.pos.z + nz * speed * dt;
-    if (!collidesAt(mimitor.pos.x, stepZ, false)) mimitor.pos.z = stepZ;
-    if (mimitor.facing === undefined) mimitor.facing = Math.atan2(nx, nz);
-    mimitor.facing = lerpAngle(mimitor.facing, Math.atan2(nx, nz), Math.min(1, dt * 5));
-    moving = true;
+  if (mimitor.alert) {
+    // Heard something -- close in on exactly where the sound came from.
+    if (dist > 0.3) {
+      const nx = dx / dist, nz = dz / dist;
+      const stepX = mimitor.pos.x + nx * MIMITOR_CHASE_SPEED * dt;
+      if (!collidesAt(stepX, mimitor.pos.z, false)) mimitor.pos.x = stepX;
+      const stepZ = mimitor.pos.z + nz * MIMITOR_CHASE_SPEED * dt;
+      if (!collidesAt(mimitor.pos.x, stepZ, false)) mimitor.pos.z = stepZ;
+      mimitor.facing = lerpAngle(mimitor.facing || 0, Math.atan2(nx, nz), Math.min(1, dt * 6));
+      moving = true;
+    }
+  } else {
+    // No idea where the player actually is -- just blind wandering
+    // around the Pool Rooms until something gives them away.
+    mimitor.wanderTimer -= dt;
+    if (!mimitor.wanderTarget || mimitor.wanderTimer <= 0) {
+      mimitor.wanderTarget = {
+        x: POOL_BOUNDS.x0 + 1.5 + rand() * (POOL_BOUNDS.x1 - POOL_BOUNDS.x0 - 3),
+        z: POOL_BOUNDS.z0 + 1.5 + rand() * (POOL_BOUNDS.z1 - POOL_BOUNDS.z0 - 3),
+      };
+      mimitor.wanderTimer = 4 + rand() * 4;
+    }
+    const wx = mimitor.wanderTarget.x - mimitor.pos.x, wz = mimitor.wanderTarget.z - mimitor.pos.z;
+    const wdist = Math.hypot(wx, wz);
+    if (wdist > 0.5) {
+      const nx = wx / wdist, nz = wz / wdist;
+      const stepX = mimitor.pos.x + nx * MIMITOR_WANDER_SPEED * dt;
+      if (!collidesAt(stepX, mimitor.pos.z, false)) mimitor.pos.x = stepX;
+      const stepZ = mimitor.pos.z + nz * MIMITOR_WANDER_SPEED * dt;
+      if (!collidesAt(mimitor.pos.x, stepZ, false)) mimitor.pos.z = stepZ;
+      mimitor.facing = lerpAngle(mimitor.facing || 0, Math.atan2(nx, nz), Math.min(1, dt * 3));
+      moving = true;
+    } else {
+      mimitor.wanderTimer = 0;
+    }
   }
-  applyMimitorGrow(mimitor, dt);
+
   mimitor.group.position.set(mimitor.pos.x, 0, mimitor.pos.z);
   mimitor.group.rotation.y = mimitor.facing || 0;
-  animateWalkCycle(mimitor, dt, moving && mimitor.transformed, mimitor.transformed);
-  return { dist, danger: mimitor.transformed ? Math.max(0, 1 - dist / 10) : 0, catchR: MIMITOR_CATCH_R, type: 'mimitor', instance: mimitor };
+  animateWalkCycle(mimitor, dt, moving, mimitor.alert);
+  return { dist, danger: mimitor.alert ? Math.max(0, 1 - dist / 10) : 0, catchR: MIMITOR_CATCH_R, type: 'mimitor', instance: mimitor };
 }
 
 /* ---------------- Bloom: a rolling giant with a sun for a face ---------------- */
@@ -2214,10 +2527,13 @@ function resetAfterCatch(awayFromPos) {
   // coming.
   // The Mimitor isn't tied to the catcher's own position the way the
   // other two are reset relative to it -- it just goes back to its own
-  // spot in the Pool Rooms, ungrown, same as the Bacteria's clean reset.
+  // spot in the Pool Rooms, blind and wandering again, same as the
+  // Bacteria's clean reset.
   mimitor.pos.set(mimitorSpawnPos.x, 0, mimitorSpawnPos.z);
-  mimitor.transformed = false;
-  mimitor.growAmp = 0;
+  mimitor.alert = false;
+  mimitor.alertTimer = 0;
+  mimitor.wanderTarget = null;
+  mimitor.wanderTimer = 0;
   // Bloom resets clean too -- back to its own spot in the Mall, dormant
   // again, same as the Bacteria and the Mimitor.
   bloom.pos.set(bloomSpawnPos.x, 0, bloomSpawnPos.z);
@@ -2343,11 +2659,11 @@ function updateScareCamera(p) {
       camera.position.copy(settlePos);
     }
   } else if (scareType === 'mimitor') {
-    // The long distorted neck lunges straight into frame (not a grab --
-    // it has no reach yet at this distance, just the one long thing it
-    // grew) -> a short, violent juddering hold as the face fills the
-    // screen -> everything goes black and stays there, same "it goes
-    // black" ending shape as the Bacteria's.
+    // It lunges the last of the distance the instant it makes contact --
+    // no grab, no reach, just the blind headless thing closing in on you
+    // by touch -> a short, violent juddering hold -> everything goes
+    // black and stays there, same "it goes black" ending shape as the
+    // Bacteria's.
     const closePos = scareCamBase.clone().addScaledVector(scareCamDir, 0.4);
     if (p < 0.3) {
       const t = ease(p / 0.3);
@@ -2509,12 +2825,12 @@ function playScare(type) {
     osc.connect(g).connect(master);
     osc.start(now); osc.stop(now + 0.6);
   } else if (type === 'mimitor') {
-    // A toy-squeak pitch-bent down into something wrong, under the same
+    // A wet, guttural groan pitch-bent further down, under the same
     // short noise burst the others use for the actual impact.
     const osc = ctx.createOscillator();
-    osc.type = 'square';
-    osc.frequency.setValueAtTime(1200, now);
-    osc.frequency.exponentialRampToValueAtTime(70, now + 0.45);
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(220, now);
+    osc.frequency.exponentialRampToValueAtTime(45, now + 0.45);
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, now);
     g.gain.exponentialRampToValueAtTime(0.7, now + 0.04);
@@ -2736,7 +3052,7 @@ const catalogFlat = [
   { kind: 'artifact', id: 'pool', name: 'The Kiddie Pool' },
   { kind: 'monster', id: 'bacteria', name: 'The Bacteria', make: createBacteriaModel },
   { kind: 'monster', id: 'mannequin', name: 'The Mannequin', make: createMannequinModel },
-  { kind: 'monster', id: 'mimitor', name: 'The Mimitor', make: () => createMimitorModel(true) },
+  { kind: 'monster', id: 'mimitor', name: 'The Wretch', make: () => createMimitorModel() },
   { kind: 'monster', id: 'bloom', name: 'Bloom', make: createBloomModel },
 ];
 const catalogModelCache = new Array(catalogFlat.length).fill(null);
