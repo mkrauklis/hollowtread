@@ -199,6 +199,12 @@ const CRAWL_H = 1.15; // visual header height over a crawlspace -- the actual co
 // which needs to exclude it -- can reference it without a temporal-dead-
 // zone error; everything else about the pit room still lives further down.
 const PIT_CELL = { cx: Math.floor(GRID_N / 2), cz: Math.floor(GRID_N / 2) };
+// Where the maze opens out into the Pool Rooms area (built as its own
+// section after the pit room below) -- a doorway carved straight through
+// the east boundary wall at this row instead of an interior doorway,
+// since nothing inside the maze itself needs to change to accommodate it.
+const POOL_DOOR_CZ = 4;
+const POOL_Y = -4.5; // the Pool Rooms floor sits one real level down, reached by the staircase in that same section
 
 function boundaryX(ex) { return (ex - GRID_N / 2) * CELL; }
 function boundaryZ(ez) { return (ez - GRID_N / 2) * CELL; }
@@ -376,7 +382,14 @@ function buildCellShell(cx, cz) {
 for (let ex = 0; ex <= GRID_N; ex++) {
   for (let ez = 0; ez < GRID_N; ez++) {
     const wz0 = boundaryZ(ez), wz1 = boundaryZ(ez + 1);
-    if (ex === 0 || ex === GRID_N) { edgeWallX(boundaryX(ex), wz0, wz1, 'solid'); continue; }
+    if (ex === 0 || ex === GRID_N) {
+      // The one spot the maze's own outer boundary isn't solid -- the
+      // mouth of the staircase down into the Pool Rooms (see that section
+      // below, built after the pit room).
+      const kind = (ex === GRID_N && ez === POOL_DOOR_CZ) ? 'open' : 'solid';
+      edgeWallX(boundaryX(ex), wz0, wz1, kind);
+      continue;
+    }
     const k = edgeKeyX(ex - 1, ez);
     edgeWallX(boundaryX(ex), wz0, wz1, openEdges.has(k) ? 'open' : (crawlEdges.has(k) ? 'crawl' : 'solid'));
   }
@@ -480,6 +493,8 @@ for (let cx = 0; cx < GRID_N; cx++) for (let cz = 0; cz < GRID_N; cz++) {
  * it's populated, rather than down there where it's merely read. */
 
 const pitHoles = []; // { x0, x1, z0, z1 } -- walk over one of these without clearing it and you fall (DEATH_Y)
+const ramps = []; // { x0, x1, z0, z1, yStart, yEnd, axis } -- a sloped walkable surface (the Pool Rooms staircase, below), checked by supportHeight() the same way pits and the Pool Rooms floor level are
+function addRamp(x0, x1, z0, z1, yStart, yEnd, axis) { ramps.push({ x0, x1, z0, z1, yStart, yEnd, axis }); }
 PIT_CELL._minX = 0; PIT_CELL._maxX = 0; PIT_CELL._minZ = 0; PIT_CELL._maxZ = 0;
 {
   const c = cellCenter(PIT_CELL.cx, PIT_CELL.cz);
@@ -510,7 +525,176 @@ PIT_CELL._minX = 0; PIT_CELL._maxX = 0; PIT_CELL._minZ = 0; PIT_CELL._maxZ = 0;
   scene.add(pitLight);
 }
 
-/* ---------------- dim red room: one of the three photographable things ---------------- */
+/* ---------------- the Pool Rooms: a new sub-level reached by a staircase ---------------- */
+/* A real staircase (a sloped collision ramp under purely decorative step
+ * meshes -- see addRamp/supportHeight) descends from the one doorway
+ * carved through the maze's own east boundary wall (POOL_DOOR_CZ, above)
+ * down to a small, separate area one real level below the maze: white
+ * tile everywhere, three differently-sized rooms, and several pools --
+ * on request ("a new area called the pool rooms... every surface is made
+ * out of white tiles"). It isn't on the maze's own grid at all -- no
+ * doorways/crawlspaces/monster-pathing graph apply here, it's just three
+ * hand-placed rooms connected directly by doorway gaps in their shared
+ * walls, which is simple enough not to need any of that machinery. */
+
+const tileFloorMat = new THREE.MeshStandardMaterial({ color: 0xd8dce0, roughness: 0.4, map: makeGrainTexture({ size: 128, dark: 190, light: 255, repeat: 24, blotch: 2 }) });
+const tileWallMat = new THREE.MeshStandardMaterial({ color: 0xe8ebee, roughness: 0.5, map: makeGrainTexture({ size: 128, dark: 200, light: 255, repeat: 14, blotch: 2 }) });
+const tileCeilMat = new THREE.MeshStandardMaterial({ color: 0xc8ccd0, roughness: 0.6 });
+const poolWaterMat = new THREE.MeshStandardMaterial({ color: 0x2a6fa0, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.85, emissive: 0x0d3550, emissiveIntensity: 0.3 });
+
+// Like wallBox(), but for an arbitrary Y range instead of always 0..WALL_H
+// -- everything down here sits at POOL_Y, not ground level, and the
+// staircase itself spans both.
+function spanBox(x0, x1, y0, y1, z0, z1, mat) {
+  if (x1 - x0 < 0.02 || z1 - z0 < 0.02) return;
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0), mat);
+  mesh.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+  scene.add(mesh);
+  boxColliders.push(new THREE.Box3(new THREE.Vector3(x0, y0, z0), new THREE.Vector3(x1, y1, z1)));
+}
+// A tiled wall along X (fixed world X, spans a Z range) or Z (fixed world
+// Z, spans an X range), each with an optional doorway gap -- the Pool
+// Rooms' own equivalent of edgeWallX/edgeWallZ, just not tied to the
+// maze's grid or its 0..WALL_H ground floor.
+function tileEdgeX(wx, z0, z1, mat, doorCenterZ) {
+  if (doorCenterZ === null) { spanBox(wx - WALL_T / 2, wx + WALL_T / 2, POOL_Y, POOL_Y + WALL_H, z0, z1, mat); return; }
+  spanBox(wx - WALL_T / 2, wx + WALL_T / 2, POOL_Y, POOL_Y + WALL_H, z0, doorCenterZ - DOOR_HALF, mat);
+  spanBox(wx - WALL_T / 2, wx + WALL_T / 2, POOL_Y, POOL_Y + WALL_H, doorCenterZ + DOOR_HALF, z1, mat);
+}
+function tileEdgeZ(wz, x0, x1, mat, doorCenterX) {
+  if (doorCenterX === null) { spanBox(x0, x1, POOL_Y, POOL_Y + WALL_H, wz - WALL_T / 2, wz + WALL_T / 2, mat); return; }
+  spanBox(x0, doorCenterX - DOOR_HALF, POOL_Y, POOL_Y + WALL_H, wz - WALL_T / 2, wz + WALL_T / 2, mat);
+  spanBox(doorCenterX + DOOR_HALF, x1, POOL_Y, POOL_Y + WALL_H, wz - WALL_T / 2, wz + WALL_T / 2, mat);
+}
+function buildPoolRoomShell(x0, x1, z0, z1) {
+  const floor = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 0.15, z1 - z0), tileFloorMat);
+  floor.position.set((x0 + x1) / 2, POOL_Y - 0.075, (z0 + z1) / 2);
+  scene.add(floor);
+  const ceil = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 0.15, z1 - z0), tileCeilMat);
+  ceil.position.set((x0 + x1) / 2, POOL_Y + WALL_H + 0.075, (z0 + z1) / 2);
+  scene.add(ceil);
+}
+// A shallow, stepped-down pool -- visual only (no collider; walkable
+// over, same as the pool rooms' own floor), just a sunken-looking basin
+// with a couple of steps down one edge so it reads as a real pool rather
+// than a painted rectangle.
+function buildPool(cx, cz, w, d, depth) {
+  const rim = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, d), tileWallMat);
+  rim.position.set(cx, POOL_Y + 0.05, cz);
+  scene.add(rim);
+  const water = new THREE.Mesh(new THREE.BoxGeometry(w - 0.6, 0.05, d - 0.6), poolWaterMat);
+  water.position.set(cx, POOL_Y - depth, cz);
+  scene.add(water);
+  for (let i = 0; i < 3; i++) {
+    const step = new THREE.Mesh(new THREE.BoxGeometry(w - 0.6, 0.1, 0.5), tileFloorMat);
+    step.position.set(cx, POOL_Y - depth * ((i + 1) / 3) + 0.05, cz - d / 2 + 0.6 + i * 0.5);
+    scene.add(step);
+  }
+}
+
+const doorCenterZ = cellCenter(GRID_N - 1, POOL_DOOR_CZ).z;
+const eastWallX = boundaryX(GRID_N);
+const STAIR_WIDTH = 4, STAIR_LEN = 10;
+const stairZ0 = doorCenterZ - STAIR_WIDTH / 2, stairZ1 = doorCenterZ + STAIR_WIDTH / 2;
+const stairX0 = eastWallX, stairX1 = eastWallX + STAIR_LEN;
+addRamp(stairX0, stairX1, stairZ0, stairZ1, 0, POOL_Y, 'x');
+spanBox(stairX0, stairX1, POOL_Y, WALL_H, stairZ0 - WALL_T, stairZ0, tileWallMat);
+spanBox(stairX0, stairX1, POOL_Y, WALL_H, stairZ1, stairZ1 + WALL_T, tileWallMat);
+{
+  const stairCeil = new THREE.Mesh(new THREE.BoxGeometry(STAIR_LEN, 0.15, STAIR_WIDTH), tileCeilMat);
+  stairCeil.position.set((stairX0 + stairX1) / 2, WALL_H + 0.075, doorCenterZ);
+  scene.add(stairCeil);
+  const STEP_COUNT = 10;
+  for (let i = 0; i < STEP_COUNT; i++) {
+    const t1 = (i + 1) / STEP_COUNT;
+    const x0s = stairX0 + (i / STEP_COUNT) * STAIR_LEN, x1s = stairX0 + t1 * STAIR_LEN;
+    const y1 = POOL_Y * t1;
+    const step = new THREE.Mesh(new THREE.BoxGeometry(x1s - x0s + 0.05, 0.25, STAIR_WIDTH - WALL_T), tileFloorMat);
+    step.position.set((x0s + x1s) / 2, y1 + 0.125, doorCenterZ);
+    scene.add(step);
+  }
+  const stairLight = new THREE.PointLight(0xcfe6ff, 1.0, STAIR_LEN * 1.5, 2);
+  stairLight.position.set((stairX0 + stairX1) / 2, WALL_H - 0.4, doorCenterZ);
+  scene.add(stairLight);
+  cellLights.push({ light: stairLight, base: 1.0, seed: rand() * 1000, broken: false });
+}
+
+// Three rooms, deliberately different footprints ("different sized
+// rooms") -- a smaller entry room, a big room most of a large pool fills,
+// and a small side room branching off it.
+const roomAx0 = stairX1, roomAx1 = roomAx0 + 16, roomAz0 = doorCenterZ - 8, roomAz1 = doorCenterZ + 8;
+const roomBx0 = roomAx1, roomBx1 = roomBx0 + 24, roomBz0 = doorCenterZ - 14, roomBz1 = doorCenterZ + 14;
+const roomCx0 = roomBx0 + 6, roomCx1 = roomCx0 + 10, roomCz1 = roomBz0, roomCz0 = roomCz1 - 12;
+const roomCDoorX = (roomCx0 + roomCx1) / 2;
+
+const POOL_BOUNDS = {
+  x0: Math.min(roomAx0, roomBx0, roomCx0), x1: Math.max(roomAx1, roomBx1, roomCx1),
+  z0: Math.min(roomAz0, roomBz0, roomCz0), z1: Math.max(roomAz1, roomBz1, roomCz1),
+};
+
+buildPoolRoomShell(roomAx0, roomAx1, roomAz0, roomAz1);
+tileEdgeX(roomAx1, roomAz0, roomAz1, tileWallMat, doorCenterZ); // A -> B
+tileEdgeZ(roomAz1, roomAx0, roomAx1, tileWallMat, null);
+tileEdgeZ(roomAz0, roomAx0, roomAx1, tileWallMat, null);
+// (no west wall for room A -- that's the staircase's own mouth, left open)
+
+buildPoolRoomShell(roomBx0, roomBx1, roomBz0, roomBz1);
+tileEdgeX(roomBx0, roomBz0, roomBz1, tileWallMat, doorCenterZ); // B -> A (same plane as A's own east wall above; the redundant geometry is harmless)
+tileEdgeX(roomBx1, roomBz0, roomBz1, tileWallMat, null);
+tileEdgeZ(roomBz1, roomBx0, roomBx1, tileWallMat, null);
+tileEdgeZ(roomBz0, roomBx0, roomBx1, tileWallMat, roomCDoorX); // B -> C
+
+buildPoolRoomShell(roomCx0, roomCx1, roomCz0, roomCz1);
+tileEdgeZ(roomCz1, roomCx0, roomCx1, tileWallMat, roomCDoorX); // C -> B
+tileEdgeX(roomCx0, roomCz0, roomCz1, tileWallMat, null);
+tileEdgeX(roomCx1, roomCz0, roomCz1, tileWallMat, null);
+tileEdgeZ(roomCz0, roomCx0, roomCx1, tileWallMat, null);
+
+buildPool((roomAx0 + roomAx1) / 2, (roomAz0 + roomAz1) / 2 + 3, 5, 4, 0.5);
+buildPool((roomBx0 + roomBx1) / 2 - 4, (roomBz0 + roomBz1) / 2, 12, 16, 0.9); // the big one
+buildPool((roomBx0 + roomBx1) / 2 + 7, roomBz1 - 5, 5, 5, 0.6);
+buildPool((roomCx0 + roomCx1) / 2, (roomCz0 + roomCz1) / 2, 5, 4, 0.5);
+
+for (const [lx, lz] of [
+  [(roomAx0 + roomAx1) / 2, roomAz0 + 3],
+  [(roomBx0 + roomBx1) / 2, roomBz0 + 4],
+  [(roomBx0 + roomBx1) / 2, roomBz1 - 4],
+  [(roomCx0 + roomCx1) / 2, (roomCz0 + roomCz1) / 2],
+]) {
+  const fixture = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.12, 1.1), tileCeilMat);
+  fixture.position.set(lx, POOL_Y + WALL_H - 0.1, lz);
+  scene.add(fixture);
+  const light = new THREE.PointLight(0xdfe9f5, 1.3, CELL * 1.8, 2);
+  light.position.set(lx, POOL_Y + WALL_H - 0.4, lz);
+  scene.add(light);
+  cellLights.push({ light, base: 1.3, seed: rand() * 1000, broken: false });
+}
+
+// The kiddie pool -- a small inflatable ring sitting by itself in room A,
+// distinct from the room's own built-in (tiled) pool -- one of the two
+// new photographable artifacts.
+let kiddiePoolPos = null;
+{
+  const px = (roomAx0 + roomAx1) / 2, pz = (roomAz0 + roomAz1) / 2 - 3;
+  kiddiePoolPos = { x: px, z: pz };
+  const kiddieMat = new THREE.MeshStandardMaterial({ color: 0xe0455a, roughness: 0.6 });
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.18, 8, 16), kiddieMat);
+  ring.rotation.x = Math.PI / 2;
+  ring.position.set(px, POOL_Y + 0.2, pz);
+  scene.add(ring);
+  const kwater = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.75, 0.05, 16), poolWaterMat);
+  kwater.position.set(px, POOL_Y + 0.17, pz);
+  scene.add(kwater);
+  addCircleCollider(px, pz, 1.0);
+}
+const ARTIFACT_POOL = { pos: kiddiePoolPos, id: 'pool', name: 'The Kiddie Pool' };
+
+// Where the Mimitor (see its own section, below the Mannequin) starts --
+// it lives down here, not on the maze grid, so this is just a plain
+// coordinate rather than a cell reference.
+const mimitorSpawnPos = { x: (roomBx0 + roomBx1) / 2 + 4, z: roomBz1 - 3 };
+
+/* ---------------- dim red room: one of the five photographable things ---------------- */
 /* Picked as a cell with only one open edge (a dead end) so it reads as a
  * small sealed side-room, not a room you pass through -- and deliberately
  * excluded from the normal cellLights loop above, so your own flashlight
@@ -627,7 +811,33 @@ let housePos = null;
 }
 const ARTIFACT_HOUSE = { pos: housePos, id: 'house', name: 'House in the Wall' };
 
-const ARTIFACTS = [ARTIFACT_CHAIR, ARTIFACT_RED_ROOM, ARTIFACT_HOUSE];
+/* ---------------- the tilted staircase ---------------- */
+
+const staircaseCell = pickPropCell(usedCells);
+usedCells.push(staircaseCell);
+let staircasePos = null;
+{
+  const c = cellCenter(staircaseCell.cx, staircaseCell.cz);
+  const px = c.x + (rand() - 0.5) * 3, pz = c.z + (rand() - 0.5) * 3;
+  staircasePos = { x: px, z: pz };
+  const stepMat = new THREE.MeshStandardMaterial({ color: 0x5a4a2a, roughness: 0.85 });
+  const stair = new THREE.Group();
+  for (let i = 0; i < 6; i++) {
+    const step = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.18, 0.5), stepMat);
+    step.position.set(0, 0.15 + i * 0.32, -i * 0.42);
+    stair.add(step);
+  }
+  stair.position.set(px, 0, pz);
+  // "Tilted" -- askew on two axes at once, like it's standing in a room
+  // that doesn't agree with it about which way is down, not just rotated
+  // flat around Y the way the chair is.
+  stair.rotation.set((rand() - 0.5) * 0.5, rand() * Math.PI * 2, (rand() - 0.5) * 0.4);
+  scene.add(stair);
+  addCircleCollider(px, pz, 0.8);
+}
+const ARTIFACT_STAIRCASE = { pos: staircasePos, id: 'staircase', name: 'Tilted Staircase' };
+
+const ARTIFACTS = [ARTIFACT_CHAIR, ARTIFACT_RED_ROOM, ARTIFACT_HOUSE, ARTIFACT_STAIRCASE, ARTIFACT_POOL];
 const PHOTO_RANGE = 7;
 const PHOTO_COS = 0.72;
 
@@ -1084,6 +1294,168 @@ function tickMannequin(dt, playerPos, camForward) {
   return { dist: dist2, danger: mannequin.discovered ? Math.max(0, 1 - dist2 / 12) : 0, catchR: MANNEQUIN_CATCH_R, type: 'mannequin', instance: mannequin };
 }
 
+/* ---------------- The Mimitor: a rubber duck, until it isn't ---------------- */
+/* Lives in the Pool Rooms, not the maze -- it always knows roughly where
+ * the player is and creeps toward them from anywhere down there, slow and
+ * harmless-looking, until they're close enough for it to "grow": long
+ * black limbs and a long distorted-faced neck scale up out of its own
+ * duck body (see applyMimitorGrow -- one wrapper group, grownGroup,
+ * anchored at the duck's own center, scaled as a whole rather than each
+ * limb animated into place separately), and from then on it closes the
+ * rest of the distance fast. */
+
+const duckMat = new THREE.MeshStandardMaterial({ color: 0xe8c91a, roughness: 0.5 });
+const duckBeakMat = new THREE.MeshStandardMaterial({ color: 0xcf7a1a, roughness: 0.6 });
+const mimitorLimbMat = new THREE.MeshStandardMaterial({ color: 0x080808, roughness: 0.7 });
+const distortedMat = new THREE.MeshStandardMaterial({ color: 0x140d10, roughness: 0.8 });
+const mimitorEyeMat = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.3 });
+
+function createMimitorModel(startGrown) {
+  const g = new THREE.Group();
+
+  const duckGroup = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), duckMat);
+  body.scale.set(1, 0.85, 1.25);
+  body.position.y = 0.22;
+  duckGroup.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 7), duckMat);
+  head.position.set(0, 0.42, 0.16);
+  duckGroup.add(head);
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.14, 6), duckBeakMat);
+  beak.rotation.x = Math.PI / 2;
+  beak.position.set(0, 0.4, 0.3);
+  duckGroup.add(beak);
+  for (const side of [-1, 1]) {
+    const wing = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 5), duckMat);
+    wing.scale.set(0.6, 1, 1.2);
+    wing.position.set(side * 0.2, 0.25, -0.02);
+    duckGroup.add(wing);
+  }
+  g.add(duckGroup);
+
+  // Everything that "grows" lives in one wrapper group anchored at the
+  // duck's own body height -- scaling this single group is what sells
+  // "grows... arms and legs and a long neck" as one continuous thing
+  // rather than several separately-animated parts.
+  const grown = new THREE.Group();
+  grown.position.y = 0.22;
+  g.add(grown);
+
+  const armPivots = [], elbowPivots = [];
+  for (const side of [-1, 1]) {
+    const shoulder = new THREE.Group();
+    shoulder.position.set(side * 0.2, 0.1, 0);
+    grown.add(shoulder);
+    const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.05, 0.42, 4, 6), mimitorLimbMat);
+    upper.position.y = -0.22;
+    shoulder.add(upper);
+    const elbow = new THREE.Group();
+    elbow.position.y = -0.44;
+    shoulder.add(elbow);
+    const fore = new THREE.Mesh(new THREE.CapsuleGeometry(0.04, 0.38, 4, 6), mimitorLimbMat);
+    fore.position.y = -0.2;
+    elbow.add(fore);
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.055, 6, 5), mimitorLimbMat);
+    hand.position.y = -0.4;
+    elbow.add(hand);
+    armPivots.push(shoulder);
+    elbowPivots.push(elbow);
+  }
+
+  const legPivots = [], kneePivots = [];
+  for (const side of [-1, 1]) {
+    const hip = new THREE.Group();
+    hip.position.set(side * 0.12, -0.05, 0);
+    grown.add(hip);
+    const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.4, 4, 6), mimitorLimbMat);
+    thigh.position.y = -0.21;
+    hip.add(thigh);
+    const knee = new THREE.Group();
+    knee.position.y = -0.42;
+    hip.add(knee);
+    const shin = new THREE.Mesh(new THREE.CapsuleGeometry(0.05, 0.4, 4, 6), mimitorLimbMat);
+    shin.position.y = -0.21;
+    knee.add(shin);
+    legPivots.push(hip);
+    kneePivots.push(knee);
+  }
+
+  const neck = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.75, 4, 6), mimitorLimbMat);
+  neck.position.set(0, 0.68, 0.05);
+  grown.add(neck);
+  const faceGroup = new THREE.Group();
+  faceGroup.position.set(0, 1.08, 0.05);
+  grown.add(faceGroup);
+  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 7), distortedMat);
+  skull.scale.set(1, 1.2, 0.85);
+  faceGroup.add(skull);
+  // Distorted -- deliberately asymmetric eyes and a crooked mouth rather
+  // than a clean, centered face.
+  const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 5), mimitorEyeMat);
+  eyeL.position.set(-0.08, 0.02, 0.13);
+  faceGroup.add(eyeL);
+  const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 5), mimitorEyeMat);
+  eyeR.position.set(0.07, -0.03, 0.14);
+  faceGroup.add(eyeR);
+  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.03, 0.03), distortedMat);
+  mouth.position.set(0.01, -0.1, 0.15);
+  mouth.rotation.z = 0.3;
+  faceGroup.add(mouth);
+
+  grown.scale.setScalar(startGrown ? 1 : 0.001);
+
+  g.userData.armPivots = armPivots;
+  g.userData.elbowPivots = elbowPivots;
+  g.userData.legPivots = legPivots;
+  g.userData.kneePivots = kneePivots;
+  g.userData.torso = null;
+  g.userData.grownGroup = grown;
+  g.userData.duckBody = body;
+  g.userData.grabPoint = { y: 0.9 };
+  return g;
+}
+const MIMITOR_FOLLOW_SPEED = RUN_SPEED * 0.28;
+const MIMITOR_CHASE_SPEED = RUN_SPEED * 1.1;
+const MIMITOR_TRANSFORM_R = 7;
+const MIMITOR_CATCH_R = 1.0;
+
+const mimitor = {
+  group: createMimitorModel(false), pos: new THREE.Vector3(mimitorSpawnPos.x, 0, mimitorSpawnPos.z),
+  facing: 0, growAmp: 0, transformed: false,
+};
+scene.add(mimitor.group);
+
+function applyMimitorGrow(m, dt) {
+  const target = m.transformed ? 1 : 0;
+  m.growAmp += (target - m.growAmp) * Math.min(1, dt * 2.2);
+  m.group.userData.grownGroup.scale.setScalar(Math.max(0.001, m.growAmp));
+  // The duck body itself lifts as the legs grow in underneath it.
+  m.group.userData.duckBody.position.y = 0.22 + m.growAmp * 0.55;
+}
+
+function tickMimitor(dt, playerPos) {
+  const dx = playerPos.x - mimitor.pos.x, dz = playerPos.z - mimitor.pos.z;
+  const dist = Math.hypot(dx, dz);
+  mimitor.transformed = dist < MIMITOR_TRANSFORM_R;
+  const speed = mimitor.transformed ? MIMITOR_CHASE_SPEED : MIMITOR_FOLLOW_SPEED;
+  let moving = false;
+  if (dist > 0.3) {
+    const nx = dx / dist, nz = dz / dist;
+    const stepX = mimitor.pos.x + nx * speed * dt;
+    if (!collidesAt(stepX, mimitor.pos.z, false)) mimitor.pos.x = stepX;
+    const stepZ = mimitor.pos.z + nz * speed * dt;
+    if (!collidesAt(mimitor.pos.x, stepZ, false)) mimitor.pos.z = stepZ;
+    if (mimitor.facing === undefined) mimitor.facing = Math.atan2(nx, nz);
+    mimitor.facing = lerpAngle(mimitor.facing, Math.atan2(nx, nz), Math.min(1, dt * 5));
+    moving = true;
+  }
+  applyMimitorGrow(mimitor, dt);
+  mimitor.group.position.set(mimitor.pos.x, 0, mimitor.pos.z);
+  mimitor.group.rotation.y = mimitor.facing || 0;
+  animateWalkCycle(mimitor, dt, moving && mimitor.transformed, mimitor.transformed);
+  return { dist, danger: mimitor.transformed ? Math.max(0, 1 - dist / 10) : 0, catchR: MIMITOR_CATCH_R, type: 'mimitor', instance: mimitor };
+}
+
 /* ---------------- game state ---------------- */
 
 const vignette = document.getElementById('dread-vignette');
@@ -1110,14 +1482,20 @@ function resetAfterCatch(awayFromPos) {
   // waiting up to its own 0.6s refresh) so it's visibly still coming.
   mannequin.waypoints = null;
   mannequinRetarget = 0;
+  // The Mimitor isn't tied to the catcher's own position the way the
+  // other two are reset relative to it -- it just goes back to its own
+  // spot in the Pool Rooms, ungrown, same as the Bacteria's clean reset.
+  mimitor.pos.set(mimitorSpawnPos.x, 0, mimitorSpawnPos.z);
+  mimitor.transformed = false;
+  mimitor.growAmp = 0;
 }
 
-const monstersByType = { bacteria, mannequin };
+const monstersByType = { bacteria, mannequin, mimitor };
 // Longer than a generic shake needs, since each one is now a real few-
 // beat sequence (see updateScareCamera) -- Mannequin's "grab, lift, snap,
 // drop" and Bacteria's "entangle, yank, release" both need the room to
 // actually read as those beats rather than one blurred jolt.
-const SCARE_DURATION = { bacteria: 1.0, mannequin: 1.3 };
+const SCARE_DURATION = { bacteria: 1.0, mannequin: 1.3, mimitor: 1.1 };
 let scareActive = false;
 let scareType = null;
 let scareInstance = null;
@@ -1219,6 +1597,24 @@ function updateScareCamera(p) {
       camera.position.x += shake(0.4 * impact); camera.position.y += shake(0.4 * impact); camera.position.z += shake(0.2 * impact);
     } else {
       camera.position.copy(settlePos);
+    }
+  } else if (scareType === 'mimitor') {
+    // The long distorted neck lunges straight into frame (not a grab --
+    // it has no reach yet at this distance, just the one long thing it
+    // grew) -> a short, violent juddering hold as the face fills the
+    // screen -> everything goes black and stays there, same "it goes
+    // black" ending shape as the Bacteria's.
+    const closePos = scareCamBase.clone().addScaledVector(scareCamDir, 0.4);
+    if (p < 0.3) {
+      const t = ease(p / 0.3);
+      camera.position.copy(scareCamBase).lerp(closePos, t);
+    } else if (p < 0.6) {
+      const t = (p - 0.3) / 0.3;
+      const amt = 0.3 * Math.sin(Math.min(t, 1) * Math.PI);
+      camera.position.copy(closePos);
+      camera.position.x += shake(amt); camera.position.y += shake(amt); camera.position.z += shake(amt * 0.5);
+    } else {
+      camera.position.copy(closePos);
     }
   } else {
     camera.position.copy(scareCamBase);
@@ -1352,6 +1748,19 @@ function playScare(type) {
     g.gain.exponentialRampToValueAtTime(0.0001, now + 0.6);
     osc.connect(g).connect(master);
     osc.start(now); osc.stop(now + 0.6);
+  } else if (type === 'mimitor') {
+    // A toy-squeak pitch-bent down into something wrong, under the same
+    // short noise burst the others use for the actual impact.
+    const osc = ctx.createOscillator();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(1200, now);
+    osc.frequency.exponentialRampToValueAtTime(70, now + 0.45);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(0.7, now + 0.04);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.5);
+    osc.connect(g).connect(master);
+    osc.start(now); osc.stop(now + 0.5);
   }
 }
 
@@ -1489,8 +1898,11 @@ const catalogFlat = [
   { kind: 'artifact', id: 'chair', name: 'Glitched Chair' },
   { kind: 'artifact', id: 'redroom', name: 'The Red Room' },
   { kind: 'artifact', id: 'house', name: 'House in the Wall' },
+  { kind: 'artifact', id: 'staircase', name: 'Tilted Staircase' },
+  { kind: 'artifact', id: 'pool', name: 'The Kiddie Pool' },
   { kind: 'monster', id: 'bacteria', name: 'The Bacteria', make: createBacteriaModel },
   { kind: 'monster', id: 'mannequin', name: 'The Mannequin', make: createMannequinModel },
+  { kind: 'monster', id: 'mimitor', name: 'The Mimitor', make: () => createMimitorModel(true) },
 ];
 const catalogModelCache = new Array(catalogFlat.length).fill(null);
 let catalogIndex = 0;
@@ -1562,6 +1974,28 @@ function makeArtifactPreview(id) {
     roof.rotation.y = Math.PI / 4;
     roof.position.y = 0.85;
     g.add(roof);
+    return g;
+  }
+  if (id === 'staircase') {
+    const stepMat = new THREE.MeshStandardMaterial({ color: 0x5a4a2a, roughness: 0.85 });
+    const g = new THREE.Group();
+    for (let i = 0; i < 6; i++) {
+      const step = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.18, 0.5), stepMat);
+      step.position.set(0, 0.15 + i * 0.32, -i * 0.42);
+      g.add(step);
+    }
+    g.rotation.set(0.25, 0, 0.15);
+    return g;
+  }
+  if (id === 'pool') {
+    const g = new THREE.Group();
+    const kiddieMat = new THREE.MeshStandardMaterial({ color: 0xe0455a, roughness: 0.6 });
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.18, 8, 16), kiddieMat);
+    ring.rotation.x = Math.PI / 2;
+    g.add(ring);
+    const water = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.75, 0.05, 16), new THREE.MeshStandardMaterial({ color: 0x2a6fa0, roughness: 0.15, transparent: true, opacity: 0.85 }));
+    water.position.y = -0.03;
+    g.add(water);
     return g;
   }
   const g = new THREE.Group();
@@ -1705,6 +2139,13 @@ function supportHeight(x, z) {
       if (x > p.x0 && x < p.x1 && z > p.z0 && z < p.z1) return -1000;
     }
   }
+  for (const r of ramps) {
+    if (x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1) {
+      const t = Math.max(0, Math.min(1, r.axis === 'x' ? (x - r.x0) / (r.x1 - r.x0) : (z - r.z0) / (r.z1 - r.z0)));
+      return r.yStart + (r.yEnd - r.yStart) * t;
+    }
+  }
+  if (x > POOL_BOUNDS.x0 && x < POOL_BOUNDS.x1 && z > POOL_BOUNDS.z0 && z < POOL_BOUNDS.z1) return POOL_Y;
   return 0;
 }
 
@@ -1854,6 +2295,7 @@ function animate() {
     const results = [
       tickBacteria(dt, camera.position),
       tickMannequin(dt, camera.position, forward),
+      tickMimitor(dt, camera.position),
     ];
     updateBacteriaHum(results[0].dist);
     const danger = Math.max(...results.map((r) => r.danger));

@@ -525,6 +525,7 @@ canvas.game-canvas.vhs-on {
 @keyframes scare-flash-bacteria { 0% { opacity: 0; } 35% { opacity: 0.1; } 45% { opacity: 0.55; } 60% { opacity: 1; } 100% { opacity: 1; } }
 @keyframes scare-flash-mannequin { 0% { opacity: 0; } 20% { opacity: 0.2; } 45% { opacity: 0.4; } 60% { opacity: 1; } 85% { opacity: 0.6; } 100% { opacity: 0; } }
 @keyframes scare-flash-fell { 0% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes scare-flash-mimitor { 0% { opacity: 0; } 30% { opacity: 0.15; } 55% { opacity: 0.6; } 75% { opacity: 1; } 100% { opacity: 1; } }
 
 /* Bacteria's own ending is a hold, not a fade -- "it goes black", on
  * request, and stays that way until the respawn teleport actually
@@ -534,6 +535,7 @@ canvas.game-canvas.vhs-on {
 #jumpscare-flash.scare-bacteria { background: #000; animation: scare-flash-bacteria 1.0s ease-in forwards; }
 #jumpscare-flash.scare-mannequin { background: #d8d2c0; animation: scare-flash-mannequin 1.3s ease-in-out; }
 #jumpscare-flash.scare-fell { background: #000; animation: scare-flash-fell 0.5s ease-out; }
+#jumpscare-flash.scare-mimitor { background: #050806; animation: scare-flash-mimitor 1.1s ease-in forwards; }
 
 /* Touch controls -- hidden entirely unless js/world.js adds .touch-ui to
  * #game-root after feature-detecting touch, so desktop players never see

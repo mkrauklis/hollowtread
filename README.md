@@ -33,12 +33,19 @@ wallpaper in a monochromatic, dingy yellow) connects through doorways
 and, in some walls, **real crawlspaces** — not a narrow slot cut into a
 normal doorway, but a whole dark, low section of wall (blends right into
 the same wallpaper until you're close) you have to crouch (**C**) to fit
-through. Both of the things loose in here are too big to follow you into
-one.
+through. None of the things loose in here are too small to follow — they
+just can't fit, full stop.
 
 One room holds a grid of square floor pits. Walk onto one without
 noticing and you fall — all the way out of the level, back to a random
 spot far from wherever you fell.
+
+Somewhere in the maze a staircase leads down and out of the Backrooms
+proper into **the Pool Rooms** — a small, separate sub-level one real
+floor below, where every surface (floor, wall, ceiling) is white tile
+instead of mustard wallpaper. Three rooms of different sizes, several
+sunken pools (one of them a lot more than a puddle), and one more thing
+that lives down there waiting by the water.
 
 ## The camera
 
@@ -47,7 +54,7 @@ camera isn't always out — press **R** to equip or put it away; equipped,
 the screen itself goes full VHS camcorder (scanlines, a blinking REC dot,
 a running timestamp, the occasional tracking glitch, everything a shade
 desaturated and warm) and a viewfinder appears to frame the shot. Click
-to take a photo. Line up one of the three things worth photographing,
+to take a photo. Line up one of the five things worth photographing,
 close enough and roughly centered, and it's captured — permanently, the
 first time, saved in your browser. There's no film to run out and no
 wrong way to frame a shot, just whether the thing you were aiming at was
@@ -64,6 +71,14 @@ as that leaves it.
 lit from inside, with a tiny house — roof, windows, all of it — sitting
 where the wall should just be wall.
 
+**The Tilted Staircase** — a short flight of stairs standing in the open,
+tilted on two axes at once rather than just rotated flat, like gravity
+never settled on a direction for it.
+
+**The Kiddie Pool** — a small inflatable ring, down in the Pool Rooms,
+sitting by itself a short walk from the real pool in the same room — far
+too small to belong next to it.
+
 ## The computer
 
 An old desk, an old CRT monitor, tucked into one of the rooms like
@@ -72,7 +87,7 @@ someone's abandoned office furniture. Stand at the keyboard and press
 own first-person arms, a name field under the title in the corner — both
 saved in your browser) and **Catalog** — a real, live, slowly turning 3D
 render of each artifact and each entity, Prev/Next to page through all
-five. An entry you haven't photographed (artifacts) or been caught by
+eight. An entry you haven't photographed (artifacts) or been caught by
 (entities) yet shows as a dark silhouette with a glowing "?" and no name;
 it unlocks permanently the moment you actually get it.
 
@@ -88,20 +103,21 @@ instead).
 
 ## Objective
 
-There isn't one beyond the three photographs. Explore, find the
-crawlspace routes, avoid the two things that notice you, document what's
-actually here. Getting caught (or falling into a pit) just sends you back
-to a spot far from whatever got you; there's nothing to lose and nothing
-to win.
+There isn't one beyond the five photographs. Explore, find the
+crawlspace routes and the staircase down, avoid the three things that
+notice you, document what's actually here. Getting caught (or falling
+into a pit) just sends you back to a spot far from whatever got you;
+there's nothing to lose and nothing to win.
 
 ## What's out there
 
-Both walk on real jointed limbs (shoulders, elbows, hips, knees) with
-their own walk-cycle — a real sprint when they're actually after you, not
-just a faster version of the same walk — and wander room to room off the
-exact dead-center line, not visibly gridded. Both have a real, smooth
-multi-beat kill animation instead of a generic camera shake when they
-actually catch you, and you can't look around at all while it plays.
+The Bacteria and the Mannequin both walk on real jointed limbs
+(shoulders, elbows, hips, knees) with their own walk-cycle — a real
+sprint when they're actually after you, not just a faster version of the
+same walk — and wander room to room off the exact dead-center line, not
+visibly gridded. All three have a real, smooth multi-beat kill animation
+instead of a generic camera shake when they actually catch you, and you
+can't look around at all while it plays.
 
 **The Bacteria** — a humanoid shape built entirely out of thin black
 wire — a wire ribcage, a wire skull, jointed wire limbs, nothing solid
@@ -124,6 +140,15 @@ does — it stays wherever it was and comes straight for wherever you
 respawn, discovered for good. It can't follow you into a crawlspace
 either, but by the time you've noticed it's already moving, you may not
 have the room to reach one.
+
+**The Mimitor** — down in the Pool Rooms. From a distance it's exactly
+what it looks like: a small rubber duck, drifting slowly toward you from
+wherever it already is. It never stops closing that distance, however
+slow, and it doesn't need to see you to do it. Let it get close and long
+black arms, legs, and a long distorted-faced neck grow straight out of
+it — and the instant they do, it's no longer slow, closing the rest of
+the gap at 1.1x your own speed. Catch you and the neck lunges the whole
+way into frame before everything judders and goes black.
 
 ## License
 
