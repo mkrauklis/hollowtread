@@ -26,7 +26,7 @@ const GRAVITY = -22;
 const JUMP_V = 9.6;
 const WALK_SPEED = 8.4;
 const RUN_SPEED = 12.8;
-const CROUCH_SPEED_MUL = 0.55;
+const CROUCH_SPEED_MUL = 0.7; // "30% slower" while crouching, on request
 const DEATH_Y = -14; // fall past this (a pit, see the pit room) and you're sent back
 
 /* ---------------- deterministic layout (no Math.random, so the maze/props are stable) ---------------- */
@@ -51,7 +51,11 @@ scene.fog = new THREE.FogExp2(0x2a2410, 0.04); // still tight and dingy, just ea
 const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.05, 150);
 
 const PIXEL_SCALE = 2.5;
-const renderer = new THREE.WebGLRenderer({ antialias: false });
+// preserveDrawingBuffer: true -- needed so takePhoto() (below) can read the
+// just-rendered frame back out with toDataURL() for the computer's own
+// Photos tab; without it the backing buffer can already be cleared by the
+// time a click handler gets to read it.
+const renderer = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: true });
 renderer.setPixelRatio(1);
 document.getElementById('game-root').appendChild(renderer.domElement);
 renderer.domElement.classList.add('game-canvas');
@@ -67,7 +71,7 @@ function resizeRenderer() {
 resizeRenderer();
 
 scene.add(new THREE.AmbientLight(0x4a4126, 1.0)); // still warm and a little sickly, just brighter -- "dim" shouldn't mean "can't see", on request
-const flashlight = new THREE.SpotLight(0xfff1cf, 9.5, 30, Math.PI / 4.6, 0.55, 1.3);
+const flashlight = new THREE.SpotLight(0xfff1cf, 6.5, 28, Math.PI / 4.6, 0.55, 1.3); // dimmer than the first pass, on request
 camera.add(flashlight);
 flashlight.target.position.set(0, 0, -1);
 camera.add(flashlight.target);
@@ -86,23 +90,52 @@ function makeArm(side) {
   sleeve.position.set(side * 0.26, -0.42, -0.5);
   sleeve.rotation.z = side * 0.35;
 
-  // Cuff, palm, and three fused finger lobes -- all children of the
-  // sleeve, so they inherit its position/rotation.z automatically and
-  // sit at the sleeve's own "down" end without needing separate world-
-  // space trig to place them.
+  // Cuff, a flattened glove-back palm, four separate two-segment fingers
+  // (each with a slight downward curl), and an angled-out thumb -- all
+  // children of the sleeve, so they inherit its position/rotation.z
+  // automatically. Replaces the previous fused-lobe approximation (a
+  // sphere palm plus three plain capsules) on request ("make the hands
+  // actually look like hands with gloves") -- a flat box reads as a
+  // glove back rather than a ball, and a distinct, side-angled thumb is
+  // the one detail that actually sells "hand" over "four sticks on a box."
   const cuff = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.022, 5, 10), gloveMat);
   cuff.rotation.x = Math.PI / 2;
   cuff.position.set(0, -0.19, 0);
   sleeve.add(cuff);
-  const palm = new THREE.Mesh(new THREE.SphereGeometry(0.125, 8, 7), gloveMat);
-  palm.scale.set(1, 1.1, 0.75);
-  palm.position.set(0, -0.27, 0);
+  const palm = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.2, 0.09), gloveMat);
+  palm.position.set(0, -0.28, 0);
   sleeve.add(palm);
-  for (let i = -1; i <= 1; i++) {
-    const finger = new THREE.Mesh(new THREE.CapsuleGeometry(0.028, 0.1, 3, 5), gloveMat);
-    finger.position.set(i * 0.055, -0.37, 0.02);
-    sleeve.add(finger);
+
+  function addFinger(lx, lz, lenScale, curl) {
+    const base = new THREE.Group();
+    base.position.set(lx, -0.37, lz);
+    base.rotation.x = curl;
+    const seg1 = new THREE.Mesh(new THREE.CapsuleGeometry(0.022, 0.09 * lenScale, 3, 5), gloveMat);
+    seg1.position.y = -0.045 * lenScale;
+    base.add(seg1);
+    const tip = new THREE.Group();
+    tip.position.y = -0.09 * lenScale;
+    tip.rotation.x = 0.35;
+    base.add(tip);
+    const seg2 = new THREE.Mesh(new THREE.CapsuleGeometry(0.019, 0.06 * lenScale, 3, 5), gloveMat);
+    seg2.position.y = -0.03 * lenScale;
+    tip.add(seg2);
+    sleeve.add(base);
   }
+  addFinger(-0.075, 0.03, 0.95, 0.08);
+  addFinger(-0.025, 0.045, 1.05, 0.04);
+  addFinger(0.025, 0.045, 1.0, -0.02);
+  addFinger(0.075, 0.03, 0.85, -0.08);
+
+  const thumb = new THREE.Group();
+  thumb.position.set(side * 0.1, -0.3, 0.03);
+  thumb.rotation.z = side * -0.9;
+  thumb.rotation.x = 0.3;
+  const thumbSeg = new THREE.Mesh(new THREE.CapsuleGeometry(0.024, 0.09, 3, 5), gloveMat);
+  thumbSeg.position.y = -0.045;
+  thumb.add(thumbSeg);
+  sleeve.add(thumb);
+
   return sleeve;
 }
 armGroup.add(makeArm(-1), makeArm(1));
@@ -160,6 +193,18 @@ function makeWallpaperTexture() {
     noise.data[i + 2] = Math.max(0, Math.min(255, noise.data[i + 2] + v * 0.5));
   }
   ctx.putImageData(noise, 0, 0);
+  // a couple of vertical damp streaks -- the stained, dripped-from-the-
+  // ceiling-line look real Level 0 wallpaper photos almost always show,
+  // not just a clean repeating pattern.
+  for (let i = 0; i < 2; i++) {
+    const x = Math.random() * size;
+    const w = 4 + Math.random() * 8;
+    const grad = ctx.createLinearGradient(x, 0, x, size);
+    grad.addColorStop(0, 'rgba(90,70,25,0.35)');
+    grad.addColorStop(1, 'rgba(90,70,25,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(x - w / 2, 0, w, size);
+  }
   ctx.strokeStyle = 'rgba(70,55,15,0.35)';
   ctx.lineWidth = 2;
   for (let x = 0; x < size; x += 16) {
@@ -172,10 +217,64 @@ function makeWallpaperTexture() {
   return tex;
 }
 
+// Ceiling: the other half of the Level 0 look -- a pale, slightly yellowed
+// acoustic drop-ceiling tile, speckled and pock-marked like real fiberboard,
+// with a water-stain blotch on most tiles and a dark seam around the tile
+// edge so it actually reads as a tiled drop ceiling instead of a flat
+// painted surface. Drawn at a fixed tile size rather than scaled off CELL,
+// which isn't declared yet this early in the file -- repeat is just set
+// to a count that divides a room cleanly below.
+function makeCeilingTexture() {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#d6c99a';
+  ctx.fillRect(0, 0, size, size);
+  const noise = ctx.getImageData(0, 0, size, size);
+  for (let i = 0; i < noise.data.length; i += 4) {
+    const v = (Math.random() - 0.5) * 16;
+    noise.data[i] = Math.max(0, Math.min(255, noise.data[i] + v));
+    noise.data[i + 1] = Math.max(0, Math.min(255, noise.data[i + 1] + v * 0.95));
+    noise.data[i + 2] = Math.max(0, Math.min(255, noise.data[i + 2] + v * 0.65));
+  }
+  ctx.putImageData(noise, 0, 0);
+  ctx.fillStyle = 'rgba(80,68,35,0.25)';
+  for (let i = 0; i < 90; i++) {
+    ctx.fillRect(Math.random() * size, Math.random() * size, 1, 1);
+  }
+  if (Math.random() < 0.7) {
+    const sx = size * (0.25 + Math.random() * 0.5), sy = size * (0.25 + Math.random() * 0.5);
+    const r = size * (0.18 + Math.random() * 0.22);
+    const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, r);
+    grad.addColorStop(0, 'rgba(110,85,35,0.4)');
+    grad.addColorStop(0.6, 'rgba(110,85,35,0.18)');
+    grad.addColorStop(1, 'rgba(110,85,35,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.strokeStyle = 'rgba(55,46,22,0.55)';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(1.5, 1.5, size - 3, size - 3);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.magFilter = THREE.NearestFilter;
+  tex.repeat.set(6, 6); // ~2-unit tiles across a 12-unit room
+  return tex;
+}
+
 const wallMat = new THREE.MeshStandardMaterial({ color: 0xcdb15c, roughness: 0.95, map: makeWallpaperTexture() });
 const carpetMat = new THREE.MeshStandardMaterial({ color: 0x8a742f, roughness: 1, map: makeGrainTexture({ size: 128, dark: 70, light: 170, repeat: 20, blotch: 3, tint: [0.75, 0.62, 0.22] }) }); // "damp" -- darker and blotchier than the wallpaper, not a clean carpet
-const ceilingMat = new THREE.MeshStandardMaterial({ color: 0x6b5c2a, roughness: 1 });
+const ceilingMat = new THREE.MeshStandardMaterial({ color: 0xd6c99a, roughness: 0.9, map: makeCeilingTexture() });
 const trimMat = new THREE.MeshStandardMaterial({ color: 0x4a3f1c, roughness: 0.9 });
+// Crawlspace-only floor/header material -- near-black and fully matte, on
+// request ("make crawlspaces darker"). A crawl tunnel is deliberately lit
+// by nothing of its own (see edgeWallX/edgeWallZ's 'crawl' case and
+// buildCrawlTunnelCell below), but reusing wallMat/carpetMat still read as
+// bright as a normal room wherever a neighboring room's own light reached
+// that far in. This absorbs that light instead of reflecting it back.
+const crawlDarkMat = new THREE.MeshStandardMaterial({ color: 0x0c0a05, roughness: 1 });
+const fluorescentMat = new THREE.MeshStandardMaterial({ color: 0xfff3d6, emissive: 0xfff3d6, emissiveIntensity: 1.2, roughness: 0.6 });
 
 /* ---------------- the maze: a grid of rooms, doorways, and crawlspaces ---------------- */
 /* GRID_N up and CELL down from the first pass (7x16 -> 9x12, about the
@@ -205,6 +304,14 @@ const PIT_CELL = { cx: Math.floor(GRID_N / 2), cz: Math.floor(GRID_N / 2) };
 // since nothing inside the maze itself needs to change to accommodate it.
 const POOL_DOOR_CZ = 4;
 const POOL_Y = -4.5; // the Pool Rooms floor sits one real level down, reached by the staircase in that same section
+// Where the maze opens out into the Mall, via a long crawlspace (not a
+// normal doorway) punched through the south boundary wall at this column
+// -- see the Mall section after the Pool Rooms below.
+const MALL_DOOR_CX = 2;
+// Where the maze opens out into the Safezone, via the giant lever-door
+// (not a normal doorway either) punched through the west boundary wall
+// at this row -- see the Safezone section, built after the Mall below.
+const SAFE_DOOR_CZ = 6;
 
 function boundaryX(ex) { return (ex - GRID_N / 2) * CELL; }
 function boundaryZ(ez) { return (ez - GRID_N / 2) * CELL; }
@@ -295,6 +402,11 @@ const boxColliders = [];   // THREE.Box3 -- normal solid walls
 const crawlOnlyBoxes = []; // THREE.Box3 -- passable only while crouching
 const circleColliders = []; // { x, z, r } -- props (the glitched chair, etc.)
 function addCircleCollider(x, z, r) { circleColliders.push({ x, z, r }); }
+// { box: THREE.Box3, t } -- a door (the Safezone's giant lever-door, see
+// that section below) blocks like a wall while mostly closed (t near 0)
+// and stops blocking once it's mostly slid open (t near 1), rather than
+// being a fixed wall or a normal doorway.
+const doorColliders = [];
 
 function collidesAt(x, z, crouchingNow) {
   for (const c of circleColliders) {
@@ -310,6 +422,12 @@ function collidesAt(x, z, crouchingNow) {
       if (x + PLAYER_R > b.min.x && x - PLAYER_R < b.max.x &&
           z + PLAYER_R > b.min.z && z - PLAYER_R < b.max.z) return true;
     }
+  }
+  for (const d of doorColliders) {
+    if (d.t > 0.92) continue; // mostly open -- stop blocking before the slide fully finishes, so it doesn't feel like walking into glass
+    const b = d.box;
+    if (x + PLAYER_R > b.min.x && x - PLAYER_R < b.max.x &&
+        z + PLAYER_R > b.min.z && z - PLAYER_R < b.max.z) return true;
   }
   return false;
 }
@@ -338,7 +456,7 @@ function edgeWallX(wx, wz0, wz1, kind) {
   if (kind === 'solid') { wallBox(wx - WALL_T / 2, wx + WALL_T / 2, wz0, wz1); return; }
   if (kind === 'crawl') {
     crawlOnlyBoxes.push(new THREE.Box3(new THREE.Vector3(wx - WALL_T, 0, wz0), new THREE.Vector3(wx + WALL_T, WALL_H, wz1)));
-    const header = new THREE.Mesh(new THREE.BoxGeometry(WALL_T * 2, WALL_H - CRAWL_H, wz1 - wz0), wallMat);
+    const header = new THREE.Mesh(new THREE.BoxGeometry(WALL_T * 2, WALL_H - CRAWL_H, wz1 - wz0), crawlDarkMat);
     header.position.set(wx, CRAWL_H + (WALL_H - CRAWL_H) / 2, (wz0 + wz1) / 2);
     scene.add(header);
     return;
@@ -352,7 +470,7 @@ function edgeWallZ(wz, wx0, wx1, kind) {
   if (kind === 'solid') { wallBox(wx0, wx1, wz - WALL_T / 2, wz + WALL_T / 2); return; }
   if (kind === 'crawl') {
     crawlOnlyBoxes.push(new THREE.Box3(new THREE.Vector3(wx0, 0, wz - WALL_T), new THREE.Vector3(wx1, WALL_H, wz + WALL_T)));
-    const header = new THREE.Mesh(new THREE.BoxGeometry(wx1 - wx0, WALL_H - CRAWL_H, WALL_T * 2), wallMat);
+    const header = new THREE.Mesh(new THREE.BoxGeometry(wx1 - wx0, WALL_H - CRAWL_H, WALL_T * 2), crawlDarkMat);
     header.position.set((wx0 + wx1) / 2, CRAWL_H + (WALL_H - CRAWL_H) / 2, wz);
     scene.add(header);
     return;
@@ -386,6 +504,7 @@ for (let ex = 0; ex <= GRID_N; ex++) {
       // The one spot the maze's own outer boundary isn't solid -- the
       // mouth of the staircase down into the Pool Rooms (see that section
       // below, built after the pit room).
+      if (ex === 0 && ez === SAFE_DOOR_CZ) continue; // the Safezone's own giant door, built by that section instead
       const kind = (ex === GRID_N && ez === POOL_DOOR_CZ) ? 'open' : 'solid';
       edgeWallX(boundaryX(ex), wz0, wz1, kind);
       continue;
@@ -397,7 +516,15 @@ for (let ex = 0; ex <= GRID_N; ex++) {
 for (let ez = 0; ez <= GRID_N; ez++) {
   for (let ex = 0; ex < GRID_N; ex++) {
     const wx0 = boundaryX(ex), wx1 = boundaryX(ex + 1);
-    if (ez === 0 || ez === GRID_N) { edgeWallZ(boundaryZ(ez), wx0, wx1, 'solid'); continue; }
+    if (ez === 0 || ez === GRID_N) {
+      // The south boundary's own one gap -- not a normal doorway/crawl
+      // cut (those always take the whole shared wall), but a narrow mouth
+      // sized to the long crawlway below, left for that section to build
+      // itself rather than handled generically here.
+      if (ez === 0 && ex === MALL_DOOR_CX) continue;
+      edgeWallZ(boundaryZ(ez), wx0, wx1, 'solid');
+      continue;
+    }
     const k = edgeKeyZ(ex, ez - 1);
     edgeWallZ(boundaryZ(ez), wx0, wx1, openEdges.has(k) ? 'open' : (crawlEdges.has(k) ? 'crawl' : 'solid'));
   }
@@ -429,10 +556,10 @@ function buildCrawlTunnelCell(cx, cz, entryAxis, entrySign) {
   function leg(x0, z0, x1, z1) {
     const minX = Math.min(x0, x1) - pathHalf, maxX = Math.max(x0, x1) + pathHalf;
     const minZ = Math.min(z0, z1) - pathHalf, maxZ = Math.max(z0, z1) + pathHalf;
-    const floor = new THREE.Mesh(new THREE.BoxGeometry(maxX - minX, 0.15, maxZ - minZ), carpetMat);
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(maxX - minX, 0.15, maxZ - minZ), crawlDarkMat);
     floor.position.set((minX + maxX) / 2, -0.075, (minZ + maxZ) / 2);
     scene.add(floor);
-    const header = new THREE.Mesh(new THREE.BoxGeometry(maxX - minX, WALL_H - CRAWL_H, maxZ - minZ), wallMat);
+    const header = new THREE.Mesh(new THREE.BoxGeometry(maxX - minX, WALL_H - CRAWL_H, maxZ - minZ), crawlDarkMat);
     header.position.set((minX + maxX) / 2, CRAWL_H + (WALL_H - CRAWL_H) / 2, (minZ + maxZ) / 2);
     scene.add(header);
     crawlOnlyBoxes.push(new THREE.Box3(new THREE.Vector3(minX, 0, minZ), new THREE.Vector3(maxX, WALL_H, maxZ)));
@@ -481,10 +608,20 @@ for (let cx = 0; cx < GRID_N; cx++) for (let cz = 0; cz < GRID_N; cz++) {
   fixture.position.set(c.x, WALL_H - 0.1, c.z);
   scene.add(fixture);
   const base = 1.1 + rand() * 0.5;
+  const broken = rand() < 0.18;
+  // The lit diffuser lens itself -- a pale emissive panel recessed in the
+  // dark trim housing above, flush with its bottom face, so the fixture
+  // actually looks like a real fluorescent tray instead of a dark box.
+  // Its own material is a clone (not the shared fluorescentMat) so each
+  // fixture's glow can flicker independently in the animate() loop below.
+  const panel = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.03, 0.8), fluorescentMat.clone());
+  panel.material.emissiveIntensity = broken ? 0.3 : 1.2;
+  panel.position.set(c.x, WALL_H - 0.16, c.z);
+  scene.add(panel);
   const light = new THREE.PointLight(0xe8d090, base, CELL * 1.8, 2);
   light.position.set(c.x, WALL_H - 0.4, c.z);
   scene.add(light);
-  cellLights.push({ light, base, seed: rand() * 1000, broken: rand() < 0.18 });
+  cellLights.push({ light, panel, base, seed: rand() * 1000, broken });
 }
 
 /* ---------------- the pit room: a grid of square floor pits ---------------- */
@@ -694,6 +831,348 @@ const ARTIFACT_POOL = { pos: kiddiePoolPos, id: 'pool', name: 'The Kiddie Pool' 
 // coordinate rather than a cell reference.
 const mimitorSpawnPos = { x: (roomBx0 + roomBx1) / 2 + 4, z: roomBz1 - 3 };
 
+/* ---------------- the Mall: a sub-level reached by a very long crawlspace ---------------- */
+/* On request -- "a new area that can only be accessed by a crawlspace
+ * that is really long" -- a single straight, unbroken crawl tunnel, far
+ * longer than any normal crawl-tunnel-cell leg (those live inside one
+ * 12-unit maze cell; this one runs the length of several), punched
+ * through the maze's own south boundary wall at MALL_DOOR_CX rather than
+ * an interior doorway -- same "carve a one-off gap in an otherwise-solid
+ * boundary wall" technique the Pool Rooms' own staircase uses on the east
+ * boundary, just crouch-gated the whole way instead of open. It leads to
+ * a mall: one big tiled atrium, storefronts, a fountain, skylights -- not
+ * on the maze's grid at all, ground-level (not sunk like the Pool Rooms),
+ * but with its own taller ceiling (MALL_WALL_H, not the maze's WALL_H) so
+ * a genuinely giant monster has headroom to stand in it without clipping
+ * the ceiling. */
+
+const mallFloorMat = new THREE.MeshStandardMaterial({ color: 0xb9b2a0, roughness: 0.35, map: makeGrainTexture({ size: 128, dark: 150, light: 235, repeat: 18, blotch: 4, tint: [0.85, 0.82, 0.74] }) }); // speckled terrazzo
+const mallWallMat = new THREE.MeshStandardMaterial({ color: 0xe6ddc8, roughness: 0.75, map: makeGrainTexture({ size: 128, dark: 205, light: 255, repeat: 10, blotch: 3, tint: [0.92, 0.88, 0.78] }) }); // cream plaster
+const mallCeilMat = new THREE.MeshStandardMaterial({ color: 0x343438, roughness: 0.85 }); // dark open-plan service ceiling, not a drop-tile grid like the maze
+const mallSkylightMat = new THREE.MeshStandardMaterial({ color: 0xdcecff, emissive: 0xcfe4ff, emissiveIntensity: 1.1, roughness: 0.3 });
+const mallGlassMat = new THREE.MeshStandardMaterial({ color: 0x1a2430, roughness: 0.2, metalness: 0.3, transparent: true, opacity: 0.55 });
+const mallSignMats = [0xd43b3b, 0x2f8f4e, 0x2f6fdb, 0xd98a1f].map((c) => new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.5, roughness: 0.5 }));
+
+const MALL_WALL_H = 6.5;
+
+function mallWallSeg(x0, x1, z0, z1) {
+  if (x1 - x0 < 0.02 || z1 - z0 < 0.02) return;
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, MALL_WALL_H, z1 - z0), mallWallMat);
+  mesh.position.set((x0 + x1) / 2, MALL_WALL_H / 2, (z0 + z1) / 2);
+  scene.add(mesh);
+  boxColliders.push(new THREE.Box3(new THREE.Vector3(x0, 0, z0), new THREE.Vector3(x1, MALL_WALL_H, z1)));
+}
+// Like edgeWallX/edgeWallZ, but ground-level (the Mall sits at y=0, same
+// as the maze, just with its own taller wall height) and with a plain
+// configurable doorway half-width instead of the maze's fixed DOOR_HALF.
+function mallEdgeX(wx, z0, z1, doorCenterZ, doorHalf) {
+  if (doorCenterZ === null) { mallWallSeg(wx - WALL_T / 2, wx + WALL_T / 2, z0, z1); return; }
+  mallWallSeg(wx - WALL_T / 2, wx + WALL_T / 2, z0, doorCenterZ - doorHalf);
+  mallWallSeg(wx - WALL_T / 2, wx + WALL_T / 2, doorCenterZ + doorHalf, z1);
+}
+function mallEdgeZ(wz, x0, x1, doorCenterX, doorHalf) {
+  if (doorCenterX === null) { mallWallSeg(x0, x1, wz - WALL_T / 2, wz + WALL_T / 2); return; }
+  mallWallSeg(x0, doorCenterX - doorHalf, wz - WALL_T / 2, wz + WALL_T / 2);
+  mallWallSeg(doorCenterX + doorHalf, x1, wz - WALL_T / 2, wz + WALL_T / 2);
+}
+function buildMallRoomShell(x0, x1, z0, z1) {
+  const floor = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 0.15, z1 - z0), mallFloorMat);
+  floor.position.set((x0 + x1) / 2, -0.075, (z0 + z1) / 2);
+  scene.add(floor);
+  const ceil = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 0.15, z1 - z0), mallCeilMat);
+  ceil.position.set((x0 + x1) / 2, MALL_WALL_H + 0.075, (z0 + z1) / 2);
+  scene.add(ceil);
+}
+// A storefront facade set into one of the atrium's long walls -- a thin
+// plaster face, a dark glass window, and a colored sign bar -- `side` is
+// +1 for a wall at the room's low-X edge (facade faces +x, into the
+// room) or -1 for the high-X edge (faces -x).
+function buildStorefront(wallX, cz, side, signMat) {
+  const facade = new THREE.Mesh(new THREE.BoxGeometry(0.4, 2.6, 5), mallWallMat);
+  facade.position.set(wallX + side * 0.2, 1.3, cz);
+  scene.add(facade);
+  boxColliders.push(new THREE.Box3(
+    new THREE.Vector3(Math.min(wallX, wallX + side * 0.4), 0, cz - 2.5),
+    new THREE.Vector3(Math.max(wallX, wallX + side * 0.4), 2.6, cz + 2.5)
+  ));
+  const glass = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.6, 4.1), mallGlassMat);
+  glass.position.set(wallX + side * 0.44, 1.1, cz);
+  scene.add(glass);
+  const sign = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.5, 4.6), signMat);
+  sign.position.set(wallX + side * 0.5, 2.55, cz);
+  scene.add(sign);
+}
+function buildFountain(cx, cz) {
+  const basin = new THREE.Mesh(new THREE.CylinderGeometry(3, 3.2, 0.5, 20), mallWallMat);
+  basin.position.set(cx, 0.25, cz);
+  scene.add(basin);
+  addCircleCollider(cx, cz, 3.1);
+  const water = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.6, 0.1, 20), poolWaterMat);
+  water.position.set(cx, 0.52, cz);
+  scene.add(water);
+  const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 1.4, 10), mallWallMat);
+  spout.position.set(cx, 1.2, cz);
+  scene.add(spout);
+  const fountainLight = new THREE.PointLight(0x9fd0e8, 0.8, 10, 2);
+  fountainLight.position.set(cx, 1.6, cz);
+  scene.add(fountainLight);
+  cellLights.push({ light: fountainLight, base: 0.8, seed: rand() * 1000, broken: false });
+}
+function buildBench(cx, cz, rotY) {
+  const g = new THREE.Group();
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.1, 0.5), trimMat);
+  seat.position.y = 0.45;
+  g.add(seat);
+  for (const lx of [-0.65, 0.65]) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.45, 0.45), trimMat);
+    leg.position.set(lx, 0.225, 0);
+    g.add(leg);
+  }
+  g.position.set(cx, 0, cz);
+  g.rotation.y = rotY;
+  scene.add(g);
+  addCircleCollider(cx, cz, 0.9);
+}
+
+const mallEntryX = cellCenter(MALL_DOOR_CX, 0).x;
+const mallSouthZ = boundaryZ(0);
+const MALL_PATH_HALF = 1.0;
+const MALL_TUNNEL_LEN = 60; // "really long" -- 5x a single 12-unit maze cell
+const mallTunnelEndZ = mallSouthZ - MALL_TUNNEL_LEN;
+
+// The narrow mouth through the boundary -- flanking solid wall either
+// side, a crouch-gated gap in the middle sized to the crawlway itself
+// rather than a whole shared wall (the normal maze crawlspace convention
+// doesn't apply here, since this isn't a shared wall between two rooms).
+{
+  const wx0 = boundaryX(MALL_DOOR_CX), wx1 = boundaryX(MALL_DOOR_CX + 1);
+  wallBox(wx0, mallEntryX - MALL_PATH_HALF, mallSouthZ - WALL_T / 2, mallSouthZ + WALL_T / 2);
+  wallBox(mallEntryX + MALL_PATH_HALF, wx1, mallSouthZ - WALL_T / 2, mallSouthZ + WALL_T / 2);
+  crawlOnlyBoxes.push(new THREE.Box3(
+    new THREE.Vector3(mallEntryX - MALL_PATH_HALF, 0, mallSouthZ - WALL_T),
+    new THREE.Vector3(mallEntryX + MALL_PATH_HALF, WALL_H, mallSouthZ + WALL_T)
+  ));
+  const mouthHeader = new THREE.Mesh(new THREE.BoxGeometry(MALL_PATH_HALF * 2, WALL_H - CRAWL_H, WALL_T * 2), crawlDarkMat);
+  mouthHeader.position.set(mallEntryX, CRAWL_H + (WALL_H - CRAWL_H) / 2, mallSouthZ);
+  scene.add(mouthHeader);
+}
+// The long crawlway itself -- one straight, unbroken run (unlike the
+// normal crawl-tunnel-cells, which cap after one short jointed leg or
+// two), narrow and unlit the entire way.
+{
+  const minX = mallEntryX - MALL_PATH_HALF, maxX = mallEntryX + MALL_PATH_HALF;
+  const minZ = mallTunnelEndZ, maxZ = mallSouthZ;
+  const floor = new THREE.Mesh(new THREE.BoxGeometry(maxX - minX, 0.15, maxZ - minZ), crawlDarkMat);
+  floor.position.set(mallEntryX, -0.075, (minZ + maxZ) / 2);
+  scene.add(floor);
+  const header = new THREE.Mesh(new THREE.BoxGeometry(maxX - minX, WALL_H - CRAWL_H, maxZ - minZ), crawlDarkMat);
+  header.position.set(mallEntryX, CRAWL_H + (WALL_H - CRAWL_H) / 2, (minZ + maxZ) / 2);
+  scene.add(header);
+  crawlOnlyBoxes.push(new THREE.Box3(new THREE.Vector3(minX, 0, minZ), new THREE.Vector3(maxX, WALL_H, maxZ)));
+  wallBox(minX - WALL_T, minX, minZ, maxZ);
+  wallBox(maxX, maxX + WALL_T, minZ, maxZ);
+}
+
+// One big atrium, deliberately off-center on the crawlway (which enters
+// nearer its west wall than dead-center, like a real mall's back-hallway
+// entrance) -- storefronts along both long walls, a fountain and a
+// couple of benches in the middle, three skylights overhead.
+const mallAx0 = mallEntryX - 22, mallAx1 = mallEntryX + 22;
+const mallAz1 = mallTunnelEndZ, mallAz0 = mallAz1 - 34;
+const MALL_BOUNDS = { x0: mallAx0, x1: mallAx1, z0: mallAz0, z1: mallAz1 };
+
+buildMallRoomShell(mallAx0, mallAx1, mallAz0, mallAz1);
+mallEdgeZ(mallAz1, mallAx0, mallAx1, mallEntryX, MALL_PATH_HALF + 0.3); // north wall -- the crawlway's own mouth
+mallEdgeZ(mallAz0, mallAx0, mallAx1, null); // south wall, solid
+mallEdgeX(mallAx0, mallAz0, mallAz1, null); // west wall, solid
+mallEdgeX(mallAx1, mallAz0, mallAz1, null); // east wall, solid
+
+const mallStorefrontZs = [mallAz0 + 5, mallAz0 + 13, mallAz0 + 21, mallAz0 + 29]; // 4 per side now (was 3), on request ("add more shops to mall")
+mallStorefrontZs.forEach((z, i) => buildStorefront(mallAx0, z, 1, mallSignMats[i % mallSignMats.length]));
+mallStorefrontZs.forEach((z, i) => buildStorefront(mallAx1, z, -1, mallSignMats[(i + 1) % mallSignMats.length]));
+
+buildFountain((mallAx0 + mallAx1) / 2, (mallAz0 + mallAz1) / 2);
+buildBench((mallAx0 + mallAx1) / 2 - 5, (mallAz0 + mallAz1) / 2 + 6, 0);
+buildBench((mallAx0 + mallAx1) / 2 + 5, (mallAz0 + mallAz1) / 2 + 6, Math.PI);
+
+for (const [lx, lz] of [
+  [(mallAx0 + mallAx1) / 2 - 10, (mallAz0 + mallAz1) / 2 - 8],
+  [(mallAx0 + mallAx1) / 2 + 10, (mallAz0 + mallAz1) / 2 - 8],
+  [(mallAx0 + mallAx1) / 2, (mallAz0 + mallAz1) / 2 + 10],
+]) {
+  const sky = new THREE.Mesh(new THREE.BoxGeometry(6, 0.1, 6), mallSkylightMat);
+  sky.position.set(lx, MALL_WALL_H - 0.08, lz);
+  scene.add(sky);
+  const light = new THREE.PointLight(0xdfeeff, 1.4, 22, 2);
+  light.position.set(lx, MALL_WALL_H - 0.8, lz);
+  scene.add(light);
+  cellLights.push({ light, base: 1.4, seed: rand() * 1000, broken: false });
+}
+
+// Where Bloom and the Mannequin start -- opposite corners of the atrium,
+// not on the maze grid, so (like the Mimitor's own spawn point) these are
+// just plain coordinates.
+const bloomSpawnPos = { x: mallAx0 + 8, z: mallAz1 - 6 };
+const mallMannequinSpawnPos = { x: mallAx1 - 8, z: mallAz0 + 8 };
+
+/* ---------------- the Safezone: a facility room behind a giant lever-door ---------------- */
+/* On request -- "a safezone thats like a facility with pipes and a giant
+ * door that can only be opened with a lever in the middle" -- a plain
+ * industrial room (metal floor/walls, exposed pipes) behind its own
+ * boundary opening (SAFE_DOOR_CZ, on the maze's west side, well away from
+ * the Pool Rooms' east doorway and the Mall's south crawlway). The door
+ * itself is a real moving collider, not just a visual: it blocks like a
+ * solid wall while down, and only stops blocking once it's slid most of
+ * the way up (see doorColliders in collidesAt, above) -- a slow 3-second
+ * slide each way (SAFE_DOOR_DURATION), triggered only by the lever
+ * standing in the middle of the room, never automatically. */
+
+const safeFloorMat = new THREE.MeshStandardMaterial({ color: 0x3c3f42, roughness: 0.6, metalness: 0.3, map: makeGrainTexture({ size: 128, dark: 40, light: 120, repeat: 16, blotch: 3 }) });
+const safeWallMat = new THREE.MeshStandardMaterial({ color: 0x53585c, roughness: 0.55, metalness: 0.25, map: makeGrainTexture({ size: 128, dark: 70, light: 150, repeat: 12, blotch: 3 }) });
+const safeCeilMat = new THREE.MeshStandardMaterial({ color: 0x24262a, roughness: 0.8 });
+const pipeMatA = new THREE.MeshStandardMaterial({ color: 0x8a6b2a, roughness: 0.4, metalness: 0.6 });
+const pipeMatB = new THREE.MeshStandardMaterial({ color: 0x3a6b5a, roughness: 0.45, metalness: 0.5 });
+const safeDoorMat = new THREE.MeshStandardMaterial({ color: 0x6b1f1f, roughness: 0.5, metalness: 0.5 });
+const safeDoorStripeMat = new THREE.MeshStandardMaterial({ color: 0xd8b32a, roughness: 0.6 });
+const leverBaseMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.5, metalness: 0.6 });
+const leverHandleMat = new THREE.MeshStandardMaterial({ color: 0xb01818, roughness: 0.4, metalness: 0.3 });
+
+function safeWallSeg(x0, x1, z0, z1) {
+  if (x1 - x0 < 0.02 || z1 - z0 < 0.02) return;
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, WALL_H, z1 - z0), safeWallMat);
+  mesh.position.set((x0 + x1) / 2, WALL_H / 2, (z0 + z1) / 2);
+  scene.add(mesh);
+  boxColliders.push(new THREE.Box3(new THREE.Vector3(x0, 0, z0), new THREE.Vector3(x1, WALL_H, z1)));
+}
+function safeEdgeX(wx, z0, z1, doorCenterZ, doorHalf) {
+  if (doorCenterZ === null) { safeWallSeg(wx - WALL_T / 2, wx + WALL_T / 2, z0, z1); return; }
+  safeWallSeg(wx - WALL_T / 2, wx + WALL_T / 2, z0, doorCenterZ - doorHalf);
+  safeWallSeg(wx - WALL_T / 2, wx + WALL_T / 2, doorCenterZ + doorHalf, z1);
+}
+function safeEdgeZ(wz, x0, x1, doorCenterX, doorHalf) {
+  if (doorCenterX === null) { safeWallSeg(x0, x1, wz - WALL_T / 2, wz + WALL_T / 2); return; }
+  safeWallSeg(x0, doorCenterX - doorHalf, wz - WALL_T / 2, wz + WALL_T / 2);
+  safeWallSeg(doorCenterX + doorHalf, x1, wz - WALL_T / 2, wz + WALL_T / 2);
+}
+function buildSafeRoomShell(x0, x1, z0, z1) {
+  const floor = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 0.15, z1 - z0), safeFloorMat);
+  floor.position.set((x0 + x1) / 2, -0.075, (z0 + z1) / 2);
+  scene.add(floor);
+  const ceil = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 0.15, z1 - z0), safeCeilMat);
+  ceil.position.set((x0 + x1) / 2, WALL_H + 0.075, (z0 + z1) / 2);
+  scene.add(ceil);
+}
+// A run of pipe along one wall -- a long cylinder plus a couple of ring
+// "joints" so it doesn't read as one perfectly smooth tube, mounted a
+// little proud of the wall it runs along.
+function buildPipeRun(x0, z0, x1, z1, y, mat) {
+  const dx = x1 - x0, dz = z1 - z0;
+  const len = Math.hypot(dx, dz);
+  const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, len, 8), mat);
+  pipe.position.set((x0 + x1) / 2, y, (z0 + z1) / 2);
+  pipe.rotation.z = Math.PI / 2;
+  pipe.rotation.y = -Math.atan2(dz, dx);
+  scene.add(pipe);
+  for (let i = 0; i <= 2; i++) {
+    const t = i / 2;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.025, 6, 10), leverBaseMat);
+    ring.position.set(x0 + dx * t, y, z0 + dz * t);
+    ring.rotation.y = -Math.atan2(dz, dx);
+    ring.rotation.x = Math.PI / 2;
+    scene.add(ring);
+  }
+}
+
+const safeDoorZ = cellCenter(0, SAFE_DOOR_CZ).z;
+const safeWestWallX = boundaryX(0);
+const SAFE_GAP_HALF = 2.2; // a giant door -- much wider than a normal DOOR_HALF (1.1) doorway
+const SAFE_DOOR_H = WALL_H - 0.2;
+const SAFE_W = 20, SAFE_D = 16;
+const safeRoomX1 = safeWestWallX, safeRoomX0 = safeRoomX1 - SAFE_W;
+const safeRoomZ0 = safeDoorZ - SAFE_D / 2, safeRoomZ1 = safeDoorZ + SAFE_D / 2;
+
+buildSafeRoomShell(safeRoomX0, safeRoomX1, safeRoomZ0, safeRoomZ1);
+safeEdgeX(safeRoomX1, safeRoomZ0, safeRoomZ1, safeDoorZ, SAFE_GAP_HALF); // east wall -- the giant door's own gap
+safeEdgeX(safeRoomX0, safeRoomZ0, safeRoomZ1, null); // west wall, solid
+safeEdgeZ(safeRoomZ0, safeRoomX0, safeRoomX1, null); // south wall, solid
+safeEdgeZ(safeRoomZ1, safeRoomX0, safeRoomX1, null); // north wall, solid
+
+// Pipes along three of the four walls and across the ceiling -- the
+// "facility with pipes" look -- in two alternating colors for variety.
+buildPipeRun(safeRoomX0 + 0.3, safeRoomZ0 + 1.5, safeRoomX0 + 0.3, safeRoomZ1 - 1.5, WALL_H - 0.5, pipeMatA);
+buildPipeRun(safeRoomX0 + 0.3, safeRoomZ0 + 1.5, safeRoomX0 + 0.3, safeRoomZ1 - 1.5, WALL_H - 1.0, pipeMatB);
+buildPipeRun(safeRoomX0 + 1.5, safeRoomZ0 + 0.3, safeRoomX1 - 1.5, safeRoomZ0 + 0.3, WALL_H - 0.6, pipeMatA);
+buildPipeRun(safeRoomX0 + 1.5, safeRoomZ1 - 0.3, safeRoomX1 - 1.5, safeRoomZ1 - 0.3, WALL_H - 0.6, pipeMatB);
+buildPipeRun(safeRoomX0 + 2, safeRoomZ0 + 2, safeRoomX1 - 2, safeRoomZ1 - 2, WALL_H - 0.15, pipeMatA);
+
+// The giant door -- a thick slab filling the east wall's own gap,
+// normally down (blocking it), sliding straight up into a recess over
+// the doorway when the lever's thrown. Warning stripes (alternating
+// boxes) are purely decorative, stuck to its own face.
+const doorMesh = new THREE.Mesh(new THREE.BoxGeometry(WALL_T + 0.1, SAFE_DOOR_H, SAFE_GAP_HALF * 2 - 0.1), safeDoorMat);
+doorMesh.position.set(safeWestWallX, SAFE_DOOR_H / 2, safeDoorZ);
+scene.add(doorMesh);
+for (let i = 0; i < 4; i++) {
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.3, 0.9), safeDoorStripeMat);
+  stripe.position.set(safeWestWallX + WALL_T / 2 + 0.02, 0, safeDoorZ - SAFE_GAP_HALF + 1 + i * 1.3);
+  doorMesh.add(stripe); // child of the slab -- rides along with it as it slides
+}
+const safeDoor = { t: 0, state: 'closed', box: new THREE.Box3() };
+doorColliders.push(safeDoor);
+function updateSafeDoorBox() {
+  const halfW = WALL_T / 2 + 0.1, halfD = SAFE_GAP_HALF;
+  const y = doorMesh.position.y;
+  safeDoor.box.min.set(safeWestWallX - halfW, Math.max(0, y - SAFE_DOOR_H / 2), safeDoorZ - halfD);
+  safeDoor.box.max.set(safeWestWallX + halfW, y + SAFE_DOOR_H / 2, safeDoorZ + halfD);
+}
+updateSafeDoorBox();
+const doorOpenLift = WALL_H + 0.3; // how far up the slab travels -- enough to clear the doorway height entirely
+
+// The lever -- a pedestal and a pivoting handle in the middle of the
+// room, the only thing that can start the door moving (never automatic).
+const leverX = (safeRoomX0 + safeRoomX1) / 2, leverZ = (safeRoomZ0 + safeRoomZ1) / 2;
+const leverBase = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.45, 0.9, 10), leverBaseMat);
+leverBase.position.set(leverX, 0.45, leverZ);
+scene.add(leverBase);
+addCircleCollider(leverX, leverZ, 0.55);
+const leverPivot = new THREE.Group();
+leverPivot.position.set(leverX, 0.9, leverZ);
+scene.add(leverPivot);
+const leverHandle = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.055, 0.9, 8), leverHandleMat);
+leverHandle.position.y = 0.45;
+leverPivot.add(leverHandle);
+const leverKnob = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 7), leverHandleMat);
+leverKnob.position.y = 0.9;
+leverPivot.add(leverKnob);
+const leverLight = new THREE.PointLight(0xffe0a0, 0.6, 6, 2);
+leverLight.position.set(leverX, 1.6, leverZ);
+scene.add(leverLight);
+cellLights.push({ light: leverLight, base: 0.6, seed: rand() * 1000, broken: false });
+const leverCenter = new THREE.Vector3(leverX, EYE_H, leverZ);
+
+const SAFE_DOOR_DURATION = 3; // seconds each way, on request ("the door takes 3 secs to open/close")
+function toggleSafeDoor() {
+  if (safeDoor.state === 'closed') safeDoor.state = 'opening';
+  else if (safeDoor.state === 'open') safeDoor.state = 'closing';
+  // Mid-slide presses are ignored -- it has to finish one way before it
+  // can be sent back the other.
+}
+function tickSafeDoor(dt) {
+  if (safeDoor.state === 'opening') {
+    safeDoor.t = Math.min(1, safeDoor.t + dt / SAFE_DOOR_DURATION);
+    if (safeDoor.t >= 1) safeDoor.state = 'open';
+  } else if (safeDoor.state === 'closing') {
+    safeDoor.t = Math.max(0, safeDoor.t - dt / SAFE_DOOR_DURATION);
+    if (safeDoor.t <= 0) safeDoor.state = 'closed';
+  }
+  doorMesh.position.y = SAFE_DOOR_H / 2 + safeDoor.t * doorOpenLift;
+  updateSafeDoorBox();
+  // The lever's own handle tracks the door's progress, not just its own
+  // two end positions -- it reads as "this is what's driving the door"
+  // rather than a prop that happens to sit near one.
+  leverPivot.rotation.x = -0.95 + safeDoor.t * 1.35;
+}
+
 /* ---------------- dim red room: one of the five photographable things ---------------- */
 /* Picked as a cell with only one open edge (a dead end) so it reads as a
  * small sealed side-room, not a room you pass through -- and deliberately
@@ -897,7 +1376,20 @@ function pickRespawn(awayFrom) {
   return cellCenter(best.cx, best.cz);
 }
 
-const SPAWN = (() => { const c = cellCenter(0, 0); return new THREE.Vector3(c.x, EYE_H, c.z); })();
+// You start inside the Safezone itself now, on request ("the safezone
+// should be where you spawn") -- behind its own closed giant door, which
+// starts shut (see safeDoor below), so the very first thing a new player
+// does is find the lever and pull it before they can reach the maze at
+// all. Computed from boundaryX/cellCenter/SAFE_DOOR_CZ directly rather
+// than reusing safeRoomX0/SAFE_W (both declared later, in the Safezone
+// section itself, which would be a temporal-dead-zone reference this
+// early) -- 17 is "3 units in from the back (west) wall," which sits at
+// boundaryX(0) - SAFE_W (20); keep this in sync if SAFE_W ever changes.
+const SPAWN = (() => {
+  const doorZ = cellCenter(0, SAFE_DOOR_CZ).z;
+  const spawnX = boundaryX(0) - 17;
+  return new THREE.Vector3(spawnX, EYE_H, doorZ);
+})();
 camera.position.copy(SPAWN);
 
 /* ---------------- monster pathing (shared graph walk) ---------------- */
@@ -1056,44 +1548,60 @@ function animateWalkCycle(m, dt, moving, sprinting) {
 const wireMat = new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.85, metalness: 0.1 });
 function wireBone(r0, r1, len) { return new THREE.Mesh(new THREE.CylinderGeometry(r0, r1, len, 5), wireMat); }
 
+// Redrawn taller and thinner than the first pass, on request ("make the
+// bacteria look like the one from the backrooms") -- fan descriptions of
+// the actual Level 0 entity call it specifically "a long, black humanoid
+// entity made from the wires of the ceiling," with claws rather than
+// plain hands (the part that injects the bacteria). Every bone below is
+// stretched further than a real human's own proportions would be, and
+// the hands are now small claw-fans instead of wire spheres.
 function createBacteriaModel() {
   const g = new THREE.Group();
 
-  const torso = wireBone(0.1, 0.14, 0.72);
-  torso.position.y = 1.0;
+  const torso = wireBone(0.095, 0.13, 0.95);
+  torso.position.y = 1.2;
   g.add(torso);
   // A handful of thin cross-wires over the torso read as a ribcage
   // silhouette without needing a real mesh there at all.
-  for (let i = 0; i < 4; i++) {
-    const rib = new THREE.Mesh(new THREE.TorusGeometry(0.135, 0.01, 4, 8), wireMat);
+  for (let i = 0; i < 5; i++) {
+    const rib = new THREE.Mesh(new THREE.TorusGeometry(0.125, 0.01, 4, 8), wireMat);
     rib.rotation.x = Math.PI / 2;
-    rib.position.y = 0.7 + i * 0.18;
+    rib.position.y = 0.8 + i * 0.18;
     g.add(rib);
   }
-  const neck = wireBone(0.035, 0.045, 0.1);
-  neck.position.y = 1.41;
+  const neck = wireBone(0.03, 0.04, 0.22); // noticeably longer than a human neck -- part of the "long" silhouette
+  neck.position.y = 1.78;
   g.add(neck);
-  const head = new THREE.Mesh(new THREE.IcosahedronGeometry(0.13, 0), wireMat); // angular, cage-like, no face
-  head.position.y = 1.55;
+  const head = new THREE.Mesh(new THREE.IcosahedronGeometry(0.12, 0), wireMat); // angular, cage-like, no face
+  head.position.y = 1.97;
   g.add(head);
 
   const armPivots = [], elbowPivots = [];
   for (const side of [-1, 1]) {
     const shoulder = new THREE.Group();
-    shoulder.position.set(side * 0.16, 1.28, 0);
+    shoulder.position.set(side * 0.15, 1.62, 0);
     g.add(shoulder);
-    const upper = wireBone(0.035, 0.045, 0.38);
-    upper.position.y = -0.19;
+    const upper = wireBone(0.032, 0.042, 0.48);
+    upper.position.y = -0.24;
     shoulder.add(upper);
     const elbow = new THREE.Group();
-    elbow.position.y = -0.38;
+    elbow.position.y = -0.48;
     shoulder.add(elbow);
-    const fore = wireBone(0.028, 0.035, 0.34);
-    fore.position.y = -0.17;
+    const fore = wireBone(0.026, 0.032, 0.46);
+    fore.position.y = -0.23;
     elbow.add(fore);
-    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.045, 6, 5), wireMat);
-    hand.position.y = -0.36;
-    elbow.add(hand);
+    // A claw -- three thin curved wire spikes fanned from the wrist,
+    // standing in for "claws [that] inject a bacteria" rather than a
+    // plain wire hand.
+    const wrist = new THREE.Group();
+    wrist.position.y = -0.47;
+    elbow.add(wrist);
+    for (let i = -1; i <= 1; i++) {
+      const claw = wireBone(0.012, 0.002, 0.16);
+      claw.position.set(i * 0.035, -0.08, 0.02);
+      claw.rotation.x = 0.5 + Math.abs(i) * 0.25;
+      wrist.add(claw);
+    }
     armPivots.push(shoulder);
     elbowPivots.push(elbow);
   }
@@ -1101,16 +1609,16 @@ function createBacteriaModel() {
   const legPivots = [], kneePivots = [];
   for (const side of [-1, 1]) {
     const hip = new THREE.Group();
-    hip.position.set(side * 0.09, 0.64, 0);
+    hip.position.set(side * 0.085, 0.82, 0);
     g.add(hip);
-    const thigh = wireBone(0.045, 0.05, 0.4);
-    thigh.position.y = -0.2;
+    const thigh = wireBone(0.042, 0.048, 0.52);
+    thigh.position.y = -0.26;
     hip.add(thigh);
     const knee = new THREE.Group();
-    knee.position.y = -0.4;
+    knee.position.y = -0.52;
     hip.add(knee);
-    const shin = wireBone(0.032, 0.045, 0.38);
-    shin.position.y = -0.19;
+    const shin = wireBone(0.03, 0.042, 0.5);
+    shin.position.y = -0.25;
     knee.add(shin);
     legPivots.push(hip);
     kneePivots.push(knee);
@@ -1122,7 +1630,7 @@ function createBacteriaModel() {
   g.userData.kneePivots = kneePivots;
   g.userData.head = head;
   g.userData.torso = torso;
-  g.userData.grabPoint = { y: 1.0 }; // torso height -- where the kill animation "grabs"
+  g.userData.grabPoint = { y: 1.2 }; // torso height -- where the kill animation "grabs"
   return g;
 }
 const BACTERIA_ROAM_SPEED = RUN_SPEED * 0.25;
@@ -1262,11 +1770,17 @@ const MANNEQUIN_SEE_COS = 0.86;
 const MANNEQUIN_CREEP_SPEED = RUN_SPEED * 1.15;
 const MANNEQUIN_CATCH_R = 1.0;
 
-const mannequinCell = pickPropCell(usedCells);
-usedCells.push(mannequinCell);
-const mannequin = spawnMonster(createMannequinModel, mannequinCell.cx, mannequinCell.cz);
-mannequin.discovered = false;
-let mannequinRetarget = 0;
+// Moved to the Mall (on request), not the maze -- it isn't on the maze's
+// own grid at all now, so it moves the same way the Mimitor and Bloom do
+// (a plain direct-seek against collidesAt) rather than BFS-pathing the
+// maze's doorway graph. Its own distinctive rule is untouched by that
+// change: it still only moves while the player isn't looking at it, and
+// only once it's been looked at at least once.
+const mannequin = {
+  group: createMannequinModel(), pos: new THREE.Vector3(mallMannequinSpawnPos.x, 0, mallMannequinSpawnPos.z),
+  facing: 0, discovered: false,
+};
+scene.add(mannequin.group);
 
 function tickMannequin(dt, playerPos, camForward) {
   const dirToM = new THREE.Vector3(mannequin.pos.x - playerPos.x, 0, mannequin.pos.z - playerPos.z);
@@ -1277,18 +1791,18 @@ function tickMannequin(dt, playerPos, camForward) {
   let creeping = false;
   if (lookedAt) {
     mannequin.discovered = true;
-  } else if (mannequin.discovered) {
-    const pc = cellOf(playerPos.x, playerPos.z);
-    mannequinRetarget -= dt;
-    if (mannequinRetarget <= 0 || !mannequin.waypoints || mannequin.wpIndex >= mannequin.waypoints.length) {
-      setMonsterPath(mannequin, pc.cx, pc.cz);
-      mannequinRetarget = 0.6;
-    }
-    const arrived = tickMonsterMove(mannequin, dt, MANNEQUIN_CREEP_SPEED);
-    creeping = !arrived;
+  } else if (mannequin.discovered && dist > 0.3) {
+    const nx = -dirToM.x / dist, nz = -dirToM.z / dist; // toward the player
+    const stepX = mannequin.pos.x + nx * MANNEQUIN_CREEP_SPEED * dt;
+    if (!collidesAt(stepX, mannequin.pos.z, false)) mannequin.pos.x = stepX;
+    const stepZ = mannequin.pos.z + nz * MANNEQUIN_CREEP_SPEED * dt;
+    if (!collidesAt(mannequin.pos.x, stepZ, false)) mannequin.pos.z = stepZ;
+    if (mannequin.facing === undefined) mannequin.facing = Math.atan2(nx, nz);
+    mannequin.facing = lerpAngle(mannequin.facing, Math.atan2(nx, nz), Math.min(1, dt * 7));
+    creeping = true;
   }
   mannequin.group.position.set(mannequin.pos.x, 0, mannequin.pos.z);
-  mannequin.group.rotation.y = mannequin.facing;
+  mannequin.group.rotation.y = mannequin.facing || 0;
   animateWalkCycle(mannequin, dt, creeping, creeping);
   const dist2 = Math.hypot(playerPos.x - mannequin.pos.x, playerPos.z - mannequin.pos.z);
   return { dist: dist2, danger: mannequin.discovered ? Math.max(0, 1 - dist2 / 12) : 0, catchR: MANNEQUIN_CATCH_R, type: 'mannequin', instance: mannequin };
@@ -1456,6 +1970,223 @@ function tickMimitor(dt, playerPos) {
   return { dist, danger: mimitor.transformed ? Math.max(0, 1 - dist / 10) : 0, catchR: MIMITOR_CATCH_R, type: 'mimitor', instance: mimitor };
 }
 
+/* ---------------- Bloom: a rolling giant with a sun for a face ---------------- */
+/* Lives in the Mall, like the Mannequin now does -- on request ("bloom...
+ * it looks like the rolling giant but its face is a sun"). The Rolling
+ * Giant it's modeled on (a Kane Pixels Backrooms creature) is "a gigantic
+ * living puppet with wheels instead of feet"; Bloom keeps that puppet
+ * body and the wheels in place of legs, but swaps its head for a flat,
+ * radiant sun disc with rays fanned around the rim. Moves the same
+ * direct-seek way the Mimitor and (now) the Mannequin do -- it isn't on
+ * the maze's own grid either. */
+
+const bloomWoodMat = new THREE.MeshStandardMaterial({ color: 0x47453f, roughness: 0.92, map: makeGrainTexture({ size: 128, dark: 35, light: 95, repeat: 8, blotch: 4, tint: [0.92, 0.9, 0.84] }) }); // desaturated grey, not warm wood -- a decayed, washed-out puppet rather than a toy, on request ("analog horror")
+const bloomJointMat = new THREE.MeshStandardMaterial({ color: 0x3a2815, roughness: 0.7 });
+const bloomWheelMat = new THREE.MeshStandardMaterial({ color: 0x1c1712, roughness: 0.6 });
+const sunMat = new THREE.MeshStandardMaterial({ color: 0xffdd55, emissive: 0xffbb22, emissiveIntensity: 1.6, roughness: 0.4 });
+const sunRayMat = new THREE.MeshStandardMaterial({ color: 0xffe79a, emissive: 0xffaa22, emissiveIntensity: 1.3, roughness: 0.4 });
+const sunEyeMat = new THREE.MeshStandardMaterial({ color: 0x1a0505, emissive: 0xff2200, emissiveIntensity: 1.9, roughness: 0.4 }); // angry glowing-red, not the flat dark dot the first pass used
+const blanketMat = new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.95, side: THREE.DoubleSide });
+
+function createBloomModel() {
+  const g = new THREE.Group();
+
+  // Taller and noticeably skinnier than the first pass, on request --
+  // thinner radii throughout, and height stretched from the wheel tops
+  // (1.5) up to a much higher shoulder line.
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.55, 2.6, 10), bloomWoodMat);
+  torso.position.y = 2.8;
+  g.add(torso);
+  for (let i = 0; i < 3; i++) {
+    const band = new THREE.Mesh(new THREE.TorusGeometry(0.47, 0.045, 6, 14), bloomJointMat);
+    band.rotation.x = Math.PI / 2;
+    band.position.y = 1.8 + i * 0.7;
+    g.add(band);
+  }
+
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.16, 0.45, 8), bloomJointMat);
+  neck.position.y = 4.3;
+  g.add(neck);
+
+  // The face itself -- a flat radiant sun disc with triangular rays
+  // fanned around its rim, standing in for a head entirely, plus a
+  // simple dark-printed eyes/mouth so it still reads as looking at you.
+  const faceGroup = new THREE.Group();
+  faceGroup.position.y = 4.75;
+  g.add(faceGroup);
+  const sunDisc = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.12, 16), sunMat);
+  sunDisc.rotation.x = Math.PI / 2;
+  faceGroup.add(sunDisc);
+  const RAYS = 10;
+  for (let i = 0; i < RAYS; i++) {
+    const ang = (i / RAYS) * Math.PI * 2;
+    const ray = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.36, 4), sunRayMat);
+    ray.position.set(Math.cos(ang) * 0.62, Math.sin(ang) * 0.62, 0.02);
+    ray.rotation.z = ang - Math.PI / 2;
+    faceGroup.add(ray);
+  }
+  // Angry glowing-red slit eyes (angled inward/down) and a jagged row of
+  // small teeth under a dark mouth backdrop -- replacing the first pass's
+  // flat dark dots/bar, on request ("make the bloom's face scarier").
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.035, 0.02), sunEyeMat);
+    eye.position.set(side * 0.17, 0.08, 0.066);
+    eye.rotation.z = side * -0.35;
+    faceGroup.add(eye);
+  }
+  const mouthBack = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.11, 0.015), bloomJointMat);
+  mouthBack.position.set(0, -0.13, 0.062);
+  faceGroup.add(mouthBack);
+  const TEETH = 6;
+  for (let i = 0; i < TEETH; i++) {
+    const tx = -0.125 + (i / (TEETH - 1)) * 0.25;
+    const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.022, 0.08, 4), sunEyeMat);
+    tooth.position.set(tx, -0.095, 0.072);
+    tooth.rotation.x = Math.PI;
+    faceGroup.add(tooth);
+  }
+
+  // A ragged black cloth draped over the body (shoulders down to the
+  // wheels), not the head/face -- on request. An open-ended tapered
+  // cylinder rather than a flat panel so it wraps all the way around the
+  // torso, not just the front; per-vertex jitter plus an uneven bottom
+  // hem (baked in once below) keep its rest shape from reading as a
+  // perfect cone. The real per-frame sway/flutter (its own "physics",
+  // cheap sine displacement rather than a real cloth sim) lives in
+  // tickBloom, driven off blanketBase (the undisturbed rest positions
+  // stored here so the sway can be recomputed fresh every frame instead
+  // of compounding drift onto itself).
+  const blanketGeo = new THREE.CylinderGeometry(0.5, 1.1, 3.4, 14, 6, true);
+  const bPos = blanketGeo.attributes.position;
+  for (let i = 0; i < bPos.count; i++) {
+    const x = bPos.getX(i), y = bPos.getY(i), z = bPos.getZ(i);
+    const r = Math.hypot(x, z), ang = Math.atan2(z, x);
+    const jitter = 1 + (Math.sin(ang * 5) * 0.06 + Math.sin(ang * 11 + 1) * 0.04);
+    let ny = y;
+    if (y < -1.5) ny -= Math.abs(Math.sin(ang * 7)) * 0.18; // ragged hem, bottom ring only
+    bPos.setXYZ(i, Math.cos(ang) * r * jitter, ny, Math.sin(ang) * r * jitter);
+  }
+  bPos.needsUpdate = true;
+  blanketGeo.computeVertexNormals();
+  const blanketBase = new Float32Array(bPos.array.length);
+  blanketBase.set(bPos.array);
+  const blanket = new THREE.Mesh(blanketGeo, blanketMat);
+  blanket.position.y = 2.6; // shoulders down past the torso, well clear of the neck (4.3) and face (4.75)
+  g.add(blanket);
+
+  // Dangling jointed puppet arms -- no articulated walk (it doesn't walk
+  // at all), just a slow idle sway driven straight off a sine wave in
+  // tickBloom, selling "loosely hung from strings" rather than limbs
+  // doing any real work.
+  const armGroupL = new THREE.Group(); armGroupL.position.set(-0.5, 4.0, 0); g.add(armGroupL);
+  const armGroupR = new THREE.Group(); armGroupR.position.set(0.5, 4.0, 0); g.add(armGroupR);
+  for (const arm of [armGroupL, armGroupR]) {
+    const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 1.3, 4, 6), bloomWoodMat); // thinner, longer -- skinnier limbs on a taller frame
+    upper.position.y = -0.7;
+    arm.add(upper);
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.13, 7, 6), bloomJointMat);
+    hand.position.y = -1.4;
+    arm.add(hand);
+  }
+
+  // Wheels instead of feet/legs -- the Rolling Giant's own signature.
+  // Each wheel's geometry is pre-rotated (axle along local X) so the
+  // per-frame spin in tickBloom is a plain rotation.x, not a composed
+  // Euler mess on top of a static reorientation.
+  const wheelPivots = [];
+  for (const side of [-1, 1]) {
+    const wheelGeo = new THREE.CylinderGeometry(0.75, 0.75, 0.35, 16);
+    wheelGeo.rotateZ(Math.PI / 2);
+    const wheel = new THREE.Mesh(wheelGeo, bloomWheelMat);
+    wheel.position.set(side * 0.45, 0.75, 0);
+    g.add(wheel);
+    for (let i = 0; i < 6; i++) {
+      const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.3, 0.06), bloomJointMat);
+      spoke.rotation.x = (i / 6) * Math.PI;
+      wheel.add(spoke);
+    }
+    wheelPivots.push(wheel);
+  }
+
+  g.userData.armGroupL = armGroupL;
+  g.userData.armGroupR = armGroupR;
+  g.userData.wheelPivots = wheelPivots;
+  g.userData.faceGroup = faceGroup;
+  g.userData.blanket = blanket;
+  g.userData.blanketBase = blanketBase;
+  g.userData.grabPoint = { y: 2.8 };
+  return g;
+}
+
+// Redesigned on request: a true lurker now, not a roamer -- it doesn't
+// move at all (not even wheel-spin) until you're within BLOOM_WAKE_RANGE,
+// then closes at 2x your own run speed ("it should be 2x your speed"),
+// but turns to face you slowly (BLOOM_TURN_RATE) rather than snapping --
+// and critically, it actually DRIVES in whatever direction it's currently
+// facing, not a direct bee-line at you, so a bad turn costs it real
+// distance instead of just looking wrong ("horrible at turning").
+const BLOOM_WAKE_RANGE = 14;
+const BLOOM_CHASE_SPEED = RUN_SPEED * 2;
+const BLOOM_TURN_RATE = 0.8;
+const BLOOM_CATCH_R = 1.6; // bigger than the other three -- it's a giant
+
+const bloom = {
+  group: createBloomModel(), pos: new THREE.Vector3(bloomSpawnPos.x, 0, bloomSpawnPos.z),
+  facing: 0, alert: false, alertTimer: 0, wheelSpin: 0, swingSeed: rand() * 100,
+};
+scene.add(bloom.group);
+
+function tickBloom(dt, playerPos) {
+  const dx = playerPos.x - bloom.pos.x, dz = playerPos.z - bloom.pos.z;
+  const dist = Math.hypot(dx, dz);
+  if (dist < BLOOM_WAKE_RANGE) { bloom.alert = true; bloom.alertTimer = 6; }
+  else if (bloom.alertTimer > 0) bloom.alertTimer -= dt;
+  else bloom.alert = false;
+
+  let moving = false;
+  if (bloom.alert && dist > 0.3) {
+    const targetFacing = Math.atan2(dx, dz);
+    if (bloom.facing === undefined) bloom.facing = targetFacing;
+    bloom.facing = lerpAngle(bloom.facing, targetFacing, Math.min(1, dt * BLOOM_TURN_RATE));
+    const nx = Math.sin(bloom.facing), nz = Math.cos(bloom.facing);
+    const stepX = bloom.pos.x + nx * BLOOM_CHASE_SPEED * dt;
+    if (!collidesAt(stepX, bloom.pos.z, false)) bloom.pos.x = stepX;
+    const stepZ = bloom.pos.z + nz * BLOOM_CHASE_SPEED * dt;
+    if (!collidesAt(bloom.pos.x, stepZ, false)) bloom.pos.z = stepZ;
+    bloom.wheelSpin += BLOOM_CHASE_SPEED * dt * 1.4;
+    moving = true;
+  }
+  bloom.group.position.set(bloom.pos.x, 0, bloom.pos.z);
+  bloom.group.rotation.y = bloom.facing || 0;
+  const ud = bloom.group.userData;
+  for (const wheel of ud.wheelPivots) wheel.rotation.x = bloom.wheelSpin;
+  const now = performance.now();
+  const sway = Math.sin(now * 0.0015 + bloom.swingSeed) * 0.12;
+  ud.armGroupL.rotation.z = sway;
+  ud.armGroupR.rotation.z = -sway;
+  // The blanket's own cheap "physics" -- a per-vertex sine sway recomputed
+  // fresh every frame from its stored rest positions (blanketBase), so it
+  // never compounds drift onto itself. Bigger and faster while it's
+  // actually rolling after you than while it's just idling.
+  {
+    const t = now * 0.0012;
+    const base = ud.blanketBase;
+    const posAttr = ud.blanket.geometry.attributes.position;
+    const amp = (moving ? 1 : 0.35) * (bloom.alert ? 1.3 : 1);
+    for (let i = 0; i < posAttr.count; i++) {
+      const bx = base[i * 3], by = base[i * 3 + 1], bz = base[i * 3 + 2];
+      const hFactor = 1 - (by + 1.7) / 3.4; // ~0 near the top hem, ~1 near the bottom -- more sway lower down, like real hanging cloth
+      const swayX = Math.sin(t * 2 + by * 1.5 + bx * 0.8) * 0.06 * hFactor * amp;
+      const swayZ = Math.cos(t * 1.7 + by * 1.2 + bz * 0.6) * 0.05 * hFactor * amp;
+      posAttr.setX(i, bx + swayX);
+      posAttr.setZ(i, bz + swayZ);
+    }
+    posAttr.needsUpdate = true;
+  }
+  const dist2 = Math.hypot(playerPos.x - bloom.pos.x, playerPos.z - bloom.pos.z);
+  return { dist: dist2, danger: bloom.alert ? Math.max(0, 1 - dist2 / 20) : 0, catchR: BLOOM_CATCH_R, type: 'bloom', instance: bloom };
+}
+
 /* ---------------- game state ---------------- */
 
 const vignette = document.getElementById('dread-vignette');
@@ -1477,25 +2208,28 @@ function resetAfterCatch(awayFromPos) {
   // The Mannequin is deliberately NOT sent back to its spawn point here,
   // and its own .discovered flag was already never reset either -- once
   // it's active, dying doesn't give you a clean break from it. It just
-  // keeps existing wherever it already was, and immediately re-paths
-  // toward your new position (mannequinRetarget forced to 0, instead of
-  // waiting up to its own 0.6s refresh) so it's visibly still coming.
-  mannequin.waypoints = null;
-  mannequinRetarget = 0;
+  // keeps existing wherever it already was, and its direct-seek movement
+  // (see tickMannequin) re-aims at your new position on the very next
+  // frame with no path-refresh delay to wait out, so it's visibly still
+  // coming.
   // The Mimitor isn't tied to the catcher's own position the way the
   // other two are reset relative to it -- it just goes back to its own
   // spot in the Pool Rooms, ungrown, same as the Bacteria's clean reset.
   mimitor.pos.set(mimitorSpawnPos.x, 0, mimitorSpawnPos.z);
   mimitor.transformed = false;
   mimitor.growAmp = 0;
+  // Bloom resets clean too -- back to its own spot in the Mall, dormant
+  // again, same as the Bacteria and the Mimitor.
+  bloom.pos.set(bloomSpawnPos.x, 0, bloomSpawnPos.z);
+  bloom.alert = false; bloom.alertTimer = 0;
 }
 
-const monstersByType = { bacteria, mannequin, mimitor };
+const monstersByType = { bacteria, mannequin, mimitor, bloom };
 // Longer than a generic shake needs, since each one is now a real few-
 // beat sequence (see updateScareCamera) -- Mannequin's "grab, lift, snap,
 // drop" and Bacteria's "entangle, yank, release" both need the room to
 // actually read as those beats rather than one blurred jolt.
-const SCARE_DURATION = { bacteria: 1.0, mannequin: 1.3, mimitor: 1.1 };
+const SCARE_DURATION = { bacteria: 1.0, mannequin: 1.3, mimitor: 1.1, bloom: 1.2 };
 let scareActive = false;
 let scareType = null;
 let scareInstance = null;
@@ -1516,11 +2250,21 @@ function triggerJumpscare(type, instance) {
   scareCamBase.copy(camera.position);
   scareCamDir.set(0, 0, -1).applyQuaternion(camera.quaternion);
   const facePos = scareCamBase.clone().addScaledVector(scareCamDir, 0.85);
-  m.group.position.copy(facePos);
+  const ud = m.group.userData;
+  // Every rig's own origin is its feet (y=0), not its face -- placing
+  // the group's raw position at facePos (which sits at the camera's own
+  // eye height) put each monster's FEET at your eyes and its head looming
+  // somewhere above your own view, which is what actually read as "it's
+  // on top of you" rather than "it's in your face." Each model already
+  // carries its own grabPoint (the height its kill animation targets --
+  // torso, neck, chest, whatever makes sense for that rig); dropping the
+  // placement down by that same height instead lines the right part of
+  // the model up with your eye line.
+  const grabY = (ud.grabPoint && typeof ud.grabPoint.y === 'number') ? ud.grabPoint.y : 1.5;
+  m.group.position.copy(facePos).add(new THREE.Vector3(0, -grabY, 0));
   m.group.lookAt(scareCamBase);
   // Neutral pose going in -- the per-type animation below poses limbs
   // itself from here, so a leftover walk-cycle angle doesn't bleed in.
-  const ud = m.group.userData;
   for (const list of [ud.armPivots, ud.elbowPivots, ud.legPivots, ud.kneePivots]) {
     if (!list) continue;
     for (const piv of list) { piv.rotation.set(0, 0, 0); }
@@ -1615,6 +2359,22 @@ function updateScareCamera(p) {
       camera.position.x += shake(amt); camera.position.y += shake(amt); camera.position.z += shake(amt * 0.5);
     } else {
       camera.position.copy(closePos);
+    }
+  } else if (scareType === 'bloom') {
+    // No grab (it's a rolling giant, not something with reach) -- it
+    // just rolls straight over you. A hard downward lurch as it crushes
+    // past, one violent shake under the weight, then holds, crushed low.
+    const crushPos = scareCamBase.clone().addScaledVector(UP, -0.4);
+    if (p < 0.3) {
+      const t = ease(p / 0.3);
+      camera.position.copy(scareCamBase).lerp(crushPos, t);
+    } else if (p < 0.65) {
+      const t = (p - 0.3) / 0.35;
+      const amt = 0.45 * Math.sin(Math.min(t, 1) * Math.PI);
+      camera.position.copy(crushPos);
+      camera.position.x += shake(amt); camera.position.y += shake(amt * 0.6); camera.position.z += shake(amt);
+    } else {
+      camera.position.copy(crushPos);
     }
   } else {
     camera.position.copy(scareCamBase);
@@ -1761,6 +2521,27 @@ function playScare(type) {
     g.gain.exponentialRampToValueAtTime(0.0001, now + 0.5);
     osc.connect(g).connect(master);
     osc.start(now); osc.stop(now + 0.5);
+  } else if (type === 'bloom') {
+    // A low, grinding wheel-roll swell under a heavy wooden-creak thud --
+    // a giant rolling over you, not a shriek.
+    const osc = ctx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(70, now);
+    osc.frequency.exponentialRampToValueAtTime(35, now + 0.6);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(0.9, now + 0.1);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.7);
+    osc.connect(g).connect(master);
+    osc.start(now); osc.stop(now + 0.7);
+    const buf = ctx.createBuffer(1, ctx.sampleRate * 0.5, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+    const noise = ctx.createBufferSource();
+    noise.buffer = buf;
+    const ng = ctx.createGain(); ng.gain.value = 0.5;
+    noise.connect(ng).connect(master);
+    noise.start(now);
   }
 }
 
@@ -1862,9 +2643,12 @@ function showCustomizeTab(name) {
   tabButtons.forEach((btn) => btn.classList.toggle('active', btn.dataset.tab === name));
   customizePages.forEach((page) => { page.hidden = page.dataset.page !== name; });
 }
+let photosTabActive = false;
 tabButtons.forEach((btn) => btn.addEventListener('click', () => {
   showCustomizeTab(btn.dataset.tab);
+  photosTabActive = btn.dataset.tab === 'photos';
   if (btn.dataset.tab === 'bestiary') showCatalogEntry(catalogIndex);
+  if (photosTabActive) renderPhotosGrid();
 }));
 
 // Photographed artifacts + died-to monsters, both gate the same catalog --
@@ -1883,10 +2667,60 @@ function markPhotographed(id) {
   photographed.add(id);
   try { localStorage.setItem(PHOTOGRAPHED_KEY, JSON.stringify([...photographed])); } catch (err) { /* ignore */ }
 }
+
+// The actual captured images themselves (a real toDataURL() snapshot of
+// the frame you took it in, one per artifact, the latest capture winning
+// if you photograph the same spot twice) -- separate from `photographed`
+// above, which is just the permanent unlock flag the Catalog tab reads.
+// On request ("a computer where you can see all your photos and it shows
+// if you found the spot").
+const PHOTOS_KEY = 'subliminal_photos';
+let photoImages = {};
+try {
+  const ph = localStorage.getItem(PHOTOS_KEY); if (ph) photoImages = JSON.parse(ph);
+} catch (err) { /* ignore */ }
+function savePhotoImage(id, dataUrl) {
+  photoImages[id] = dataUrl;
+  try { localStorage.setItem(PHOTOS_KEY, JSON.stringify(photoImages)); } catch (err) { /* storage quota or unavailable -- the permanent unlock flag above already persisted regardless, this just means the thumbnail itself won't stick around */ }
+}
 function markDied(type) {
   if (died.has(type)) return;
   died.add(type);
   try { localStorage.setItem(DIED_KEY, JSON.stringify([...died])); } catch (err) { /* ignore */ }
+}
+
+// The Photos tab -- the actual captured snapshot (photoImages[id], saved
+// by takePhoto() above) for each spot you've found, or a locked "not
+// found yet" tile for one you haven't, on request ("a computer where you
+// can see all your photos and it shows if you found the spot").
+function renderPhotosGrid() {
+  const grid = document.getElementById('photos-grid');
+  grid.innerHTML = '';
+  for (const art of ARTIFACTS) {
+    const tile = document.createElement('div');
+    tile.className = 'photo-tile';
+    if (photographed.has(art.id) && photoImages[art.id]) {
+      const img = document.createElement('img');
+      img.src = photoImages[art.id];
+      img.alt = art.name;
+      tile.appendChild(img);
+      const label = document.createElement('div');
+      label.className = 'photo-label';
+      label.textContent = art.name;
+      tile.appendChild(label);
+    } else {
+      tile.classList.add('locked');
+      const q = document.createElement('div');
+      q.className = 'photo-q';
+      q.textContent = '?';
+      tile.appendChild(q);
+      const label = document.createElement('div');
+      label.className = 'photo-label';
+      label.textContent = 'Not found yet';
+      tile.appendChild(label);
+    }
+    grid.appendChild(tile);
+  }
 }
 
 // Artifact previews are built by makeArtifactPreview(id) (below) rather
@@ -1903,6 +2737,7 @@ const catalogFlat = [
   { kind: 'monster', id: 'bacteria', name: 'The Bacteria', make: createBacteriaModel },
   { kind: 'monster', id: 'mannequin', name: 'The Mannequin', make: createMannequinModel },
   { kind: 'monster', id: 'mimitor', name: 'The Mimitor', make: () => createMimitorModel(true) },
+  { kind: 'monster', id: 'bloom', name: 'Bloom', make: createBloomModel },
 ];
 const catalogModelCache = new Array(catalogFlat.length).fill(null);
 let catalogIndex = 0;
@@ -2084,6 +2919,7 @@ document.addEventListener('keydown', (e) => {
   if (e.code === 'Escape' && fallbackLook) { fallbackLook = false; blocker.style.display = 'flex'; }
   if (customizeOpen) return;
   if (e.code === 'KeyE' && camera.position.distanceTo(keyboardCenter) < 3.2) openCustomizePanel();
+  if (e.code === 'KeyE' && camera.position.distanceTo(leverCenter) < 2.5) toggleSafeDoor();
   if (e.code === 'KeyC') crouching = !crouching;
   if (e.code === 'KeyR') setCameraEquipped(!cameraEquipped);
 });
@@ -2119,12 +2955,21 @@ function takePhoto() {
   const flash = document.getElementById('camera-flash');
   flash.classList.remove('show'); void flash.offsetWidth; flash.classList.add('show');
   const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+  const hits = [];
   for (const art of ARTIFACTS) {
     const dir = new THREE.Vector3(art.pos.x - camera.position.x, 0, art.pos.z - camera.position.z);
     const dist = dir.length();
     if (dist > PHOTO_RANGE) continue;
     dir.normalize();
-    if (forward.dot(dir) > PHOTO_COS) markPhotographed(art.id);
+    if (forward.dot(dir) > PHOTO_COS) { markPhotographed(art.id); hits.push(art.id); }
+  }
+  if (hits.length) {
+    try {
+      renderer.render(scene, camera); // the frame on screen right now, read back fresh rather than trusting whatever's still in the backing buffer
+      const dataUrl = renderer.domElement.toDataURL('image/jpeg', 0.55);
+      for (const id of hits) savePhotoImage(id, dataUrl);
+      if (photosTabActive) renderPhotosGrid();
+    } catch (err) { /* canvas readback can fail (e.g. a tainted context) -- the permanent unlock above already happened regardless */ }
   }
 }
 
@@ -2273,10 +3118,12 @@ function animate() {
     const dx = cl.light.position.x - camera.position.x, dz = cl.light.position.z - camera.position.z;
     const near = dx * dx + dz * dz < CULL_R2;
     cl.light.visible = near;
+    if (cl.panel) cl.panel.visible = near;
     if (!near) continue;
     let t = cl.base * (0.85 + 0.15 * Math.sin(now * 0.004 + cl.seed));
     if (cl.broken && Math.sin(now * 0.0017 + cl.seed * 3) > 0.985) t *= 0.15;
     cl.light.intensity = t;
+    if (cl.panel) cl.panel.material.emissiveIntensity = (t / cl.base) * (cl.broken ? 0.9 : 1.3);
   }
   if (redBulbMesh) redBulbMesh.material.emissiveIntensity = 1.2 + Math.sin(now * 0.006) * 0.4;
 
@@ -2288,14 +3135,23 @@ function animate() {
     movePlayer(dt);
 
     const nearKeyboard = camera.position.distanceTo(keyboardCenter) < 3.2;
+    const nearLever = camera.position.distanceTo(leverCenter) < 2.5;
     if (nearKeyboard) { interactHint.textContent = 'Press E to use the computer'; interactHint.classList.add('show'); }
+    else if (nearLever) {
+      interactHint.textContent = safeDoor.state === 'closed' ? 'Press E to pull the lever'
+        : safeDoor.state === 'open' ? 'Press E to pull the lever'
+        : 'The door is moving...';
+      interactHint.classList.add('show');
+    }
     else interactHint.classList.remove('show');
+    tickSafeDoor(dt);
 
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
     const results = [
       tickBacteria(dt, camera.position),
       tickMannequin(dt, camera.position, forward),
       tickMimitor(dt, camera.position),
+      tickBloom(dt, camera.position),
     ];
     updateBacteriaHum(results[0].dist);
     const danger = Math.max(...results.map((r) => r.danger));

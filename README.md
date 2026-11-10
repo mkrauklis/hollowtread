@@ -24,17 +24,24 @@ npx serve .
 
 ## The place
 
-One connected space — no level select, no separate maps, no loading
-screens. A real maze (a randomized spanning tree of rooms, not a grid of
-open rooms with a few extra walls knocked out — narrow doorways, mostly
-dead ends, the rare loop) of mustard-yellow rooms (damp carpet floor,
-ceiling lights that flicker but are bright enough to actually see by,
-wallpaper in a monochromatic, dingy yellow) connects through doorways
-and, in some walls, **real crawlspaces** — not a narrow slot cut into a
-normal doorway, but a whole dark, low section of wall (blends right into
-the same wallpaper until you're close) you have to crouch (**C**) to fit
-through. None of the things loose in here are too small to follow — they
-just can't fit, full stop.
+You don't start in the Backrooms at all — you start in **the Safezone**,
+a small industrial facility (metal floor, exposed pipes) sealed off by
+its own giant door, opened only by the lever standing in the middle of
+the room. Pull it and the door takes a real 3 seconds to slide up out of
+the way (and the same 3 seconds to slide back down if you throw it
+again) before the Backrooms proper are actually reachable.
+
+One connected space beyond that door — no level select, no separate
+maps, no loading screens. A real maze (a randomized spanning tree of
+rooms, not a grid of open rooms with a few extra walls knocked out —
+narrow doorways, mostly dead ends, the rare loop) of mustard-yellow rooms
+(damp carpet floor, ceiling lights that flicker but are bright enough to
+actually see by, wallpaper in a monochromatic, dingy yellow) connects
+through doorways and, in some walls, **real crawlspaces** — not a narrow
+slot cut into a normal doorway, but a whole dark, low section of wall
+(blends right into the same wallpaper until you're close) you have to
+crouch (**C**) to fit through. None of the things loose in here are too
+small to follow — they just can't fit, full stop.
 
 One room holds a grid of square floor pits. Walk onto one without
 noticing and you fall — all the way out of the level, back to a random
@@ -46,6 +53,12 @@ floor below, where every surface (floor, wall, ceiling) is white tile
 instead of mustard wallpaper. Three rooms of different sizes, several
 sunken pools (one of them a lot more than a puddle), and one more thing
 that lives down there waiting by the water.
+
+Somewhere else entirely, one of the maze's crawlspaces is a genuinely
+long one — much longer than any other crawl route in the place — and it
+doesn't lead back into the maze at all. It comes out in **the Mall**: one
+big tiled atrium, storefronts lining both long walls, a working fountain
+in the middle, and two more things down there that notice you.
 
 ## The camera
 
@@ -83,13 +96,16 @@ too small to belong next to it.
 
 An old desk, an old CRT monitor, tucked into one of the rooms like
 someone's abandoned office furniture. Stand at the keyboard and press
-**E** for a panel with two tabs: **Appearance** (a hue slider for your
+**E** for a panel with three tabs: **Appearance** (a hue slider for your
 own first-person arms, a name field under the title in the corner — both
-saved in your browser) and **Catalog** — a real, live, slowly turning 3D
+saved in your browser), **Catalog** — a real, live, slowly turning 3D
 render of each artifact and each entity, Prev/Next to page through all
-eight. An entry you haven't photographed (artifacts) or been caught by
-(entities) yet shows as a dark silhouette with a glowing "?" and no name;
-it unlocks permanently the moment you actually get it.
+nine, and **Photos** — the actual snapshot from the moment you took each
+one, in a grid, not a re-render. An entry you haven't photographed
+(artifacts) or been caught by (entities) yet shows as a dark silhouette
+with a glowing "?" and no name in the Catalog, or a locked "not found
+yet" tile in Photos; it unlocks permanently the moment you actually get
+it.
 
 ## Controls
 
@@ -103,11 +119,11 @@ instead).
 
 ## Objective
 
-There isn't one beyond the five photographs. Explore, find the
-crawlspace routes and the staircase down, avoid the three things that
-notice you, document what's actually here. Getting caught (or falling
-into a pit) just sends you back to a spot far from whatever got you;
-there's nothing to lose and nothing to win.
+There isn't one beyond the five photographs. Pull the lever, explore,
+find the crawlspace routes and the staircase down, avoid the four things
+that notice you, document what's actually here. Getting caught (or
+falling into a pit) just sends you back to a spot far from whatever got
+you; there's nothing to lose and nothing to win.
 
 ## What's out there
 
@@ -115,7 +131,7 @@ The Bacteria and the Mannequin both walk on real jointed limbs
 (shoulders, elbows, hips, knees) with their own walk-cycle — a real
 sprint when they're actually after you, not just a faster version of the
 same walk — and wander room to room off the exact dead-center line, not
-visibly gridded. All three have a real, smooth multi-beat kill animation
+visibly gridded. All four have a real, smooth multi-beat kill animation
 instead of a generic camera shake when they actually catch you, and you
 can't look around at all while it plays.
 
@@ -129,17 +145,17 @@ you and it leaps onto you, slams its head into yours once, and the screen
 goes black. It cannot fit through a crawlspace; finding one is a
 guaranteed way to lose it.
 
-**The Mannequin** — pale, featureless, no face at all. It does nothing
-until the first time you actually look at it — that's what wakes it up.
-From then on, it holds perfectly still for as long as you're looking
-directly at it, and creeps toward you, fast, the instant you look away.
-Looking back freezes it again, wherever it's gotten to. Catch you and it
-grabs you with both arms, lifts you clean off the ground, snaps your
-neck, and drops you. Dying to it doesn't reset it the way everything else
-does — it stays wherever it was and comes straight for wherever you
-respawn, discovered for good. It can't follow you into a crawlspace
-either, but by the time you've noticed it's already moving, you may not
-have the room to reach one.
+**The Mannequin** — down in the Mall now, pale, featureless, no face at
+all. It does nothing until the first time you actually look at it —
+that's what wakes it up. From then on, it holds perfectly still for as
+long as you're looking directly at it, and creeps toward you, fast, the
+instant you look away. Looking back freezes it again, wherever it's
+gotten to. Catch you and it grabs you with both arms, lifts you clean off
+the ground, snaps your neck, and drops you. Dying to it doesn't reset it
+the way everything else does — it stays wherever it was and comes
+straight for wherever you respawn, discovered for good. It can't follow
+you into a crawlspace either, but by the time you've noticed it's already
+moving, you may not have the room to reach one.
 
 **The Mimitor** — down in the Pool Rooms. From a distance it's exactly
 what it looks like: a small rubber duck, drifting slowly toward you from
@@ -149,6 +165,16 @@ black arms, legs, and a long distorted-faced neck grow straight out of
 it — and the instant they do, it's no longer slow, closing the rest of
 the gap at 1.1x your own speed. Catch you and the neck lunges the whole
 way into frame before everything judders and goes black.
+
+**Bloom** — the other thing in the Mall. A gaunt, grey, puppet-like
+giant on wheels instead of feet or legs, a ragged black cloth hanging
+loose over its body (never its head), and a radiant sun standing in for
+a face entirely — glowing red eyes, a jagged row of teeth, nothing about
+it reads as friendly up close. It doesn't move at all until you're
+actually close, which is exactly when it's too late to just walk away:
+once awake it closes distance at 2x your own running speed, but it
+corrects course slowly, so a sharp turn around a corner costs it real
+ground. Catch you and it rolls straight over you.
 
 ## License
 

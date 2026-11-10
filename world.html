@@ -36,7 +36,7 @@
     </div>
     <div class="hint">WASD move · mouse look · Space jump · Shift sprint · C crouch · R equip camera · click to photograph · E to interact</div>
     <div id="relock-hint">Mouse not locked — click to try again</div>
-    <div id="interact-hint">Press E to switch map</div>
+    <div id="interact-hint">Press E to interact</div>
   </div>
   <div id="dread-vignette"></div>
   <div id="jumpscare-flash"></div>
@@ -63,6 +63,7 @@
       <div class="customize-tabs">
         <button class="customize-tab active" id="tab-appearance" data-tab="appearance">Appearance</button>
         <button class="customize-tab" id="tab-bestiary" data-tab="bestiary">Catalog</button>
+        <button class="customize-tab" id="tab-photos" data-tab="photos">Photos</button>
       </div>
 
       <div class="customize-page" data-page="appearance">
@@ -84,6 +85,11 @@
         </div>
       </div>
 
+      <div class="customize-page" data-page="photos" hidden>
+        <h2>PHOTOS</h2>
+        <div id="photos-grid"></div>
+      </div>
+
       <button id="customize-done">Done</button>
     </div>
   </div>
@@ -92,13 +98,15 @@
     <div class="msg">
       <h2>The Sub-liminal</h2>
       <p>
-        You're somewhere between where you were and where you're going —
-        the Backrooms: dim lights, damp yellow carpet, mustard wallpaper,
-        and rooms that don't stop. Some walls have crawlspaces low enough
-        you'll need to crouch, and at least one staircase leads down into
-        a tiled, flooded sub-level. There's nothing to win — just a
-        camera, and five things worth photographing if you can find them.
-        Three things out there notice you back.
+        You start behind a locked facility door — pull the lever in the
+        middle of the room to open it onto the Backrooms proper: dim
+        lights, damp yellow carpet, mustard wallpaper, and rooms that
+        don't stop. Some walls have crawlspaces low enough you'll need to
+        crouch (one of them leads somewhere far away), a staircase leads
+        down into a tiled, flooded sub-level, and somewhere out there is a
+        mall. There's nothing to win — just a camera, and five things
+        worth photographing if you can find them. Four things out there
+        notice you back.
       </p>
       <p id="start-hint">Click to drop in. Esc to pause. (If your browser won't lock the mouse, click-and-drag to look instead.)</p>
     </div>
@@ -114,6 +122,6 @@
 <!-- cache-bust on every deploy: bump this version string any time
      js/world.js changes, so a returning player's browser can't keep
      running a stale cached copy against the current markup/CSS. -->
-<script src="js/world.js?v=14" defer></script>
+<script src="js/world.js?v=16" defer></script>
 </body>
 </html>
