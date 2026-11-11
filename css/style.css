@@ -39,7 +39,21 @@ html, body {
   background: linear-gradient(180deg, #7fb3e0 0%, #9fcf7e 55%, #6ba852 100%);
   background-size: cover;
   background-position: center;
+  filter: grayscale(0.55) contrast(1.05);
 }
+/* Anaglyph (red/cyan 3D-glasses) look, on request -- a red-tinted copy
+   offset left and a cyan-tinted copy offset right, screen-blended over
+   the (desaturated, so the color fringing actually reads) background.
+   Same two-offset-copies technique as the title's own text fringe below. */
+.bg::before, .bg::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+.bg::before { background: rgba(255, 20, 20, 0.55); transform: translateX(-3px); }
+.bg::after { background: rgba(20, 220, 255, 0.55); transform: translateX(3px); }
 
 .scrim {
   position: absolute;
@@ -64,6 +78,9 @@ html, body {
   letter-spacing: 0.08em;
   font-weight: 800;
   text-shadow: 0 2px 18px rgba(0, 0, 0, 0.55), 0 0 2px rgba(0, 0, 0, 0.8);
+  /* Same anaglyph fringe as the background, on the title text itself --
+     a red ghost offset left, a cyan ghost offset right. */
+  filter: drop-shadow(3px 0 0 rgba(255, 30, 30, 0.75)) drop-shadow(-3px 0 0 rgba(30, 220, 255, 0.75));
 }
 
 .menu {
@@ -74,6 +91,7 @@ html, body {
 }
 
 .menu-btn {
+  display: block;
   font: inherit;
   font-size: 1.05rem;
   font-weight: 600;
@@ -83,9 +101,11 @@ html, body {
   border: 1px solid rgba(244, 241, 232, 0.35);
   background: rgba(12, 20, 16, 0.55);
   color: var(--ink);
+  text-decoration: none;
   cursor: pointer;
   backdrop-filter: blur(2px);
   transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+  filter: drop-shadow(1.5px 0 0 rgba(255, 30, 30, 0.5)) drop-shadow(-1.5px 0 0 rgba(30, 220, 255, 0.5));
 }
 .menu-btn:hover {
   background: rgba(143, 174, 106, 0.35);
@@ -110,6 +130,7 @@ html, body {
   margin: 0;
   font-size: 1.8rem;
   letter-spacing: 0.05em;
+  filter: drop-shadow(2px 0 0 rgba(255, 30, 30, 0.6)) drop-shadow(-2px 0 0 rgba(30, 220, 255, 0.6));
 }
 .panel p {
   max-width: 32rem;

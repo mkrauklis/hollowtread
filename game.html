@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The In-Between</title>
+<meta name="description" content="The In-Between — a first-person exploration game.">
+<link rel="stylesheet" href="css/game.css?v=1">
+<!-- Classic script, not type="module" -- ES modules are blocked over
+     file://, which would break double-clicking this file. Pinned to
+     0.149.0: the last version before three.js deprecated this classic
+     global build (window.THREE). -->
+<script src="https://unpkg.com/three@0.149.0/build/three.min.js"></script>
+</head>
+<body>
+<div id="game-root">
+  <div id="broadcast-overlay">
+    <div class="broadcast-static"></div>
+    <div class="broadcast-box">
+      <div class="broadcast-bar">EMERGENCY BROADCAST</div>
+      <p class="broadcast-text">Eco-Labs have uncovered a dreamworld that seems to be safe for now. We advise that everybody stays away from the lab.</p>
+      <p class="broadcast-hint">Click or press any key to continue</p>
+    </div>
+  </div>
+
+  <div id="hud">
+    <div id="interact-hint"></div>
+  </div>
+  <div id="title-card" hidden></div>
+  <div id="fade-overlay"></div>
+
+  <div id="blocker">
+    <div class="msg">
+      <h2>The In-Between</h2>
+      <p>WASD to move, mouse to look, Shift to run, Space to jump, E to interact.</p>
+      <p id="start-hint">Click to drop in. Esc to pause. (If your browser won't lock the mouse, click-and-drag to look instead.)</p>
+    </div>
+  </div>
+</div>
+<script src="js/game.js?v=6" defer></script>
+</body>
+</html>

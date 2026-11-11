@@ -6,7 +6,7 @@
 <title>The In-Between</title>
 <meta name="description" content="The In-Between — a new game, starting from its title screen.">
 <link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=">
-<link rel="stylesheet" href="css/style.css?v=3">
+<link rel="stylesheet" href="css/style.css?v=5">
 </head>
 <body>
 <div id="title-screen">
@@ -21,16 +21,10 @@
     <h1 class="game-title">THE IN-BETWEEN</h1>
 
     <nav class="menu" id="menu-main">
-      <button class="menu-btn" data-panel="start" id="btn-start">Start Game</button>
+      <a class="menu-btn" href="game.html" id="btn-start">Start Game</a>
       <button class="menu-btn" data-panel="levels">Levels</button>
       <button class="menu-btn" data-panel="options">Options</button>
     </nav>
-  </div>
-
-  <div class="panel" data-panel-id="start" hidden>
-    <h2>Start Game</h2>
-    <p>Nothing to play yet — the first level is still being built.</p>
-    <button class="back-btn">Back</button>
   </div>
 
   <div class="panel" data-panel-id="levels" hidden>
