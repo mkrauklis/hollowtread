@@ -25,18 +25,22 @@ npx serve .
 ## The place
 
 You don't start in the Backrooms at all — you start in **the Safezone**,
-a small industrial facility (metal floor, exposed pipes) sealed off by
-its own giant door, opened only by the lever standing in the middle of
-the room. Pull it and the door takes a real 3 seconds to slide up out of
-the way (and the same 3 seconds to slide back down if you throw it
-again) before the Backrooms proper are actually reachable.
+a small industrial facility (metal floor, exposed pipes, cage shelf
+racks and a leaning ladder against the back wall, dark tanks slung
+overhead at odd angles around the door) sealed off by its own riveted
+steel vault door, opened only by the lever standing in the middle of
+the room. A single floor spotlight by the door is the only real light in
+the place otherwise. Pull the lever and the door takes a real 3 seconds
+to slide up out of the way (and the same 3 seconds to slide back down if
+you throw it again) before the Backrooms proper are actually reachable.
 
 One connected space beyond that door — no level select, no separate
 maps, no loading screens. A real maze (a randomized spanning tree of
 rooms, not a grid of open rooms with a few extra walls knocked out —
 narrow doorways, mostly dead ends, the rare loop) of mustard-yellow rooms
 (damp carpet floor, ceiling lights that flicker but are bright enough to
-actually see by, wallpaper in a monochromatic, dingy yellow) connects
+actually see by, wallpaper in a repeating, nested-arch, dingy yellow-green
+pattern, the odd square support pillar standing alone mid-room) connects
 through doorways and, in some walls, **real crawlspaces** — not a narrow
 slot cut into a normal doorway, but a whole dark, low section of wall
 (blends right into the same wallpaper until you're close) you have to

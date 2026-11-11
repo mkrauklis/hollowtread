@@ -183,16 +183,35 @@ function makeWallpaperTexture() {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#9c7f33';
+  ctx.fillStyle = '#a7a23c'; // more yellow-green, less brown-gold -- closer to real Level 0 reference photos
   ctx.fillRect(0, 0, size, size);
   const noise = ctx.getImageData(0, 0, size, size);
   for (let i = 0; i < noise.data.length; i += 4) {
-    const v = (Math.random() - 0.5) * 18;
+    const v = (Math.random() - 0.5) * 16;
     noise.data[i] = Math.max(0, Math.min(255, noise.data[i] + v));
-    noise.data[i + 1] = Math.max(0, Math.min(255, noise.data[i + 1] + v * 0.9));
+    noise.data[i + 1] = Math.max(0, Math.min(255, noise.data[i + 1] + v));
     noise.data[i + 2] = Math.max(0, Math.min(255, noise.data[i + 2] + v * 0.5));
   }
   ctx.putImageData(noise, 0, 0);
+  // The actual Level 0 motif -- rows of nested arches/scallops, not plain
+  // vertical stripes -- on request ("heres some images of what the main
+  // area should look like aka the backrooms"). Staggered brick-style
+  // between rows, like the real reference wallpaper pattern.
+  ctx.strokeStyle = 'rgba(70,68,20,0.5)';
+  ctx.lineWidth = 1.4;
+  const archCell = 24;
+  let row = 0;
+  for (let baseY = archCell; baseY < size + archCell; baseY += archCell) {
+    const offsetX = (row % 2) * (archCell / 2);
+    for (let cx = -archCell + offsetX; cx < size + archCell; cx += archCell) {
+      for (let r = 4; r <= 11; r += 2.5) {
+        ctx.beginPath();
+        ctx.arc(cx, baseY, r, Math.PI, 2 * Math.PI);
+        ctx.stroke();
+      }
+    }
+    row++;
+  }
   // a couple of vertical damp streaks -- the stained, dripped-from-the-
   // ceiling-line look real Level 0 wallpaper photos almost always show,
   // not just a clean repeating pattern.
@@ -204,11 +223,6 @@ function makeWallpaperTexture() {
     grad.addColorStop(1, 'rgba(90,70,25,0)');
     ctx.fillStyle = grad;
     ctx.fillRect(x - w / 2, 0, w, size);
-  }
-  ctx.strokeStyle = 'rgba(70,55,15,0.35)';
-  ctx.lineWidth = 2;
-  for (let x = 0; x < size; x += 16) {
-    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, size); ctx.stroke();
   }
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
@@ -1310,10 +1324,14 @@ const safeWallMat = new THREE.MeshStandardMaterial({ color: 0x53585c, roughness:
 const safeCeilMat = new THREE.MeshStandardMaterial({ color: 0x24262a, roughness: 0.8, emissive: 0x121316, emissiveIntensity: 1 }); // same faint emissive floor as the Mall's own ceiling, same reason
 const pipeMatA = new THREE.MeshStandardMaterial({ color: 0x8a6b2a, roughness: 0.4, metalness: 0.6 });
 const pipeMatB = new THREE.MeshStandardMaterial({ color: 0x3a6b5a, roughness: 0.45, metalness: 0.5 });
-const safeDoorMat = new THREE.MeshStandardMaterial({ color: 0x6b1f1f, roughness: 0.5, metalness: 0.5 });
-const safeDoorStripeMat = new THREE.MeshStandardMaterial({ color: 0xd8b32a, roughness: 0.6 });
+// Gunmetal grey, not red/yellow hazard colors -- on request ("make the
+// safezone kinda look like this", a reference photo of a riveted steel
+// vault door with dark overhead tanks and cage racking).
+const safeDoorMat = new THREE.MeshStandardMaterial({ color: 0x9a9da0, roughness: 0.4, metalness: 0.6 });
+const safeDoorStripeMat = new THREE.MeshStandardMaterial({ color: 0x45484b, roughness: 0.5, metalness: 0.5 });
 const leverBaseMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.5, metalness: 0.6 });
 const leverHandleMat = new THREE.MeshStandardMaterial({ color: 0xb01818, roughness: 0.4, metalness: 0.3 });
+const tankMat = new THREE.MeshStandardMaterial({ color: 0x24262a, roughness: 0.35, metalness: 0.7 });
 
 function safeWallSeg(x0, x1, z0, z1) {
   if (x1 - x0 < 0.02 || z1 - z0 < 0.02) return;
@@ -1385,16 +1403,20 @@ buildPipeRun(safeRoomX0 + 2, safeRoomZ0 + 2, safeRoomX1 - 2, safeRoomZ1 - 2, WAL
 
 // The giant door -- a thick slab filling the east wall's own gap,
 // normally down (blocking it), sliding straight up into a recess over
-// the doorway when the lever's thrown. Warning stripes (alternating
-// boxes) are purely decorative, stuck to its own face.
+// the doorway when the lever's thrown. A riveted-steel vault-door look
+// now (vertical ribs plus a center seam reading as a two-leaf door),
+// not the old red slab with yellow hazard stripes.
 const doorMesh = new THREE.Mesh(new THREE.BoxGeometry(WALL_T + 0.1, SAFE_DOOR_H, SAFE_GAP_HALF * 2 - 0.1), safeDoorMat);
 doorMesh.position.set(safeWestWallX, SAFE_DOOR_H / 2, safeDoorZ);
 scene.add(doorMesh);
-for (let i = 0; i < 4; i++) {
-  const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.3, 0.9), safeDoorStripeMat);
-  stripe.position.set(safeWestWallX + WALL_T / 2 + 0.02, 0, safeDoorZ - SAFE_GAP_HALF + 1 + i * 1.3);
-  doorMesh.add(stripe); // child of the slab -- rides along with it as it slides
+for (let i = 0; i < 5; i++) {
+  const rib = new THREE.Mesh(new THREE.BoxGeometry(0.03, SAFE_DOOR_H - 0.3, 0.1), safeDoorStripeMat);
+  rib.position.set(WALL_T / 2 + 0.02, 0, -SAFE_GAP_HALF + 0.5 + i * (SAFE_GAP_HALF * 2 - 1) / 4);
+  doorMesh.add(rib); // child of the slab -- rides along with it as it slides
 }
+const doorSeam = new THREE.Mesh(new THREE.BoxGeometry(0.045, SAFE_DOOR_H, 0.06), safeDoorStripeMat);
+doorSeam.position.set(WALL_T / 2 + 0.03, 0, 0);
+doorMesh.add(doorSeam);
 const safeDoor = { t: 0, state: 'closed', box: new THREE.Box3() };
 doorColliders.push(safeDoor);
 function updateSafeDoorBox() {
@@ -1450,6 +1472,82 @@ function tickSafeDoor(dt) {
   // rather than a prop that happens to sit near one.
   leverPivot.rotation.x = -0.95 + safeDoor.t * 1.35;
 }
+
+// Dark tanks slung overhead at odd angles around the door, cage-style
+// shelf racks flanking it, and a leaning ladder -- the rest of the same
+// reference photo. The room has no other general lighting beyond the
+// lever's own glow, by design (see leverLight above); a single spotlight
+// pooling on the floor in front of the door is deliberately the only
+// other thing fighting the dark, same as the photo.
+function buildOverheadTank(cx, cy, cz, rotX, rotZ, len) {
+  const g = new THREE.Group();
+  const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, len, 12), tankMat);
+  tank.rotation.z = Math.PI / 2;
+  g.add(tank);
+  for (const t of [-0.32, 0, 0.32]) {
+    const band = new THREE.Mesh(new THREE.TorusGeometry(0.46, 0.04, 6, 14), leverBaseMat);
+    band.position.x = t * len;
+    band.rotation.y = Math.PI / 2;
+    g.add(band);
+  }
+  g.position.set(cx, cy, cz);
+  g.rotation.x = rotX;
+  g.rotation.z = rotZ;
+  scene.add(g);
+}
+buildOverheadTank(safeWestWallX - 1.3, WALL_H - 0.35, safeDoorZ - 1.9, 0.25, 0.3, 2.2);
+buildOverheadTank(safeWestWallX - 1.1, WALL_H - 0.15, safeDoorZ + 0.5, -0.2, -0.15, 2.6);
+buildOverheadTank(safeWestWallX - 2.3, WALL_H - 0.45, safeDoorZ + 2.2, 0.35, 0.5, 2.0);
+buildOverheadTank(safeWestWallX - 1.9, WALL_H - 0.25, safeDoorZ - 0.5, -0.1, 0.6, 2.4);
+
+function buildCageRack(cx, cz, rotY) {
+  const g = new THREE.Group();
+  const w = 1.1, h = 2.1, d = 0.55;
+  for (const sx of [-w / 2, w / 2]) for (const sz of [-d / 2, d / 2]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, h, 6), leverBaseMat);
+    post.position.set(sx, h / 2, sz);
+    g.add(post);
+  }
+  for (let i = 0; i < 4; i++) {
+    const shelf = new THREE.Mesh(new THREE.BoxGeometry(w, 0.03, d), safeWallMat);
+    shelf.position.y = 0.25 + i * 0.5;
+    g.add(shelf);
+  }
+  g.position.set(cx, 0, cz);
+  g.rotation.y = rotY;
+  scene.add(g);
+  addCircleCollider(cx, cz, 0.75);
+}
+buildCageRack(safeWestWallX - 1.1, safeDoorZ - SAFE_GAP_HALF - 1.3, Math.PI / 2);
+buildCageRack(safeWestWallX - 1.1, safeDoorZ + SAFE_GAP_HALF + 1.3, Math.PI / 2);
+
+function buildLadder(cx, cz, rotY, lean) {
+  const g = new THREE.Group();
+  for (const sx of [-0.18, 0.18]) {
+    const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 2.2, 6), leverBaseMat);
+    rail.position.set(sx, 1.1, 0);
+    g.add(rail);
+  }
+  for (let i = 0; i < 7; i++) {
+    const rung = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.4, 6), leverBaseMat);
+    rung.rotation.z = Math.PI / 2;
+    rung.position.set(0, 0.2 + i * 0.3, 0);
+    g.add(rung);
+  }
+  g.position.set(cx, 0, cz);
+  g.rotation.y = rotY;
+  g.rotation.x = lean;
+  scene.add(g);
+}
+buildLadder(safeRoomX0 + 0.35, safeRoomZ0 + 3, 0, -0.16);
+
+const doorSpotTarget = new THREE.Object3D();
+doorSpotTarget.position.set(safeWestWallX - 3, 0, safeDoorZ);
+scene.add(doorSpotTarget);
+const doorSpot = new THREE.SpotLight(0xf5f5f5, 2.1, 11, Math.PI / 6.5, 0.45, 1.4);
+doorSpot.position.set(safeWestWallX - 3, WALL_H - 0.2, safeDoorZ);
+doorSpot.target = doorSpotTarget;
+scene.add(doorSpot);
 
 /* ---------------- dim red room: one of the five photographable things ---------------- */
 /* Picked as a cell with only one open edge (a dead end) so it reads as a
@@ -1614,6 +1712,34 @@ const ARTIFACT_STAIRCASE = { pos: staircasePos, id: 'staircase', name: 'Tilted S
 const ARTIFACTS = [ARTIFACT_CHAIR, ARTIFACT_RED_ROOM, ARTIFACT_HOUSE, ARTIFACT_STAIRCASE, ARTIFACT_POOL];
 const PHOTO_RANGE = 7;
 const PHOTO_COS = 0.72;
+
+/* ---------------- support pillars ---------------- */
+/* Real Level 0 reference photos almost always show a square support
+ * column standing in the middle of the open mustard-wallpapered rooms --
+ * on request ("heres some images of what the main area should look like
+ * aka the backrooms"). A handful of maze cells get one each, floor to
+ * ceiling, wallpapered the same as the walls around it with a plain trim
+ * band top and bottom like the reference photos. */
+const PILLAR_W = 0.9;
+const pillarCenters = [];
+for (let i = 0; i < 6; i++) {
+  const cell = pickPropCell(usedCells);
+  usedCells.push(cell);
+  const c = cellCenter(cell.cx, cell.cz);
+  pillarCenters.push(c);
+  const shaft = new THREE.Mesh(new THREE.BoxGeometry(PILLAR_W, WALL_H, PILLAR_W), wallMat);
+  shaft.position.set(c.x, WALL_H / 2, c.z);
+  scene.add(shaft);
+  for (const y of [0.08, WALL_H - 0.08]) {
+    const band = new THREE.Mesh(new THREE.BoxGeometry(PILLAR_W + 0.12, 0.14, PILLAR_W + 0.12), trimMat);
+    band.position.set(c.x, y, c.z);
+    scene.add(band);
+  }
+  boxColliders.push(new THREE.Box3(
+    new THREE.Vector3(c.x - PILLAR_W / 2 - 0.06, 0, c.z - PILLAR_W / 2 - 0.06),
+    new THREE.Vector3(c.x + PILLAR_W / 2 + 0.06, WALL_H, c.z + PILLAR_W / 2 + 0.06)
+  ));
+}
 
 /* ---------------- the computer (appearance + catalog, same desk as before) ---------------- */
 
