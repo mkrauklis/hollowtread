@@ -8,6 +8,8 @@ direct request to start this one clean.)
 
 ## Running it
 
+**Play it live: [mkrauklis.github.io/hollowtread](https://mkrauklis.github.io/hollowtread/)**
+
 No install, no build, no server required — every page (`index.html`,
 the title screen; `game.html`, the game itself) is plain HTML/CSS/JS
 with classic (non-module) `<script>` tags, so double-clicking either
