@@ -50,7 +50,7 @@ scene.fog = new THREE.FogExp2(0x2a2410, 0.04); // still tight and dingy, just ea
 
 const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.05, 150);
 
-const PIXEL_SCALE = 2.5;
+const PIXEL_SCALE = 1.3; // sharper than the old 2.5, on request ("make the game less pixelated")
 // preserveDrawingBuffer: true -- needed so takePhoto() (below) can read the
 // just-rendered frame back out with toDataURL() for the computer's own
 // Photos tab; without it the backing buffer can already be cleared by the
@@ -76,6 +76,36 @@ camera.add(flashlight);
 flashlight.target.position.set(0, 0, -1);
 camera.add(flashlight.target);
 scene.add(camera);
+
+// Floating dust motes, on request ("add extra details and effects") --
+// an endless field that wraps around wherever the player currently is
+// (see updateDust, called from animate()) rather than a fixed finite
+// cloud that would visibly run out.
+const DUST_COUNT = 240, DUST_RADIUS = 13, DUST_HEIGHT = 2.6;
+const dustGeo = new THREE.BufferGeometry();
+const dustPositions = new Float32Array(DUST_COUNT * 3);
+for (let i = 0; i < DUST_COUNT; i++) {
+  dustPositions[i * 3] = (rand() - 0.5) * DUST_RADIUS * 2;
+  dustPositions[i * 3 + 1] = rand() * DUST_HEIGHT;
+  dustPositions[i * 3 + 2] = (rand() - 0.5) * DUST_RADIUS * 2;
+}
+dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPositions, 3));
+const dustMat = new THREE.PointsMaterial({ color: 0xcabf88, size: 0.035, transparent: true, opacity: 0.45, depthWrite: false });
+const dustPoints = new THREE.Points(dustGeo, dustMat);
+scene.add(dustPoints);
+function updateDust(dt) {
+  const pos = dustGeo.attributes.position.array;
+  for (let i = 0; i < DUST_COUNT; i++) {
+    const ix = i * 3;
+    pos[ix + 1] += dt * 0.08;
+    if (pos[ix + 1] > DUST_HEIGHT) pos[ix + 1] = 0;
+    const dx = pos[ix] - camera.position.x;
+    if (dx > DUST_RADIUS) pos[ix] -= DUST_RADIUS * 2; else if (dx < -DUST_RADIUS) pos[ix] += DUST_RADIUS * 2;
+    const dz = pos[ix + 2] - camera.position.z;
+    if (dz > DUST_RADIUS) pos[ix + 2] -= DUST_RADIUS * 2; else if (dz < -DUST_RADIUS) pos[ix + 2] += DUST_RADIUS * 2;
+  }
+  dustGeo.attributes.position.needsUpdate = true;
+}
 
 // Hazmat suit sleeves (armMat -- the color the Appearance tab's hue
 // slider actually changes) ending in thick rubber gloves (gloveMat, a
@@ -175,43 +205,49 @@ function makeGrainTexture({ size = 96, dark = 150, light = 255, repeat = 6, blot
   return tex;
 }
 
-// Wallpaper: a "monochromatic, dingy yellow/mustard" texture, explicitly --
-// low contrast (dark/light close together) with a thin repeating stripe
-// drawn over the grain so it actually reads as wallpaper, not a flat wall.
+// Wallpaper: the real pattern, on request (a reference photo) -- vertical
+// lanes of stacked chevrons in a darker olive column, separated by a
+// lighter khaki gap with its own thin dashed pinstripe down the middle --
+// not the plain vertical stripes or nested arches of earlier passes.
 function makeWallpaperTexture() {
   const size = 128;
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#a7a23c'; // more yellow-green, less brown-gold -- closer to real Level 0 reference photos
+  const base = '#b7ad5e', dark = '#938d3e', chevron = '#9e9844';
+  ctx.fillStyle = base;
   ctx.fillRect(0, 0, size, size);
+
+  const unit = 32;
+  for (let ux = -unit; ux < size + unit; ux += unit) {
+    ctx.fillStyle = dark;
+    ctx.fillRect(ux + 7, 0, 14, size);
+    ctx.strokeStyle = chevron;
+    ctx.lineWidth = 2.2;
+    ctx.lineJoin = 'round';
+    for (let cy = -10; cy < size + 16; cy += 18) {
+      ctx.beginPath();
+      ctx.moveTo(ux + 7, cy + 14);
+      ctx.lineTo(ux + 14, cy);
+      ctx.lineTo(ux + 21, cy + 14);
+      ctx.stroke();
+    }
+    const dashX = ux + unit / 2;
+    ctx.strokeStyle = 'rgba(100,92,45,0.55)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath(); ctx.moveTo(dashX, 0); ctx.lineTo(dashX, size); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
   const noise = ctx.getImageData(0, 0, size, size);
   for (let i = 0; i < noise.data.length; i += 4) {
-    const v = (Math.random() - 0.5) * 16;
+    const v = (Math.random() - 0.5) * 10;
     noise.data[i] = Math.max(0, Math.min(255, noise.data[i] + v));
     noise.data[i + 1] = Math.max(0, Math.min(255, noise.data[i + 1] + v));
     noise.data[i + 2] = Math.max(0, Math.min(255, noise.data[i + 2] + v * 0.5));
   }
   ctx.putImageData(noise, 0, 0);
-  // The actual Level 0 motif -- rows of nested arches/scallops, not plain
-  // vertical stripes -- on request ("heres some images of what the main
-  // area should look like aka the backrooms"). Staggered brick-style
-  // between rows, like the real reference wallpaper pattern.
-  ctx.strokeStyle = 'rgba(70,68,20,0.5)';
-  ctx.lineWidth = 1.4;
-  const archCell = 24;
-  let row = 0;
-  for (let baseY = archCell; baseY < size + archCell; baseY += archCell) {
-    const offsetX = (row % 2) * (archCell / 2);
-    for (let cx = -archCell + offsetX; cx < size + archCell; cx += archCell) {
-      for (let r = 4; r <= 11; r += 2.5) {
-        ctx.beginPath();
-        ctx.arc(cx, baseY, r, Math.PI, 2 * Math.PI);
-        ctx.stroke();
-      }
-    }
-    row++;
-  }
   // a couple of vertical damp streaks -- the stained, dripped-from-the-
   // ceiling-line look real Level 0 wallpaper photos almost always show,
   // not just a clean repeating pattern.
@@ -219,7 +255,7 @@ function makeWallpaperTexture() {
     const x = Math.random() * size;
     const w = 4 + Math.random() * 8;
     const grad = ctx.createLinearGradient(x, 0, x, size);
-    grad.addColorStop(0, 'rgba(90,70,25,0.35)');
+    grad.addColorStop(0, 'rgba(90,70,25,0.3)');
     grad.addColorStop(1, 'rgba(90,70,25,0)');
     ctx.fillStyle = grad;
     ctx.fillRect(x - w / 2, 0, w, size);
@@ -243,31 +279,20 @@ function makeCeilingTexture() {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#d6c99a';
+  // Light speckled acoustic tile, on request (a reference photo) --
+  // fine dark grain, not the old blotchy water stains -- tinted a little
+  // yellow rather than the reference's neutral grey, per a follow-up
+  // request ("make the ceiling texture a little more yellow").
+  ctx.fillStyle = '#d9d2b4';
   ctx.fillRect(0, 0, size, size);
-  const noise = ctx.getImageData(0, 0, size, size);
-  for (let i = 0; i < noise.data.length; i += 4) {
-    const v = (Math.random() - 0.5) * 16;
-    noise.data[i] = Math.max(0, Math.min(255, noise.data[i] + v));
-    noise.data[i + 1] = Math.max(0, Math.min(255, noise.data[i + 1] + v * 0.95));
-    noise.data[i + 2] = Math.max(0, Math.min(255, noise.data[i + 2] + v * 0.65));
+  for (let i = 0; i < 900; i++) {
+    const x = Math.random() * size, y = Math.random() * size;
+    const v = 40 + Math.random() * 70;
+    const a = 0.3 + Math.random() * 0.35;
+    ctx.fillStyle = `rgba(${v | 0},${(v * 0.92) | 0},${(v * 0.72) | 0},${a})`;
+    ctx.fillRect(x, y, 1, 1);
   }
-  ctx.putImageData(noise, 0, 0);
-  ctx.fillStyle = 'rgba(80,68,35,0.25)';
-  for (let i = 0; i < 90; i++) {
-    ctx.fillRect(Math.random() * size, Math.random() * size, 1, 1);
-  }
-  if (Math.random() < 0.7) {
-    const sx = size * (0.25 + Math.random() * 0.5), sy = size * (0.25 + Math.random() * 0.5);
-    const r = size * (0.18 + Math.random() * 0.22);
-    const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, r);
-    grad.addColorStop(0, 'rgba(110,85,35,0.4)');
-    grad.addColorStop(0.6, 'rgba(110,85,35,0.18)');
-    grad.addColorStop(1, 'rgba(110,85,35,0)');
-    ctx.fillStyle = grad;
-    ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
-  }
-  ctx.strokeStyle = 'rgba(55,46,22,0.55)';
+  ctx.strokeStyle = 'rgba(120,110,80,0.8)';
   ctx.lineWidth = 3;
   ctx.strokeRect(1.5, 1.5, size - 3, size - 3);
   const tex = new THREE.CanvasTexture(canvas);
@@ -277,17 +302,28 @@ function makeCeilingTexture() {
   return tex;
 }
 
-const wallMat = new THREE.MeshStandardMaterial({ color: 0xcdb15c, roughness: 0.95, map: makeWallpaperTexture() });
-const carpetMat = new THREE.MeshStandardMaterial({ color: 0x8a742f, roughness: 1, map: makeGrainTexture({ size: 128, dark: 70, light: 170, repeat: 20, blotch: 3, tint: [0.75, 0.62, 0.22] }) }); // "damp" -- darker and blotchier than the wallpaper, not a clean carpet
-const ceilingMat = new THREE.MeshStandardMaterial({ color: 0xd6c99a, roughness: 0.9, map: makeCeilingTexture() });
+const wallMat = new THREE.MeshStandardMaterial({ color: 0xe8e4c8, roughness: 0.95, map: makeWallpaperTexture() });
+// Fine, fairly uniform looped-pile green, on request (a reference photo) --
+// less blotchy/brown than the old version, narrower dark/light range.
+// color: 0xffffff, not a green tint of its own -- the texture's own tint
+// parameter already carries the color; multiplying both compounded into
+// an oversaturated, unbalanced green ("why is the floor green").
+const carpetMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, map: makeGrainTexture({ size: 128, dark: 95, light: 150, repeat: 20, blotch: 2, tint: [0.55, 0.68, 0.32] }) });
+const ceilingMat = new THREE.MeshStandardMaterial({ color: 0xd9d2b4, roughness: 0.9, map: makeCeilingTexture() });
 const trimMat = new THREE.MeshStandardMaterial({ color: 0x4a3f1c, roughness: 0.9 });
-// Crawlspace-only floor/header material -- near-black and fully matte, on
+// Crawlspace-only floor/header material -- dark and fully matte, on
 // request ("make crawlspaces darker"). A crawl tunnel is deliberately lit
 // by nothing of its own (see edgeWallX/edgeWallZ's 'crawl' case and
 // buildCrawlTunnelCell below), but reusing wallMat/carpetMat still read as
 // bright as a normal room wherever a neighboring room's own light reached
 // that far in. This absorbs that light instead of reflecting it back.
-const crawlDarkMat = new THREE.MeshStandardMaterial({ color: 0x0c0a05, roughness: 1 });
+// The original near-black color (0x0c0a05) combined with ambient-only
+// lighting rendered as genuinely, literally pure black -- indistinguishable
+// from a hole in the geometry rather than a dark passage (reported as
+// "black walls"/"the crawlspaces" looking broken). Lightened a step and
+// given a faint fixed emissive floor so it still reads as a real, dark
+// crawlspace instead of a rendering gap.
+const crawlDarkMat = new THREE.MeshStandardMaterial({ color: 0x1c170d, roughness: 1, emissive: 0x0a0805, emissiveIntensity: 1 });
 const fluorescentMat = new THREE.MeshStandardMaterial({ color: 0xfff3d6, emissive: 0xfff3d6, emissiveIntensity: 1.2, roughness: 0.6 });
 
 /* ---------------- the maze: a grid of rooms, doorways, and crawlspaces ---------------- */
@@ -688,9 +724,41 @@ PIT_CELL._minX = 0; PIT_CELL._maxX = 0; PIT_CELL._minZ = 0; PIT_CELL._maxZ = 0;
  * hand-placed rooms connected directly by doorway gaps in their shared
  * walls, which is simple enough not to need any of that machinery. */
 
-const tileFloorMat = new THREE.MeshStandardMaterial({ color: 0xd8dce0, roughness: 0.4, map: makeGrainTexture({ size: 128, dark: 190, light: 255, repeat: 24, blotch: 2 }) });
-const tileWallMat = new THREE.MeshStandardMaterial({ color: 0xe8ebee, roughness: 0.5, map: makeGrainTexture({ size: 128, dark: 200, light: 255, repeat: 14, blotch: 2 }) });
-const tileCeilMat = new THREE.MeshStandardMaterial({ color: 0xc8ccd0, roughness: 0.6 });
+// A real tile mosaic -- small square tiles with visible grout seams, on
+// request (a reference photo), not just a noisy grain texture standing
+// in for "tiled". Shared by floor, wall, and ceiling, each at its own
+// tile count/repeat so the grout reads at a sensible scale per surface.
+function makePoolTileTexture(tileCount, baseRGB, groutRGB) {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = `rgb(${groutRGB.join(',')})`;
+  ctx.fillRect(0, 0, size, size);
+  const cell = size / tileCount;
+  const gap = Math.max(1, cell * 0.1);
+  for (let ty = 0; ty < tileCount; ty++) {
+    for (let tx = 0; tx < tileCount; tx++) {
+      const d = (Math.random() - 0.5) * 14;
+      const r = Math.max(0, Math.min(255, baseRGB[0] + d)) | 0;
+      const g = Math.max(0, Math.min(255, baseRGB[1] + d)) | 0;
+      const b = Math.max(0, Math.min(255, baseRGB[2] + d)) | 0;
+      ctx.fillStyle = `rgb(${r},${g},${b})`;
+      ctx.fillRect(tx * cell + gap, ty * cell + gap, cell - gap * 2, cell - gap * 2);
+    }
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.magFilter = THREE.NearestFilter;
+  return tex;
+}
+const POOL_TILE_BASE = [221, 226, 222], POOL_TILE_GROUT = [172, 178, 173];
+const tileFloorMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4, map: makePoolTileTexture(12, POOL_TILE_BASE, POOL_TILE_GROUT) });
+const tileWallMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, map: makePoolTileTexture(12, POOL_TILE_BASE, POOL_TILE_GROUT) });
+const tileCeilMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6, map: makePoolTileTexture(12, POOL_TILE_BASE, POOL_TILE_GROUT) });
+tileFloorMat.map.repeat.set(10, 10);
+tileWallMat.map.repeat.set(6, 3);
+tileCeilMat.map.repeat.set(10, 10);
 const poolWaterMat = new THREE.MeshStandardMaterial({ color: 0x2a6fa0, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.85, emissive: 0x0d3550, emissiveIntensity: 0.3 });
 
 // Like wallBox(), but for an arbitrary Y range instead of always 0..WALL_H
@@ -805,6 +873,23 @@ buildPool((roomAx0 + roomAx1) / 2, (roomAz0 + roomAz1) / 2 + 3, 5, 4, 0.5);
 buildPool((roomBx0 + roomBx1) / 2 - 4, (roomBz0 + roomBz1) / 2, 12, 16, 0.9); // the big one
 buildPool((roomBx0 + roomBx1) / 2 + 7, roomBz1 - 5, 5, 5, 0.6);
 buildPool((roomCx0 + roomCx1) / 2, (roomCz0 + roomCz1) / 2, 5, 4, 0.5);
+
+// Tall glowing white ovals standing upright in the water, on request (a
+// reference photo) -- not a normal fixture, just an unexplained light
+// source, reflected in the wet floor around the big pool.
+const poolLightMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.7, roughness: 0.3 });
+function buildPoolLight(cx, cz, h) {
+  const glow = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, h, 6, 10), poolLightMat);
+  glow.position.set(cx, POOL_Y + h / 2 + 0.1, cz);
+  scene.add(glow);
+  const light = new THREE.PointLight(0xf3f6ff, 1.5, 9, 2);
+  light.position.set(cx, POOL_Y + h * 0.6, cz);
+  scene.add(light);
+  cellLights.push({ light, base: 1.5, seed: rand() * 1000, broken: false });
+}
+buildPoolLight((roomBx0 + roomBx1) / 2 - 7, (roomBz0 + roomBz1) / 2 - 4, 1.6);
+buildPoolLight((roomBx0 + roomBx1) / 2 - 1, (roomBz0 + roomBz1) / 2 + 3, 1.3);
+buildPoolLight((roomAx0 + roomAx1) / 2 + 1.5, (roomAz0 + roomAz1) / 2 + 3, 1.2);
 
 for (const [lx, lz] of [
   [(roomAx0 + roomAx1) / 2, roomAz0 + 3],
@@ -1324,14 +1409,10 @@ const safeWallMat = new THREE.MeshStandardMaterial({ color: 0x53585c, roughness:
 const safeCeilMat = new THREE.MeshStandardMaterial({ color: 0x24262a, roughness: 0.8, emissive: 0x121316, emissiveIntensity: 1 }); // same faint emissive floor as the Mall's own ceiling, same reason
 const pipeMatA = new THREE.MeshStandardMaterial({ color: 0x8a6b2a, roughness: 0.4, metalness: 0.6 });
 const pipeMatB = new THREE.MeshStandardMaterial({ color: 0x3a6b5a, roughness: 0.45, metalness: 0.5 });
-// Gunmetal grey, not red/yellow hazard colors -- on request ("make the
-// safezone kinda look like this", a reference photo of a riveted steel
-// vault door with dark overhead tanks and cage racking).
-const safeDoorMat = new THREE.MeshStandardMaterial({ color: 0x9a9da0, roughness: 0.4, metalness: 0.6 });
-const safeDoorStripeMat = new THREE.MeshStandardMaterial({ color: 0x45484b, roughness: 0.5, metalness: 0.5 });
+const safeDoorMat = new THREE.MeshStandardMaterial({ color: 0x6b1f1f, roughness: 0.5, metalness: 0.5 });
+const safeDoorStripeMat = new THREE.MeshStandardMaterial({ color: 0xd8b32a, roughness: 0.6 });
 const leverBaseMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.5, metalness: 0.6 });
 const leverHandleMat = new THREE.MeshStandardMaterial({ color: 0xb01818, roughness: 0.4, metalness: 0.3 });
-const tankMat = new THREE.MeshStandardMaterial({ color: 0x24262a, roughness: 0.35, metalness: 0.7 });
 
 function safeWallSeg(x0, x1, z0, z1) {
   if (x1 - x0 < 0.02 || z1 - z0 < 0.02) return;
@@ -1403,20 +1484,16 @@ buildPipeRun(safeRoomX0 + 2, safeRoomZ0 + 2, safeRoomX1 - 2, safeRoomZ1 - 2, WAL
 
 // The giant door -- a thick slab filling the east wall's own gap,
 // normally down (blocking it), sliding straight up into a recess over
-// the doorway when the lever's thrown. A riveted-steel vault-door look
-// now (vertical ribs plus a center seam reading as a two-leaf door),
-// not the old red slab with yellow hazard stripes.
+// the doorway when the lever's thrown. Warning stripes (alternating
+// boxes) are purely decorative, stuck to its own face.
 const doorMesh = new THREE.Mesh(new THREE.BoxGeometry(WALL_T + 0.1, SAFE_DOOR_H, SAFE_GAP_HALF * 2 - 0.1), safeDoorMat);
 doorMesh.position.set(safeWestWallX, SAFE_DOOR_H / 2, safeDoorZ);
 scene.add(doorMesh);
-for (let i = 0; i < 5; i++) {
-  const rib = new THREE.Mesh(new THREE.BoxGeometry(0.03, SAFE_DOOR_H - 0.3, 0.1), safeDoorStripeMat);
-  rib.position.set(WALL_T / 2 + 0.02, 0, -SAFE_GAP_HALF + 0.5 + i * (SAFE_GAP_HALF * 2 - 1) / 4);
-  doorMesh.add(rib); // child of the slab -- rides along with it as it slides
+for (let i = 0; i < 4; i++) {
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.3, 0.9), safeDoorStripeMat);
+  stripe.position.set(safeWestWallX + WALL_T / 2 + 0.02, 0, safeDoorZ - SAFE_GAP_HALF + 1 + i * 1.3);
+  doorMesh.add(stripe); // child of the slab -- rides along with it as it slides
 }
-const doorSeam = new THREE.Mesh(new THREE.BoxGeometry(0.045, SAFE_DOOR_H, 0.06), safeDoorStripeMat);
-doorSeam.position.set(WALL_T / 2 + 0.03, 0, 0);
-doorMesh.add(doorSeam);
 const safeDoor = { t: 0, state: 'closed', box: new THREE.Box3() };
 doorColliders.push(safeDoor);
 function updateSafeDoorBox() {
@@ -1472,82 +1549,6 @@ function tickSafeDoor(dt) {
   // rather than a prop that happens to sit near one.
   leverPivot.rotation.x = -0.95 + safeDoor.t * 1.35;
 }
-
-// Dark tanks slung overhead at odd angles around the door, cage-style
-// shelf racks flanking it, and a leaning ladder -- the rest of the same
-// reference photo. The room has no other general lighting beyond the
-// lever's own glow, by design (see leverLight above); a single spotlight
-// pooling on the floor in front of the door is deliberately the only
-// other thing fighting the dark, same as the photo.
-function buildOverheadTank(cx, cy, cz, rotX, rotZ, len) {
-  const g = new THREE.Group();
-  const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, len, 12), tankMat);
-  tank.rotation.z = Math.PI / 2;
-  g.add(tank);
-  for (const t of [-0.32, 0, 0.32]) {
-    const band = new THREE.Mesh(new THREE.TorusGeometry(0.46, 0.04, 6, 14), leverBaseMat);
-    band.position.x = t * len;
-    band.rotation.y = Math.PI / 2;
-    g.add(band);
-  }
-  g.position.set(cx, cy, cz);
-  g.rotation.x = rotX;
-  g.rotation.z = rotZ;
-  scene.add(g);
-}
-buildOverheadTank(safeWestWallX - 1.3, WALL_H - 0.35, safeDoorZ - 1.9, 0.25, 0.3, 2.2);
-buildOverheadTank(safeWestWallX - 1.1, WALL_H - 0.15, safeDoorZ + 0.5, -0.2, -0.15, 2.6);
-buildOverheadTank(safeWestWallX - 2.3, WALL_H - 0.45, safeDoorZ + 2.2, 0.35, 0.5, 2.0);
-buildOverheadTank(safeWestWallX - 1.9, WALL_H - 0.25, safeDoorZ - 0.5, -0.1, 0.6, 2.4);
-
-function buildCageRack(cx, cz, rotY) {
-  const g = new THREE.Group();
-  const w = 1.1, h = 2.1, d = 0.55;
-  for (const sx of [-w / 2, w / 2]) for (const sz of [-d / 2, d / 2]) {
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, h, 6), leverBaseMat);
-    post.position.set(sx, h / 2, sz);
-    g.add(post);
-  }
-  for (let i = 0; i < 4; i++) {
-    const shelf = new THREE.Mesh(new THREE.BoxGeometry(w, 0.03, d), safeWallMat);
-    shelf.position.y = 0.25 + i * 0.5;
-    g.add(shelf);
-  }
-  g.position.set(cx, 0, cz);
-  g.rotation.y = rotY;
-  scene.add(g);
-  addCircleCollider(cx, cz, 0.75);
-}
-buildCageRack(safeWestWallX - 1.1, safeDoorZ - SAFE_GAP_HALF - 1.3, Math.PI / 2);
-buildCageRack(safeWestWallX - 1.1, safeDoorZ + SAFE_GAP_HALF + 1.3, Math.PI / 2);
-
-function buildLadder(cx, cz, rotY, lean) {
-  const g = new THREE.Group();
-  for (const sx of [-0.18, 0.18]) {
-    const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 2.2, 6), leverBaseMat);
-    rail.position.set(sx, 1.1, 0);
-    g.add(rail);
-  }
-  for (let i = 0; i < 7; i++) {
-    const rung = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.4, 6), leverBaseMat);
-    rung.rotation.z = Math.PI / 2;
-    rung.position.set(0, 0.2 + i * 0.3, 0);
-    g.add(rung);
-  }
-  g.position.set(cx, 0, cz);
-  g.rotation.y = rotY;
-  g.rotation.x = lean;
-  scene.add(g);
-}
-buildLadder(safeRoomX0 + 0.35, safeRoomZ0 + 3, 0, -0.16);
-
-const doorSpotTarget = new THREE.Object3D();
-doorSpotTarget.position.set(safeWestWallX - 3, 0, safeDoorZ);
-scene.add(doorSpotTarget);
-const doorSpot = new THREE.SpotLight(0xf5f5f5, 2.1, 11, Math.PI / 6.5, 0.45, 1.4);
-doorSpot.position.set(safeWestWallX - 3, WALL_H - 0.2, safeDoorZ);
-doorSpot.target = doorSpotTarget;
-scene.add(doorSpot);
 
 /* ---------------- dim red room: one of the five photographable things ---------------- */
 /* Picked as a cell with only one open edge (a dead end) so it reads as a
@@ -1739,6 +1740,140 @@ for (let i = 0; i < 6; i++) {
     new THREE.Vector3(c.x - PILLAR_W / 2 - 0.06, 0, c.z - PILLAR_W / 2 - 0.06),
     new THREE.Vector3(c.x + PILLAR_W / 2 + 0.06, WALL_H, c.z + PILLAR_W / 2 + 0.06)
   ));
+}
+
+/* ---------------- furniture ---------------- */
+/* Abandoned-office clutter scattered through a handful of rooms, on
+ * request ("add furniture"). Nothing interactive, just set dressing --
+ * an old table, a dented filing cabinet, a couch -- in the same "real
+ * geometry, not a flat decal" style as the rest of the set dressing. */
+const furnitureMat = new THREE.MeshStandardMaterial({ color: 0x3a3226, roughness: 0.85 });
+const cabinetMat = new THREE.MeshStandardMaterial({ color: 0x4a4f45, roughness: 0.6, metalness: 0.4 });
+const cushionMat = new THREE.MeshStandardMaterial({ color: 0x5c3b3b, roughness: 0.9 });
+
+function buildOldTable(cx, cz, rotY) {
+  const g = new THREE.Group();
+  const top = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.07, 0.8), furnitureMat);
+  top.position.y = 0.72;
+  g.add(top);
+  for (const [lx, lz] of [[-0.55, -0.32], [0.55, -0.32], [-0.55, 0.32], [0.55, 0.32]]) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.7, 0.06), furnitureMat);
+    leg.position.set(lx, 0.35, lz);
+    g.add(leg);
+  }
+  g.position.set(cx, 0, cz);
+  g.rotation.y = rotY;
+  scene.add(g);
+  addCircleCollider(cx, cz, 0.85);
+}
+function buildFileCabinet(cx, cz, rotY) {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.55, 1.3, 0.55), cabinetMat);
+  body.position.y = 0.65;
+  g.add(body);
+  for (let i = 0; i < 3; i++) {
+    const handle = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.04, 0.04), trimMat);
+    handle.position.set(0, 0.25 + i * 0.4, 0.28);
+    g.add(handle);
+  }
+  g.position.set(cx, 0, cz);
+  g.rotation.y = rotY;
+  scene.add(g);
+  addCircleCollider(cx, cz, 0.42);
+}
+function buildCouch(cx, cz, rotY) {
+  const g = new THREE.Group();
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.4, 0.7), cushionMat);
+  seat.position.y = 0.3;
+  g.add(seat);
+  const back = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.55, 0.18), cushionMat);
+  back.position.set(0, 0.6, -0.26);
+  g.add(back);
+  for (const sx of [-0.78, 0.78]) {
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.45, 0.7), cushionMat);
+    arm.position.set(sx, 0.42, 0);
+    g.add(arm);
+  }
+  g.position.set(cx, 0, cz);
+  g.rotation.y = rotY;
+  scene.add(g);
+  addCircleCollider(cx, cz, 1.0);
+}
+const FURNITURE_KINDS = [buildOldTable, buildFileCabinet, buildCouch, buildOldTable, buildFileCabinet, buildCouch];
+for (const build of FURNITURE_KINDS) {
+  const cell = pickPropCell(usedCells);
+  usedCells.push(cell);
+  const c = cellCenter(cell.cx, cell.cz);
+  const jx = (rand() - 0.5) * 4, jz = (rand() - 0.5) * 4; // off dead-center, not gridded
+  build(c.x + jx, c.z + jz, rand() * Math.PI * 2);
+}
+
+/* ---------------- windows that shouldn't be there ---------------- */
+/* A handful of solid maze walls get a window mounted flush against their
+ * inside face -- on request ("random windows") -- cross-mullioned, lit
+ * from behind by nothing identifiable, looking out on nothing. Picked
+ * from edges confirmed solid (not a doorway or crawlspace gap) so it
+ * never ends up floating in an open passage. */
+const windowFrameMat = trimMat;
+const windowPaneMat = new THREE.MeshStandardMaterial({ color: 0xc8d2d0, emissive: 0xaab8b5, emissiveIntensity: 0.55, roughness: 0.4 });
+function pickSolidWallSpot(exclude) {
+  for (let tries = 0; tries < 300; tries++) {
+    const cx = 1 + Math.floor(rand() * (GRID_N - 2));
+    const cz = 1 + Math.floor(rand() * (GRID_N - 2));
+    if (exclude.some((e) => e.cx === cx && e.cz === cz)) continue;
+    if (isCrawlTunnelCell(cx, cz)) continue;
+    const c = cellCenter(cx, cz);
+    const edge = Math.floor(rand() * 4);
+    if (edge === 0 && !openEdges.has(edgeKeyZ(cx, cz)) && !crawlEdges.has(edgeKeyZ(cx, cz))) {
+      return { cx, cz, axis: 'z', wallCoord: boundaryZ(cz + 1), alongCoord: c.x, roomSide: -1 };
+    }
+    if (edge === 1 && cz > 0 && !openEdges.has(edgeKeyZ(cx, cz - 1)) && !crawlEdges.has(edgeKeyZ(cx, cz - 1))) {
+      return { cx, cz, axis: 'z', wallCoord: boundaryZ(cz), alongCoord: c.x, roomSide: 1 };
+    }
+    if (edge === 2 && !openEdges.has(edgeKeyX(cx, cz)) && !crawlEdges.has(edgeKeyX(cx, cz))) {
+      return { cx, cz, axis: 'x', wallCoord: boundaryX(cx + 1), alongCoord: c.z, roomSide: -1 };
+    }
+    if (edge === 3 && cx > 0 && !openEdges.has(edgeKeyX(cx - 1, cz)) && !crawlEdges.has(edgeKeyX(cx - 1, cz))) {
+      return { cx, cz, axis: 'x', wallCoord: boundaryX(cx), alongCoord: c.z, roomSide: 1 };
+    }
+  }
+  return null;
+}
+function buildWindow(axis, wallCoord, alongCoord, roomSide) {
+  const w = 1.6, h = 1.2, y = 1.4;
+  const offset = roomSide * 0.06;
+  const cx = axis === 'z' ? alongCoord : wallCoord + offset;
+  const cz = axis === 'z' ? wallCoord + offset : alongCoord;
+  const pane = new THREE.Mesh(new THREE.PlaneGeometry(w - 0.12, h - 0.12), windowPaneMat);
+  pane.position.set(cx, y, cz);
+  pane.rotation.y = axis === 'z' ? (roomSide < 0 ? Math.PI : 0) : (roomSide < 0 ? -Math.PI / 2 : Math.PI / 2);
+  scene.add(pane);
+  const barT = 0.06, barD = 0.08;
+  const bars = [
+    [w / 2, 0, barT, h], [-w / 2, 0, barT, h],
+    [0, h / 2, w, barT], [0, -h / 2, w, barT],
+    [0, 0, barT, h], [0, 0, w, barT],
+  ];
+  const barOffset = roomSide * 0.08;
+  for (const [fa, fy, fw, fh] of bars) {
+    const bx = axis === 'z' ? alongCoord + fa : wallCoord + barOffset;
+    const bz = axis === 'z' ? wallCoord + barOffset : alongCoord + fa;
+    const geomW = axis === 'z' ? fw : barD;
+    const geomD = axis === 'z' ? barD : fw;
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(geomW, fh, geomD), windowFrameMat);
+    bar.position.set(bx, y + fy, bz);
+    scene.add(bar);
+  }
+  const glowX = axis === 'z' ? alongCoord : wallCoord + roomSide * 0.4;
+  const glowZ = axis === 'z' ? wallCoord + roomSide * 0.4 : alongCoord;
+  const glow = new THREE.PointLight(0xaab8b5, 0.3, 4, 2);
+  glow.position.set(glowX, y, glowZ);
+  scene.add(glow);
+  cellLights.push({ light: glow, base: 0.3, seed: rand() * 1000, broken: false });
+}
+for (let i = 0; i < 5; i++) {
+  const spot = pickSolidWallSpot(usedCells);
+  if (spot) buildWindow(spot.axis, spot.wallCoord, spot.alongCoord, spot.roomSide);
 }
 
 /* ---------------- the computer (appearance + catalog, same desk as before) ---------------- */
@@ -1969,99 +2104,107 @@ function animateWalkCycle(m, dt, moving, sprinting) {
 const wireMat = new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.85, metalness: 0.1 });
 function wireBone(r0, r1, len) { return new THREE.Mesh(new THREE.CylinderGeometry(r0, r1, len, 5), wireMat); }
 
-// Redrawn taller and thinner than the first pass, on request ("make the
-// bacteria look like the one from the backrooms") -- fan descriptions of
-// the actual Level 0 entity call it specifically "a long, black humanoid
-// entity made from the wires of the ceiling," with claws rather than
-// plain hands (the part that injects the bacteria). Every bone below is
-// stretched further than a real human's own proportions would be, and
-// the hands are now small claw-fans instead of wire spheres.
+// Rebuilt to match two real reference photos directly, on request
+// ("please make the bacteria accurate ill give you photos to refrence
+// off of") -- almost no torso at all (just a short zigzag wire spine,
+// not a tapered pole with a cloak and ribcage), a small head with two
+// tiny glowing eye-flecks and a modest hat, arms that splay diagonally
+// UP and OUTWARD from the shoulders (almost reaching the ceiling) rather
+// than hanging down, and a wide, bent, zigzag crouch in the legs. Every
+// bone is still the same thin black wire cylinder as before.
+const eyeMat = new THREE.MeshStandardMaterial({ color: 0xcfcfc0, emissive: 0xcfcfc0, emissiveIntensity: 1.4, roughness: 0.4 });
+// A single straight-line wire segment between two arbitrary points,
+// rather than a vertical bone -- what the zigzag spine/neck need.
+function wireSegment(pA, pB, r0, r1) {
+  const dir = new THREE.Vector3().subVectors(pB, pA);
+  const len = dir.length();
+  const mesh = wireBone(r0, r1, len);
+  mesh.position.copy(pA).addScaledVector(dir, 0.5);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+  return mesh;
+}
 function createBacteriaModel() {
   const g = new THREE.Group();
 
-  const torso = wireBone(0.06, 0.24, 0.95); // tapered harder than before -- narrow at the neck, draping wide at the hip, closer to the real reference art than a uniform pole
-  torso.position.y = 1.2;
-  g.add(torso);
-  // A handful of thin cross-wires over the torso read as a ribcage
-  // silhouette without needing a real mesh there at all.
-  for (let i = 0; i < 5; i++) {
-    const rib = new THREE.Mesh(new THREE.TorusGeometry(0.125, 0.01, 4, 8), wireMat);
-    rib.rotation.x = Math.PI / 2;
-    rib.position.y = 0.8 + i * 0.18;
-    g.add(rib);
+  // A short, jagged zigzag spine -- almost the entire "torso" -- from the
+  // pelvis up to the shoulder line, exactly like the reference's bent
+  // spring-like body.
+  const spinePts = [
+    new THREE.Vector3(0, 0.78, 0),
+    new THREE.Vector3(0.09, 0.95, 0.03),
+    new THREE.Vector3(-0.08, 1.12, -0.03),
+    new THREE.Vector3(0.07, 1.3, 0.03),
+    new THREE.Vector3(0, 1.48, 0),
+  ];
+  for (let i = 0; i < spinePts.length - 1; i++) {
+    g.add(wireSegment(spinePts[i], spinePts[i + 1], 0.035, 0.045));
   }
-  // A draping cloak skirt over the hips -- on request ("look at pictures
-  // of the bacteria, heres a example"), the reference art reads as a
-  // wide, flowing dark drape over the body, not bare wire limbs the
-  // whole way down.
-  const cloak = new THREE.Mesh(new THREE.ConeGeometry(0.4, 0.75, 10, 1, true), wireMat);
-  cloak.position.y = 1.25;
-  g.add(cloak);
-  const neck = wireBone(0.03, 0.04, 0.22); // noticeably longer than a human neck -- part of the "long" silhouette
-  neck.position.y = 1.78;
-  g.add(neck);
-  const head = new THREE.Mesh(new THREE.IcosahedronGeometry(0.12, 0), wireMat); // angular, cage-like, no face
-  head.position.y = 1.97;
+  const neckTop = new THREE.Vector3(0, 1.72, 0);
+  g.add(wireSegment(spinePts[spinePts.length - 1], neckTop, 0.025, 0.035));
+  const head = new THREE.Mesh(new THREE.IcosahedronGeometry(0.1, 0), wireMat); // angular, cage-like, no real face
+  head.position.set(0, 1.84, 0);
   g.add(head);
-  // A wide flat-brimmed hat -- straight from the reference image, and it
-  // reads immediately as the right silhouette even at a glance/distance.
-  const hatBrim = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.015, 10), wireMat);
-  hatBrim.position.y = 2.05;
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.014, 5, 4), eyeMat);
+    eye.position.set(side * 0.045, 1.85, 0.075);
+    g.add(eye);
+  }
+  // A small hat -- much smaller than earlier passes, just enough brim to
+  // match the reference's silhouette without dominating the tiny head.
+  const hatBrim = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.012, 10), wireMat);
+  hatBrim.position.y = 1.9;
   g.add(hatBrim);
-  const hatCrown = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 0.15, 8), wireMat);
-  hatCrown.position.y = 2.135;
+  const hatCrown = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.08, 0.1, 8), wireMat);
+  hatCrown.position.y = 1.955;
   g.add(hatCrown);
 
+  // Arms splay diagonally up and outward from the shoulder line, almost
+  // reaching the ceiling, instead of hanging down -- the single most
+  // identifying feature in both reference photos.
   const armPivots = [], elbowPivots = [];
   for (const side of [-1, 1]) {
     const shoulder = new THREE.Group();
-    shoulder.position.set(side * 0.15, 1.62, 0);
+    shoulder.position.set(side * 0.1, 1.5, 0);
+    shoulder.rotation.z = side * (3 * Math.PI / 4); // points up+outward ~45 deg above horizontal
     g.add(shoulder);
-    const upper = wireBone(0.032, 0.042, 0.48);
-    upper.position.y = -0.24;
+    const upper = wireBone(0.03, 0.04, 0.85);
+    upper.position.y = -0.425;
     shoulder.add(upper);
     const elbow = new THREE.Group();
-    elbow.position.y = -0.48;
+    elbow.position.y = -0.85;
+    elbow.rotation.z = side * 0.3; // a slight kink partway, not a sharp human elbow bend
     shoulder.add(elbow);
-    const fore = wireBone(0.026, 0.032, 0.46);
-    fore.position.y = -0.23;
+    const fore = wireBone(0.024, 0.008, 0.8);
+    fore.position.y = -0.4;
     elbow.add(fore);
-    // A claw -- three thin curved wire spikes fanned from the wrist,
-    // standing in for "claws [that] inject a bacteria" rather than a
-    // plain wire hand.
-    const wrist = new THREE.Group();
-    wrist.position.y = -0.47;
-    elbow.add(wrist);
-    for (let i = -1; i <= 1; i++) {
-      const claw = wireBone(0.012, 0.002, 0.16);
-      claw.position.set(i * 0.035, -0.08, 0.02);
-      claw.rotation.x = 0.5 + Math.abs(i) * 0.25;
-      wrist.add(claw);
-    }
     armPivots.push(shoulder);
     elbowPivots.push(elbow);
   }
 
+  // Legs: a wide, bent, zigzag crouch -- knees splayed out, feet pulled
+  // back under the body -- not a straight human stance.
   const legPivots = [], kneePivots = [];
   for (const side of [-1, 1]) {
     const hip = new THREE.Group();
-    hip.position.set(side * 0.085, 0.82, 0);
+    hip.position.set(side * 0.09, 0.78, 0);
+    hip.rotation.z = side * 0.5;
     g.add(hip);
-    const thigh = wireBone(0.042, 0.048, 0.52);
-    thigh.position.y = -0.26;
+    const thigh = wireBone(0.042, 0.048, 0.5);
+    thigh.position.y = -0.25;
     hip.add(thigh);
     const knee = new THREE.Group();
-    knee.position.y = -0.52;
+    knee.position.y = -0.5;
+    knee.rotation.z = side * -0.9;
     hip.add(knee);
-    const shin = wireBone(0.03, 0.042, 0.5);
-    shin.position.y = -0.25;
+    const shin = wireBone(0.03, 0.042, 0.48);
+    shin.position.y = -0.24;
     knee.add(shin);
     // A frizzy fan of thread-thin roots instead of a plain foot -- same
-    // reference image, where each leg frays apart into loose strands at
+    // reference photos, where each leg frays apart into loose strands at
     // the bottom rather than ending in a foot shape at all. Children of
     // the knee, so they swing with the rest of the walk cycle.
     const roots = new THREE.Group();
-    roots.position.y = -0.5;
+    roots.position.y = -0.48;
     knee.add(roots);
     for (let i = 0; i < 6; i++) {
       const root = wireBone(0.012, 0.002, 0.2 + rand() * 0.1);
@@ -2079,8 +2222,8 @@ function createBacteriaModel() {
   g.userData.legPivots = legPivots;
   g.userData.kneePivots = kneePivots;
   g.userData.head = head;
-  g.userData.torso = torso;
-  g.userData.grabPoint = { y: 1.2 }; // torso height -- where the kill animation "grabs"
+  g.userData.torso = null; // no single torso bone any more -- just the zigzag spine segments
+  g.userData.grabPoint = { y: 1.1 }; // roughly spine height -- where the kill animation "grabs"
   return g;
 }
 const BACTERIA_ROAM_SPEED = RUN_SPEED * 0.25;
@@ -2348,8 +2491,13 @@ const MIMITOR_BASE_NOISE_R = 3.2; // always audible this close -- footsteps, bre
 const MIMITOR_SPRINT_NOISE_R = 15; // sprinting carries much further across the Pool Rooms
 const MIMITOR_CROUCH_NOISE_MUL = 0.4;
 
+// Pool Rooms floor is at POOL_Y (-4.5), one real level below the maze's
+// own y=0 -- using 0 here (a pre-existing bug, not introduced by the
+// Wretch redesign) left it floating well above its own floor the whole
+// time. Fixed on request ("fix the poolrooms monster because its above
+// the map").
 const mimitor = {
-  group: createMimitorModel(), pos: new THREE.Vector3(mimitorSpawnPos.x, 0, mimitorSpawnPos.z),
+  group: createMimitorModel(), pos: new THREE.Vector3(mimitorSpawnPos.x, POOL_Y, mimitorSpawnPos.z),
   facing: 0, alert: false, alertTimer: 0, wanderTarget: null, wanderTimer: 0,
 };
 scene.add(mimitor.group);
@@ -2403,7 +2551,7 @@ function tickMimitor(dt, playerPos) {
     }
   }
 
-  mimitor.group.position.set(mimitor.pos.x, 0, mimitor.pos.z);
+  mimitor.group.position.set(mimitor.pos.x, mimitor.pos.y, mimitor.pos.z);
   mimitor.group.rotation.y = mimitor.facing || 0;
   animateWalkCycle(mimitor, dt, moving, mimitor.alert);
   return { dist, danger: mimitor.alert ? Math.max(0, 1 - dist / 10) : 0, catchR: MIMITOR_CATCH_R, type: 'mimitor', instance: mimitor };
@@ -2655,7 +2803,7 @@ function resetAfterCatch(awayFromPos) {
   // other two are reset relative to it -- it just goes back to its own
   // spot in the Pool Rooms, blind and wandering again, same as the
   // Bacteria's clean reset.
-  mimitor.pos.set(mimitorSpawnPos.x, 0, mimitorSpawnPos.z);
+  mimitor.pos.set(mimitorSpawnPos.x, POOL_Y, mimitorSpawnPos.z);
   mimitor.alert = false;
   mimitor.alertTimer = 0;
   mimitor.wanderTarget = null;
@@ -3356,6 +3504,19 @@ document.addEventListener('mousemove', (e) => {
   if (scareActive) return;
   if (isLocked() || (fallbackLook && dragging)) applyLookDelta(e.movementX, e.movementY);
 });
+// A quick way back to the Safezone from anywhere, on request ("add a
+// teleport thing to spawn") -- the Mall in particular is a long walk
+// (and an even longer crawl) back from, so this is a plain convenience,
+// not an in-world device. Doesn't touch monster state the way an actual
+// catch/respawn does -- just moves the player.
+function teleportToSpawn() {
+  camera.position.copy(SPAWN);
+  velocity.set(0, 0, 0);
+  onGround = true;
+  crouching = false;
+  const flash = document.getElementById('camera-flash');
+  flash.classList.remove('show'); void flash.offsetWidth; flash.classList.add('show');
+}
 document.addEventListener('keydown', (e) => {
   if (e.code === 'Escape' && customizeOpen) { closeCustomizePanel(); return; }
   if (e.code === 'Escape' && fallbackLook) { fallbackLook = false; blocker.style.display = 'flex'; }
@@ -3364,6 +3525,7 @@ document.addEventListener('keydown', (e) => {
   if (e.code === 'KeyE' && camera.position.distanceTo(leverCenter) < 2.5) toggleSafeDoor();
   if (e.code === 'KeyC') crouching = !crouching;
   if (e.code === 'KeyR') setCameraEquipped(!cameraEquipped);
+  if (e.code === 'KeyT' && !scareActive) teleportToSpawn();
 });
 
 const keys = { w: false, a: false, s: false, d: false, shift: false };
@@ -3545,6 +3707,7 @@ function animate() {
   last = now;
 
   if (customizeOpen) tickCatalogViewer(dt);
+  updateDust(dt);
 
   // Culling, not just dimming: with ~80 rooms each holding their own
   // PointLight, leaving every one of them permanently in the scene meant

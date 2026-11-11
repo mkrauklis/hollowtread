@@ -44,7 +44,11 @@ pattern, the odd square support pillar standing alone mid-room) connects
 through doorways and, in some walls, **real crawlspaces** — not a narrow
 slot cut into a normal doorway, but a whole dark, low section of wall
 (blends right into the same wallpaper until you're close) you have to
-crouch (**C**) to fit through. None of the things loose in here are too
+crouch (**C**) to fit through. A handful of rooms are furnished with
+leftover office clutter — an old table, a dented filing cabinet, a worn
+couch — and a few of the maze's own solid walls have a window mounted
+flush against them, lit from behind by nothing identifiable, looking out
+on nothing at all. None of the things loose in here are too
 small to follow — they just can't fit, full stop.
 
 One room holds a grid of square floor pits. Walk onto one without
@@ -53,10 +57,11 @@ spot far from wherever you fell.
 
 Somewhere in the maze a staircase leads down and out of the Backrooms
 proper into **the Pool Rooms** — a small, separate sub-level one real
-floor below, where every surface (floor, wall, ceiling) is white tile
-instead of mustard wallpaper. Three rooms of different sizes, several
-sunken pools (one of them a lot more than a puddle), and one more thing
-that lives down there waiting by the water.
+floor below, where every surface (floor, wall, ceiling) is a real white
+tile mosaic instead of mustard wallpaper. Three rooms of different sizes,
+several sunken pools (one of them a lot more than a puddle) lit by tall
+glowing white lights standing upright in the water with no visible source,
+and one more thing that lives down there waiting by the water.
 
 Somewhere else entirely, one of the maze's crawlspaces is a genuinely
 long one — much longer than any other crawl route in the place — and it
@@ -119,7 +124,9 @@ it.
 sprint, **C** to toggle crouch (slower, but the only way into a
 crawlspace), **R** to equip/unequip the camera, **click** (camera
 equipped) to take a photo, **E** to interact — opens the computer panel
-when you're standing at the keyboard. Click the start screen to lock the
+when you're standing at the keyboard, **T** to teleport straight back to
+the Safezone from anywhere (a plain convenience — the Mall in particular
+is a long way back otherwise). Click the start screen to lock the
 pointer; `Esc` releases it (or closes the computer panel, if that's open
 instead).
 
@@ -142,8 +149,11 @@ instead of a generic camera shake when they actually catch you, and you
 can't look around at all while it plays.
 
 **The Bacteria** — a humanoid shape built entirely out of thin black
-wire — a wire ribcage, a wire skull, jointed wire limbs, nothing solid
-and deliberately no face or eyes at all. It roams on its own at a
+wire, redrawn to match real reference photos directly: barely any torso
+at all, just a short jagged zigzag spine, a small head with a tiny hat
+and two faint glowing eye-flecks, wire arms that splay diagonally up and
+outward almost to the ceiling instead of hanging down, and legs bent into
+a wide, zigzag crouch. It roams on its own at a
 quarter of your own speed — easy to outpace, easy to lose — but the
 instant it has line of sight on you, it closes that gap fast, 1.2x your
 own speed, and keeps coming for a while even if you break contact. Catch

@@ -119,9 +119,10 @@ canvas.game-canvas {
   inset: 0;
   display: block;
   z-index: 1;
-  image-rendering: pixelated;
-  image-rendering: -moz-crisp-edges;
-  image-rendering: crisp-edges;
+  /* Smooth upscale now, not blocky nearest-neighbor -- on request ("make
+     the game less pixelated"), paired with a sharper PIXEL_SCALE in
+     js/world.js. */
+  image-rendering: auto;
 }
 
 #hud {
