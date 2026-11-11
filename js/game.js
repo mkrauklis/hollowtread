@@ -25,10 +25,24 @@ function resizeRenderer() {
 resizeRenderer();
 window.addEventListener('resize', resizeRenderer);
 
-scene.add(new THREE.AmbientLight(0x9fb8c8, 0.65));
-const sun = new THREE.DirectionalLight(0xfff3dd, 1.0);
-sun.position.set(12, 22, -6);
+// Dimmer ambient, and the sun now actually casts real shadows -- on
+// request ("the facility should be darker"), the roof genuinely blocks
+// daylight now instead of every interior surface being lit as brightly
+// as the parking lot outside it.
+scene.add(new THREE.AmbientLight(0x9a988c, 0.3));
+const sun = new THREE.DirectionalLight(0xfff3dd, 1.15);
+sun.position.set(20, 42, -8);
+sun.target.position.set(0, 0, 22);
+scene.add(sun.target);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -42; sun.shadow.camera.right = 42;
+sun.shadow.camera.top = 55; sun.shadow.camera.bottom = -25;
+sun.shadow.camera.near = 1; sun.shadow.camera.far = 110;
+sun.shadow.bias = -0.0015;
 scene.add(sun);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 /* ---------------- collision (AABB-vs-circle, height-aware) ---------------- */
 /* Height-aware (checks the collider's own y-range against the player's
@@ -48,19 +62,49 @@ function collidesAt(x, z, feetY) {
   }
   return false;
 }
+// A cheap procedural grain texture, on request ("make the game have
+// better textures") -- a mottled noise tile rather than a single flat
+// color, reused across the lab's concrete/floor and the houses' siding.
+function makeNoiseTexture(hex, dark, light, repeat) {
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const base = new THREE.Color(hex);
+  const img = ctx.createImageData(size, size);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = dark + Math.random() * (light - dark);
+    img.data[i] = Math.min(255, base.r * 255 * v);
+    img.data[i + 1] = Math.min(255, base.g * 255 * v);
+    img.data[i + 2] = Math.min(255, base.b * 255 * v);
+    img.data[i + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(repeat, repeat);
+  return tex;
+}
+
 function wallBox(x0, x1, y0, y1, z0, z1, mat) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0), mat);
   mesh.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
   scene.add(mesh);
   boxColliders.push(new THREE.Box3(new THREE.Vector3(x0, y0, z0), new THREE.Vector3(x1, y1, z1)));
   return mesh;
 }
 
 /* ---------------- the parking lot ---------------- */
-const asphaltMat = new THREE.MeshStandardMaterial({ color: 0x3a3a3e, roughness: 0.95 });
+const asphaltTex = new THREE.TextureLoader().load('textures/asphalt.png');
+asphaltTex.wrapS = asphaltTex.wrapT = THREE.RepeatWrapping;
+asphaltTex.repeat.set(14, 10);
+const asphaltMat = new THREE.MeshStandardMaterial({ map: asphaltTex, roughness: 0.95 });
 const lineMat = new THREE.MeshStandardMaterial({ color: 0xd8d8d2, roughness: 0.8 });
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(70, 50), asphaltMat);
 ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
 scene.add(ground);
 for (let i = -4; i <= 4; i++) {
   if (i === 0) continue;
@@ -125,7 +169,7 @@ buildFenceRun(26, -18, 26, 18);
 /* ---------------- the lab building ---------------- */
 const BLDG_X0 = -15, BLDG_X1 = 15, BLDG_Z0 = 20, BLDG_Z1 = 55;
 const WALL_H = 5, WALL_T = 0.3;
-const concreteMat = new THREE.MeshStandardMaterial({ color: 0x8a8578, roughness: 0.92 });
+const concreteMat = new THREE.MeshStandardMaterial({ map: makeNoiseTexture(0x8a8578, 0.75, 1.1, 5), roughness: 0.92 });
 const DOOR_HALF = 1.5;
 
 wallBox(BLDG_X0, -DOOR_HALF, 0, WALL_H, BLDG_Z0 - WALL_T / 2, BLDG_Z0 + WALL_T / 2, concreteMat);
@@ -134,18 +178,35 @@ wallBox(BLDG_X0 - WALL_T / 2, BLDG_X0 + WALL_T / 2, 0, WALL_H, BLDG_Z0, BLDG_Z1,
 wallBox(BLDG_X1 - WALL_T / 2, BLDG_X1 + WALL_T / 2, 0, WALL_H, BLDG_Z0, BLDG_Z1, concreteMat);
 const roof = new THREE.Mesh(new THREE.BoxGeometry(BLDG_X1 - BLDG_X0, 0.25, BLDG_Z1 - BLDG_Z0), concreteMat);
 roof.position.set((BLDG_X0 + BLDG_X1) / 2, WALL_H + 0.125, (BLDG_Z0 + BLDG_Z1) / 2);
+roof.castShadow = true;
+roof.receiveShadow = true;
 scene.add(roof);
 
-const floorMat = new THREE.MeshStandardMaterial({ color: 0x4e4c42, roughness: 1 });
+const floorMat = new THREE.MeshStandardMaterial({ map: makeNoiseTexture(0x4e4c42, 0.7, 1.2, 10), roughness: 1 });
 const interiorFloor = new THREE.Mesh(new THREE.PlaneGeometry(BLDG_X1 - BLDG_X0 - 0.4, BLDG_Z1 - BLDG_Z0 - 0.4), floorMat);
 interiorFloor.rotation.x = -Math.PI / 2;
 interiorFloor.position.set((BLDG_X0 + BLDG_X1) / 2, 0.002, (BLDG_Z0 + BLDG_Z1) / 2);
+interiorFloor.receiveShadow = true;
 scene.add(interiorFloor);
 
 const signMat = new THREE.MeshStandardMaterial({ color: 0x2a6f4a, emissive: 0x1e4f34, emissiveIntensity: 0.8, roughness: 0.6 });
 const sign = new THREE.Mesh(new THREE.BoxGeometry(5, 0.9, 0.15), signMat);
 sign.position.set(0, WALL_H + 0.9, BLDG_Z0 - 0.3);
 scene.add(sign);
+
+// A real hallway, on request ("the facility should... have halls") --
+// splits the building into a front room, a narrower corridor, and the
+// back room the special door lives in, instead of one open box.
+const HALL_HALF = 1.8, HALL_Z0 = 35, HALL_Z1 = 42;
+wallBox(BLDG_X0, -HALL_HALF, 0, WALL_H, HALL_Z0 - 0.15, HALL_Z0 + 0.15, concreteMat);
+wallBox(HALL_HALF, BLDG_X1, 0, WALL_H, HALL_Z0 - 0.15, HALL_Z0 + 0.15, concreteMat);
+wallBox(BLDG_X0, -HALL_HALF, 0, WALL_H, HALL_Z0, HALL_Z1, concreteMat);
+wallBox(HALL_HALF, BLDG_X1, 0, WALL_H, HALL_Z0, HALL_Z1, concreteMat);
+wallBox(BLDG_X0, -HALL_HALF, 0, WALL_H, HALL_Z1 - 0.15, HALL_Z1 + 0.15, concreteMat);
+wallBox(HALL_HALF, BLDG_X1, 0, WALL_H, HALL_Z1 - 0.15, HALL_Z1 + 0.15, concreteMat);
+const hallLight = new THREE.PointLight(0xcfd8e0, 0.7, 9, 2);
+hallLight.position.set(0, WALL_H - 0.3, (HALL_Z0 + HALL_Z1) / 2);
+scene.add(hallLight);
 
 // Flipped desks, scattered -- "the lab looks like a wasteland".
 const deskMat = new THREE.MeshStandardMaterial({ color: 0x4a4536, roughness: 0.85 });
@@ -171,8 +232,8 @@ function buildFlippedDesk(x, z, rotY) {
   boxColliders.push(new THREE.Box3(new THREE.Vector3(x - 0.9, 0, z - 0.9), new THREE.Vector3(x + 0.9, 0.9, z + 0.9)));
 }
 const deskSpots = [
-  [-9, 27, 0.4], [-4, 25, -0.6], [6, 29, 1.1], [11, 33, -0.2], [-11, 38, 0.8],
-  [2, 40, -1.3], [9, 44, 0.3], [-6, 47, -0.5], [4, 49, 1.4], [-2, 32, 0.2],
+  [-9, 27, 0.4], [-4, 25, -0.6], [6, 29, 1.1], [11, 33, -0.2], [-11, 31, 0.8],
+  [0.8, 39, -1.3], [9, 44, 0.3], [-6, 47, -0.5], [4, 49, 1.4], [-2, 32, 0.2],
 ];
 for (const [x, z, r] of deskSpots) buildFlippedDesk(x, z, r);
 
@@ -216,15 +277,19 @@ for (let i = 0; i < 9; i++) {
 // Flickering ceiling lights -- genuinely dim, a few actually broken.
 const ceilingLights = [];
 function buildCeilingLight(x, z) {
-  const base = 0.9 + Math.random() * 0.4;
-  const light = new THREE.PointLight(0xcfd8e0, base, 13, 2);
+  const base = 0.6 + Math.random() * 0.3; // dimmer than the first pass, on request ("the facility should be darker")
+  const light = new THREE.PointLight(0xcfd8e0, base, 12, 2);
   light.position.set(x, WALL_H - 0.3, z);
   scene.add(light);
   ceilingLights.push({ light, base, seed: Math.random() * 1000, broken: Math.random() < 0.45 });
 }
 for (let z = BLDG_Z0 + 6; z < BLDG_Z1 - 3; z += 8) {
-  buildCeilingLight(-5, z);
-  buildCeilingLight(5, z);
+  if (z > HALL_Z0 - 2 && z < HALL_Z1 + 2) {
+    buildCeilingLight(0, z); // inside the narrow hallway -- one centered light, not two at +-5
+  } else {
+    buildCeilingLight(-5, z);
+    buildCeilingLight(5, z);
+  }
 }
 
 /* ---------------- the special door ---------------- */
@@ -296,30 +361,133 @@ scene.add(hazmatNPC);
 const LEVEL1_CENTER = new THREE.Vector3(260, 0, 0);
 const SUBURB_HALF = 35;
 
-// The "perfect sky" is just a flat scene.background color, switched the
-// moment the player actually arrives here (see triggerDoorCutscene).
-const grassMat = new THREE.MeshStandardMaterial({ color: 0x8fae6a, roughness: 1 });
-const level1Ground = new THREE.Mesh(new THREE.PlaneGeometry(SUBURB_HALF * 2, SUBURB_HALF * 2), grassMat);
-level1Ground.rotation.x = -Math.PI / 2;
+// Real rolling hills, on request (reference photos) -- a smooth, cheap
+// sum-of-sines height field, flattened back to 0 near the houses, the
+// path, the ladder spots, and the boundary fence (see hillStrength) so
+// those don't end up pitched at an angle. groundHeightAt() below uses
+// this same function for gravity/collision, so the player always stands
+// exactly where the ground mesh actually is.
+const HILL_AMP = 2.4;
+function rawHillHeight(x, z) {
+  const lx = x - LEVEL1_CENTER.x, lz = z - LEVEL1_CENTER.z;
+  return HILL_AMP * (
+    Math.sin(lx * 0.09 + 0.6) * Math.cos(lz * 0.07) * 0.6 +
+    Math.sin(lx * 0.05 - lz * 0.04 + 1.4) * 0.4 +
+    Math.cos(lz * 0.11 + lx * 0.02) * 0.3
+  );
+}
+const flattenCircles = []; // { x, z, r0, r1 } -- filled in as houses/ladder spots are placed below
+function smoothstep(t) { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); }
+function hillStrength(x, z) {
+  let s = 1;
+  for (const c of flattenCircles) {
+    const d = Math.hypot(x - c.x, z - c.z);
+    s = Math.min(s, smoothstep((d - c.r0) / (c.r1 - c.r0)));
+  }
+  const half = SUBURB_HALF;
+  const edgeDist = Math.min(half - Math.abs(x - LEVEL1_CENTER.x), half - Math.abs(z - LEVEL1_CENTER.z));
+  s = Math.min(s, smoothstep((edgeDist - 1) / 5));
+  s = Math.min(s, smoothstep((distanceToPath(x, z) - 1.4) / 2.6));
+  return s;
+}
+function terrainHeight(x, z) { return rawHillHeight(x, z) * hillStrength(x, z); }
+
+// A winding dirt path threading between the houses, on request
+// (reference photos) -- distanceToPath() is also what keeps the ground
+// flat directly under it (see hillStrength above).
+const pathPts = [
+  { x: 0, z: 29 }, { x: -6, z: 20 }, { x: -14, z: 10 }, { x: -10, z: 0 }, { x: -2, z: -8 }, { x: 6, z: -14 },
+].map((p) => new THREE.Vector2(LEVEL1_CENTER.x + p.x, LEVEL1_CENTER.z + p.z));
+function distanceToPath(x, z) {
+  const p = new THREE.Vector2(x, z);
+  let best = Infinity;
+  for (let i = 0; i < pathPts.length - 1; i++) {
+    const a = pathPts[i], b = pathPts[i + 1];
+    const ab = new THREE.Vector2().subVectors(b, a);
+    const t = Math.max(0, Math.min(1, new THREE.Vector2().subVectors(p, a).dot(ab) / ab.lengthSq()));
+    const closest = new THREE.Vector2().copy(a).addScaledVector(ab, t);
+    best = Math.min(best, p.distanceTo(closest));
+  }
+  return best;
+}
+
+const grassMat = new THREE.MeshStandardMaterial({ map: makeNoiseTexture(0x8fae6a, 0.8, 1.15, 16), roughness: 1 });
+const HILL_SEGS = 90;
+const level1Geo = new THREE.PlaneGeometry(SUBURB_HALF * 2, SUBURB_HALF * 2, HILL_SEGS, HILL_SEGS);
+level1Geo.rotateX(-Math.PI / 2);
+const level1Ground = new THREE.Mesh(level1Geo, grassMat);
 level1Ground.position.copy(LEVEL1_CENTER);
+level1Ground.receiveShadow = true;
 scene.add(level1Ground);
-const level1Light = new THREE.HemisphereLight(0xf0f4ff, 0x9fcf7e, 0.75);
+function sculptSuburbTerrain() {
+  const pos = level1Geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const wx = pos.getX(i) + LEVEL1_CENTER.x, wz = pos.getZ(i) + LEVEL1_CENTER.z;
+    pos.setY(i, terrainHeight(wx, wz));
+  }
+  pos.needsUpdate = true;
+  level1Geo.computeVertexNormals();
+}
+
+const level1Light = new THREE.HemisphereLight(0xf0f4ff, 0x9fcf7e, 0.85);
 scene.add(level1Light);
-const suburbSun = new THREE.DirectionalLight(0xfff8ea, 0.55);
-suburbSun.position.set(LEVEL1_CENTER.x + 20, 40, LEVEL1_CENTER.z + 10);
+const suburbSun = new THREE.DirectionalLight(0xfff8ea, 0.7);
+suburbSun.position.set(LEVEL1_CENTER.x + 20, 45, LEVEL1_CENTER.z + 10);
 scene.add(suburbSun);
 
-const LEVEL1_SPAWN = new THREE.Vector3(LEVEL1_CENTER.x, EYE_H, LEVEL1_CENTER.z + SUBURB_HALF - 6);
+// A path strip, a touch above the (already-flattened) ground beneath it
+// so it doesn't z-fight.
+const pathMat = new THREE.MeshStandardMaterial({ map: makeNoiseTexture(0xb3a06a, 0.75, 1.1, 2), roughness: 1 });
+for (let i = 0; i < pathPts.length - 1; i++) {
+  const a = pathPts[i], b = pathPts[i + 1];
+  const len = a.distanceTo(b);
+  const mid = new THREE.Vector2().addVectors(a, b).multiplyScalar(0.5);
+  const seg = new THREE.Mesh(new THREE.PlaneGeometry(2.6, len + 0.6), pathMat);
+  seg.rotation.x = -Math.PI / 2;
+  seg.rotation.z = -Math.atan2(b.x - a.x, b.y - a.y);
+  seg.position.set(mid.x, 0.03, mid.y);
+  seg.receiveShadow = true;
+  scene.add(seg);
+}
+
+const LEVEL1_SPAWN = new THREE.Vector3(pathPts[0].x, EYE_H, pathPts[0].y);
+flattenCircles.push({ x: pathPts[0].x, z: pathPts[0].y, r0: 4, r1: 9 });
 
 // The same white-picket-fence boundary as the parking lot, just enclosing
 // the whole field this time -- "a white fence around the map that you
-// cant exit".
+// cant exit". The ground right under it is flattened (see hillStrength),
+// so the fence itself can stay a plain straight run.
 buildFenceRun(LEVEL1_CENTER.x - SUBURB_HALF, LEVEL1_CENTER.z - SUBURB_HALF, LEVEL1_CENTER.x + SUBURB_HALF, LEVEL1_CENTER.z - SUBURB_HALF);
 buildFenceRun(LEVEL1_CENTER.x - SUBURB_HALF, LEVEL1_CENTER.z + SUBURB_HALF, LEVEL1_CENTER.x + SUBURB_HALF, LEVEL1_CENTER.z + SUBURB_HALF);
 buildFenceRun(LEVEL1_CENTER.x - SUBURB_HALF, LEVEL1_CENTER.z - SUBURB_HALF, LEVEL1_CENTER.x - SUBURB_HALF, LEVEL1_CENTER.z + SUBURB_HALF);
 buildFenceRun(LEVEL1_CENTER.x + SUBURB_HALF, LEVEL1_CENTER.z - SUBURB_HALF, LEVEL1_CENTER.x + SUBURB_HALF, LEVEL1_CENTER.z + SUBURB_HALF);
 
-const houseWallMat = new THREE.MeshStandardMaterial({ color: 0xece3c0, roughness: 0.8 });
+// The water tower -- a landmark standing on one of the hills, same
+// reference photos, purely decorative.
+(function buildWaterTower() {
+  const tx = LEVEL1_CENTER.x - 14, tz = LEVEL1_CENTER.z + 10;
+  const baseY = rawHillHeight(tx, tz); // this one's NOT flattened -- it stands right on the hill itself
+  const towerMat = new THREE.MeshStandardMaterial({ color: 0xe8e8e0, roughness: 0.6, metalness: 0.2 });
+  const g = new THREE.Group();
+  for (const [lx, lz] of [[-0.9, -0.9], [0.9, -0.9], [-0.9, 0.9], [0.9, 0.9]]) {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.13, 5.5, 6), towerMat);
+    leg.position.set(lx * 0.8, 2.75, lz * 0.8);
+    leg.rotation.x = (lz > 0 ? -1 : 1) * 0.08;
+    leg.rotation.z = (lx > 0 ? -1 : 1) * 0.08;
+    g.add(leg);
+  }
+  const tank = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 2.2, 16), towerMat);
+  tank.position.y = 6.6;
+  g.add(tank);
+  const cap = new THREE.Mesh(new THREE.ConeGeometry(1.7, 0.9, 16), towerMat);
+  cap.position.y = 7.8;
+  g.add(cap);
+  g.position.set(tx, baseY, tz);
+  g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  scene.add(g);
+})();
+
+const houseWallMat = new THREE.MeshStandardMaterial({ map: makeNoiseTexture(0xece3c0, 0.85, 1.05, 4), roughness: 0.8 });
 const houseRoofMat = new THREE.MeshStandardMaterial({ color: 0x6b6558, roughness: 0.75 });
 const houseFloorMat = new THREE.MeshStandardMaterial({ color: 0xcfc9b0, roughness: 0.9 });
 const HOUSE_WALL_T = 0.25;
@@ -328,6 +496,7 @@ const HOUSE_WALL_T = 0.25;
 // (purely decorative, not walkable) roof. Returns nothing; it's just set
 // dressing with real walls you can't walk through.
 function buildPlainHouse(cx, cz, w, d, wallH) {
+  flattenCircles.push({ x: cx, z: cz, r0: Math.hypot(w, d) / 2 + 1, r1: Math.hypot(w, d) / 2 + 7 });
   const hw = w / 2, hd = d / 2, doorHalf = 0.85;
   wallBox(cx - hw, cx - doorHalf, 0, wallH, cz - hd - HOUSE_WALL_T / 2, cz - hd + HOUSE_WALL_T / 2, houseWallMat);
   wallBox(cx + doorHalf, cx + hw, 0, wallH, cz - hd - HOUSE_WALL_T / 2, cz - hd + HOUSE_WALL_T / 2, houseWallMat);
@@ -355,6 +524,7 @@ buildPlainHouse(LEVEL1_CENTER.x - 10, LEVEL1_CENTER.z + 16, 7, 7, 3.2);
 // doorway below it); it's purely a height the player can stand on once
 // marked onRoof -- see groundHeightAt().
 const TARGET_HOUSE = { cx: LEVEL1_CENTER.x + 6, cz: LEVEL1_CENTER.z - 16, w: 8, d: 8, wallH: 3.4 };
+flattenCircles.push({ x: TARGET_HOUSE.cx, z: TARGET_HOUSE.cz, r0: 7, r1: 13 }); // generous -- also covers the ladder's placement spot right against its wall
 (function buildTargetHouse() {
   const { cx, cz, w, d, wallH } = TARGET_HOUSE;
   const hw = w / 2, hd = d / 2, doorHalf = 0.85;
@@ -407,6 +577,7 @@ let levelEscaped = false;
 // then climbed (walk into it and hold W).
 const ladderMat = new THREE.MeshStandardMaterial({ color: 0x8a6a3a, roughness: 0.7 });
 const ladderFoundPos = new THREE.Vector3(LEVEL1_CENTER.x - 20, 0, LEVEL1_CENTER.z + 18);
+flattenCircles.push({ x: ladderFoundPos.x, z: ladderFoundPos.z, r0: 2.5, r1: 6 });
 const ladderPlaceSpot = new THREE.Vector3(TARGET_HOUSE.cx + TARGET_HOUSE.w / 2 + 0.3, 0, TARGET_HOUSE.cz - TARGET_HOUSE.d / 2 + 1.2);
 function buildLadderMesh() {
   const g = new THREE.Group();
@@ -447,6 +618,11 @@ function groundHeightAt(x, z) {
     const hw = TARGET_HOUSE.w / 2 + 0.6, hd = TARGET_HOUSE.d / 2 + 0.6;
     if (x > TARGET_HOUSE.cx - hw && x < TARGET_HOUSE.cx + hw && z > TARGET_HOUSE.cz - hd && z < TARGET_HOUSE.cz + hd) return ROOF_Y;
   }
+  // The lab/parking lot is flat ground at y=0; only the suburb (far off
+  // in x) actually rolls.
+  if (Math.abs(x - LEVEL1_CENTER.x) < SUBURB_HALF + 2 && Math.abs(z - LEVEL1_CENTER.z) < SUBURB_HALF + 2) {
+    return terrainHeight(x, z);
+  }
   return 0;
 }
 const CLIMB_SPEED = 2.6;
@@ -468,6 +644,8 @@ function updateClimbing(dt) {
   }
   return false;
 }
+
+sculptSuburbTerrain(); // now that every flatten zone (houses, ladder spots, path, fence) is registered
 
 /* ---------------- movement ---------------- */
 const keys = { w: false, a: false, s: false, d: false, shift: false };
@@ -498,7 +676,12 @@ function movePlayer(dt) {
   if (mx || mz) {
     const len = Math.hypot(mx, mz); mx /= len; mz /= len;
     const s = Math.sin(yaw), c = Math.cos(yaw);
-    const wx = mx * c - mz * s, wz = mx * s + mz * c;
+    // (was mx*c - mz*s / mx*s + mz*c -- the cross terms had the wrong
+    // sign, so moving forward drifted sideways relative to where the
+    // camera was actually facing once you'd turned at all. "something's
+    // wrong with the movement" -- verified against the camera's own
+    // actual forward/right vectors, not just reasoned about.)
+    const wx = mx * c + mz * s, wz = -mx * s + mz * c;
     const stepX = camera.position.x + wx * speed * dt;
     if (!collidesAt(stepX, camera.position.z, feetY)) camera.position.x = stepX;
     const stepZ = camera.position.z + wz * speed * dt;
@@ -596,13 +779,23 @@ function triggerDoorCutscene() {
   boxColliders.splice(doorColliderIdx, 1); // the door no longer blocks anything
 
   const doorBaseY = DOOR_H / 2;
+  // Aim at the hazmat figure itself, not the door's own center -- the two
+  // aren't at the same x (he stands off to one side of the doorway), so
+  // looking at the door left you looking past him rather than at him.
+  // Computed once, then interpolated purely from elapsed wall-clock time
+  // (not "a little further every frame") so it reaches the target
+  // reliably regardless of frame rate -- the old per-frame version could
+  // visibly undershoot if frames were dropped or throttled.
+  const startYaw = yaw;
+  const targetYaw = Math.atan2(hazmatNPC.position.x - camera.position.x, hazmatNPC.position.z - camera.position.z);
+  const turnDelta = ((targetYaw - startYaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
   const t0 = performance.now();
   function tick() {
     const t = (performance.now() - t0) / 1000;
     if (t < 1.2) {
-      // look toward the door
-      const targetYaw = Math.atan2(doorCenter.x - camera.position.x, doorCenter.z - camera.position.z);
-      yaw += ((targetYaw - yaw + Math.PI * 3) % (Math.PI * 2) - Math.PI) * 0.08;
+      const turnT = Math.min(1, t / 1.1);
+      const eased = turnT * turnT * (3 - 2 * turnT); // smoothstep
+      yaw = startYaw + turnDelta * eased;
       camera.rotation.set(pitch, yaw, 0, 'YXZ');
     } else if (t < 2.8) {
       const openT = Math.min(1, (t - 1.2) / 1.2);

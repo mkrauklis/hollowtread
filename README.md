@@ -36,22 +36,28 @@ tower on the hill) until that image file is actually added to the repo
 Opens on an emergency-broadcast title card: *"Eco-Labs have uncovered a
 dreamworld that seems to be safe for now. We advise that everybody stays
 away from the lab."* Click or press any key to continue into a parking
-lot outside the lab. The lab itself looks like a wasteland — flipped
-desks, toppled filing cabinets, flickering lights, cords hanging from
-the ceiling that spark at random. Somewhere inside is a reinforced door;
-opening it (**E**, once close) cuts to a hazmat-suited figure pulling it
-open, then fades to **Level 1**.
+lot outside the lab (real tiled asphalt, not a flat color). The lab
+itself is dim — the sun outside casts real shadows, so the roof actually
+blocks it rather than the inside being as bright as the parking lot —
+and laid out as a real facility: a front room, a narrower hallway, and a
+back room, not one open box. It looks like a wasteland throughout —
+flipped desks, toppled filing cabinets, flickering lights, cords hanging
+from the ceiling that spark at random. Somewhere inside is a reinforced
+door; opening it (**E**, once close) cuts to a hazmat-suited figure
+pulling it open, then fades to **Level 1**.
 
-**Level 1 — "The Empty Suburb"** is a plain field under a flat, too-
-perfect sky, fenced in white picket all the way around (there's no way
-over or out). A few ordinary houses stand around the field, each one a
-real walk-in space — empty inside, which is the point. One house has no
-ground-floor way out at all; its door is up on the roof. The field's one
-ladder is lying in the grass somewhere else entirely — pick it up (**E**),
-carry it to that house, place it against the wall (**E** again), then
-hold **W** against it to climb. The roof door is the way out of the
-level; nothing past it is built yet, so reaching it just fades back to
-the title screen for now.
+**Level 1 — "The Empty Suburb"** is real rolling hills (reference
+photos: a winding dirt path, a water tower on a hilltop, white picket
+fence following the contours) under a flat, too-perfect sky, fenced in
+the whole way around (there's no way over or out). A few ordinary houses
+stand on their own flattened patches of hillside, each one a real walk-in
+space — empty inside, which is the point. One house has no ground-floor
+way out at all; its door is up on the roof. The field's one ladder is
+lying in the grass somewhere else entirely — pick it up (**E**), carry it
+to that house, place it against the wall (**E** again), then hold **W**
+against it to climb. The roof door is the way out of the level; nothing
+past it is built yet, so reaching it just fades back to the title screen
+for now.
 
 ## Controls
 
