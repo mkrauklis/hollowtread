@@ -3,36 +3,67 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>The Sub-liminal</title>
-<meta name="description" content="The Sub-liminal — a browser-based, first-person Backrooms exploration game. No build step. Photograph what's there; four things notice you back.">
+<title>The In-Between</title>
+<meta name="description" content="The In-Between — a new game, starting from its title screen.">
 <link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=">
-<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/style.css?v=3">
 </head>
 <body>
-<div class="menu-wrap">
-  <h1>THE SUB-LIMINAL</h1>
-  <p class="tagline">A first-person Backrooms exploration game, no objective but to document what's there. One connected space, no level select, no loading screens.</p>
+<div id="title-screen">
+  <!-- Placeholder background -- swap the gradient below for a real
+       background-image once the actual art file is in the repo (an
+       inline chat image can't be saved to disk directly; drop the file
+       in as e.g. title-bg.jpg and point .bg at it here). -->
+  <div class="bg"></div>
+  <div class="scrim"></div>
 
-  <a class="play-btn" href="world.html">▶ Play</a>
+  <div class="content">
+    <h1 class="game-title">THE IN-BETWEEN</h1>
 
-  <div class="level-list">
-    <a class="level-card" href="world.html">
-      <h2>Enter the Backrooms</h2>
-      <p>You start in a locked facility behind a lever-operated door — pull it and you're in the
-      Backrooms: dim lights, damp yellow carpet, mustard wallpaper that doesn't stop. A camera is
-      all you have — five things out there are worth photographing, if you can find them and get
-      close enough. Some walls hide crawlspaces low enough you'll need to crouch (one of them is a
-      very long way to somewhere else entirely), a staircase leads down into the tiled, flooded
-      Pool Rooms, and a mall waits at the end of that long crawl. Four things in here notice you
-      back; none of them can follow you through a crawlspace. Nothing to win, just however much of
-      it you can actually document.</p>
-    </a>
+    <nav class="menu" id="menu-main">
+      <button class="menu-btn" data-panel="start" id="btn-start">Start Game</button>
+      <button class="menu-btn" data-panel="levels">Levels</button>
+      <button class="menu-btn" data-panel="options">Options</button>
+    </nav>
   </div>
 
-  <p class="menu-foot">
-    Real JavaScript and Three.js over a CDN script tag — no build step. Open
-    <a href="world.html">world.html</a> directly, or serve the folder with any static server.
-  </p>
+  <div class="panel" data-panel-id="start" hidden>
+    <h2>Start Game</h2>
+    <p>Nothing to play yet — the first level is still being built.</p>
+    <button class="back-btn">Back</button>
+  </div>
+
+  <div class="panel" data-panel-id="levels" hidden>
+    <h2>Levels</h2>
+    <p>Nothing built yet — check back soon.</p>
+    <button class="back-btn">Back</button>
+  </div>
+
+  <div class="panel" data-panel-id="options" hidden>
+    <h2>Options</h2>
+    <label class="opt-row">Volume
+      <input type="range" id="opt-volume" min="0" max="100" value="80">
+    </label>
+    <button class="back-btn">Back</button>
+  </div>
 </div>
+
+<script>
+  const menu = document.getElementById('menu-main');
+  const panels = document.querySelectorAll('.panel');
+  menu.addEventListener('click', (e) => {
+    const btn = e.target.closest('.menu-btn');
+    if (!btn) return;
+    const id = btn.dataset.panel;
+    menu.hidden = true;
+    panels.forEach((p) => { p.hidden = p.dataset.panelId !== id; });
+  });
+  panels.forEach((p) => {
+    p.querySelector('.back-btn').addEventListener('click', () => {
+      p.hidden = true;
+      menu.hidden = false;
+    });
+  });
+</script>
 </body>
 </html>
