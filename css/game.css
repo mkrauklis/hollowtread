@@ -12,10 +12,43 @@ html, body {
 
 #game-root { position: absolute; inset: 0; }
 
+/* Dreamcore (Tlön Industries) look, on request -- hyper-saturated,
+   slightly too bright, a little hazy. A real bloom pass would need a
+   postprocessing pipeline this no-build-step project doesn't have, so
+   this is the cheap CSS version: oversaturate/brighten the canvas
+   itself, then layer a warm center-glow, a heavy vignette, and faint
+   grain on top in plain divs. */
 canvas.game-canvas {
   position: absolute;
   inset: 0;
   display: block;
+  filter: saturate(1.55) brightness(1.12) contrast(1.08);
+}
+
+#dream-glow {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 42%, rgba(255, 248, 214, 0.22) 0%, rgba(255, 248, 214, 0.08) 35%, rgba(255, 248, 214, 0) 65%);
+  mix-blend-mode: screen;
+}
+#dream-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 45%, rgba(10, 8, 20, 0.55) 100%);
+}
+#dream-grain {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+  background: repeating-linear-gradient(0deg, #fff 0px, #fff 1px, #000 2px, #000 3px);
+  animation: broadcast-flicker 0.15s steps(2) infinite;
 }
 
 /* ---------------- the emergency broadcast intro ---------------- */

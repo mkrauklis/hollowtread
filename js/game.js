@@ -8,7 +8,13 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x8fb6d8);
 
 const EYE_H = 1.65;
-const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.05, 200);
+// A much wider FOV than a normal game, on request ("dreamcore by Tlön
+// Industries") -- that brand's own photos are all shot on an extreme
+// wide-angle/fisheye lens, bowing straight lines out toward the edges of
+// frame. A true fisheye warp needs a shader we don't have a build step
+// for; a very wide rectilinear FOV gets a lot of the same exaggerated,
+// slightly-wrong-feeling perspective cheaply.
+const camera = new THREE.PerspectiveCamera(100, window.innerWidth / window.innerHeight, 0.05, 200);
 let yaw = Math.PI, pitch = 0; // facing +z -- toward the lab -- from the parking-lot spawn
 camera.position.set(0, EYE_H, 0);
 camera.rotation.order = 'YXZ';
@@ -411,7 +417,7 @@ function distanceToPath(x, z) {
   return best;
 }
 
-const grassMat = new THREE.MeshStandardMaterial({ map: makeNoiseTexture(0x8fae6a, 0.8, 1.15, 16), roughness: 1 });
+const grassMat = new THREE.MeshStandardMaterial({ map: makeNoiseTexture(0x5fcf4a, 0.8, 1.15, 16), roughness: 1 }); // a hotter, more unnatural green -- dreamcore, not realistic lawn
 const HILL_SEGS = 90;
 const level1Geo = new THREE.PlaneGeometry(SUBURB_HALF * 2, SUBURB_HALF * 2, HILL_SEGS, HILL_SEGS);
 level1Geo.rotateX(-Math.PI / 2);
@@ -429,7 +435,7 @@ function sculptSuburbTerrain() {
   level1Geo.computeVertexNormals();
 }
 
-const level1Light = new THREE.HemisphereLight(0xf0f4ff, 0x9fcf7e, 0.85);
+const level1Light = new THREE.HemisphereLight(0xf0f4ff, 0x9fcf7e, 1.05); // brighter, a little blown-out -- dreamcore, on request
 scene.add(level1Light);
 const suburbSun = new THREE.DirectionalLight(0xfff8ea, 0.7);
 suburbSun.position.set(LEVEL1_CENTER.x + 20, 45, LEVEL1_CENTER.z + 10);
@@ -809,7 +815,7 @@ function triggerDoorCutscene() {
       camera.position.copy(LEVEL1_SPAWN);
       yaw = 0; pitch = 0;
       camera.rotation.set(pitch, yaw, 0, 'YXZ');
-      scene.background = new THREE.Color(0xbfe3ff); // the suburb's own "perfect sky" -- flat, clean, no clouds
+      scene.background = new THREE.Color(0x4fb0ff); // the suburb's own "perfect sky" -- dreamcore-vivid, not just clean
       showTitleCard('LEVEL 1');
     } else if (t < 5.9) {
       fadeOverlay.classList.remove('show');
