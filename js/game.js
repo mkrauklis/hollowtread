@@ -5,7 +5,10 @@
 function boot() {
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x8fb6d8);
+// A dark, star-flecked night sky, on request (a reference photo of the
+// facility at night, glowing windows against a black silhouette) --
+// replaces the earlier flat daytime blue.
+scene.background = makeSkyGradientTexture('#05060b', '#171f33');
 
 const EYE_H = 1.65;
 // A much wider FOV than a normal game, on request ("dreamcore by Tlön
@@ -31,12 +34,12 @@ function resizeRenderer() {
 resizeRenderer();
 window.addEventListener('resize', resizeRenderer);
 
-// Dimmer ambient, and the sun now actually casts real shadows -- on
-// request ("the facility should be darker"), the roof genuinely blocks
-// daylight now instead of every interior surface being lit as brightly
-// as the parking lot outside it.
-scene.add(new THREE.AmbientLight(0x9a988c, 0.3));
-const sun = new THREE.DirectionalLight(0xfff3dd, 1.15);
+// Cool, dim moonlight now, on request (a reference photo of the
+// facility at night) -- replaces the earlier warm daytime sun. The
+// roof still genuinely blocks it via real shadow mapping, same as
+// before, so the interior stays darker than the lit windows around it.
+scene.add(new THREE.AmbientLight(0x3a4260, 0.22));
+const sun = new THREE.DirectionalLight(0xaac0ff, 0.4);
 sun.position.set(20, 42, -8);
 sun.target.position.set(0, 0, 22);
 scene.add(sun.target);
@@ -204,21 +207,146 @@ buildFenceRun(-26, -18, 26, -18);
 buildFenceRun(-26, -18, -26, 18);
 buildFenceRun(26, -18, 26, 18);
 
+// A couple of parking-lot light poles, now that it's night -- on
+// request (a reference photo of a lit lot) -- real visibility near the
+// entrance rather than the whole lot going flat black.
+const poleMat = new THREE.MeshStandardMaterial({ color: 0x2a2a28, roughness: 0.6, metalness: 0.5 });
+function buildLightPole(x, z) {
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 5.5, 8), poleMat);
+  pole.position.set(x, 2.75, z);
+  pole.castShadow = true;
+  scene.add(pole);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.2, 0.3), poleMat);
+  head.position.set(x, 5.5, z);
+  scene.add(head);
+  const lamp = new THREE.PointLight(0xfff0c8, 1.1, 16, 2);
+  lamp.position.set(x, 5.3, z);
+  scene.add(lamp);
+  boxColliders.push(new THREE.Box3(new THREE.Vector3(x - 0.15, 0, z - 0.15), new THREE.Vector3(x + 0.15, 5.5, z + 0.15)));
+}
+buildLightPole(-14, -10);
+buildLightPole(13, -10);
+
+// Traffic cones scattered in the lot, on request (a reference photo).
+const coneMat = new THREE.MeshStandardMaterial({ color: 0xd9601f, roughness: 0.7 });
+const coneStripeMat = new THREE.MeshStandardMaterial({ color: 0xece8dc, roughness: 0.6 });
+function buildCone(x, z) {
+  const cone = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.6, 10), coneMat);
+  cone.position.set(x, 0.3, z);
+  cone.castShadow = true;
+  scene.add(cone);
+  const stripe = new THREE.Mesh(new THREE.ConeGeometry(0.19, 0.12, 10), coneStripeMat);
+  stripe.position.set(x, 0.45, z);
+  scene.add(stripe);
+}
+for (const [cx, cz] of [[-5, -2], [-5.6, -1.4], [3, 6], [3.7, 6.5], [-1, 9], [12, -2]]) buildCone(cx, cz);
+
 /* ---------------- the lab building ---------------- */
 const BLDG_X0 = -15, BLDG_X1 = 15, BLDG_Z0 = 20, BLDG_Z1 = 55;
-const WALL_H = 5, WALL_T = 0.3;
+const WALL_H = 6.8, WALL_T = 0.3;
+// Brick for the real exterior envelope, concrete still for interior
+// partitions -- on request (reference photos of a decayed brick
+// facility, chimney/tower, gabled roof) replacing the original
+// uniform grey concrete everywhere.
+const brickMat = new THREE.MeshStandardMaterial({ map: makeNoiseTexture(0x6b3b2e, 0.65, 1.15, 8), roughness: 0.92 });
 const concreteMat = new THREE.MeshStandardMaterial({ map: makeNoiseTexture(0x8a8578, 0.75, 1.1, 5), roughness: 0.92 });
 const DOOR_HALF = 1.5;
 
-wallBox(BLDG_X0, -DOOR_HALF, 0, WALL_H, BLDG_Z0 - WALL_T / 2, BLDG_Z0 + WALL_T / 2, concreteMat);
-wallBox(DOOR_HALF, BLDG_X1, 0, WALL_H, BLDG_Z0 - WALL_T / 2, BLDG_Z0 + WALL_T / 2, concreteMat);
-wallBox(BLDG_X0 - WALL_T / 2, BLDG_X0 + WALL_T / 2, 0, WALL_H, BLDG_Z0, BLDG_Z1, concreteMat);
-wallBox(BLDG_X1 - WALL_T / 2, BLDG_X1 + WALL_T / 2, 0, WALL_H, BLDG_Z0, BLDG_Z1, concreteMat);
-const roof = new THREE.Mesh(new THREE.BoxGeometry(BLDG_X1 - BLDG_X0, 0.25, BLDG_Z1 - BLDG_Z0), concreteMat);
-roof.position.set((BLDG_X0 + BLDG_X1) / 2, WALL_H + 0.125, (BLDG_Z0 + BLDG_Z1) / 2);
-roof.castShadow = true;
-roof.receiveShadow = true;
-scene.add(roof);
+wallBox(BLDG_X0, -DOOR_HALF, 0, WALL_H, BLDG_Z0 - WALL_T / 2, BLDG_Z0 + WALL_T / 2, brickMat);
+wallBox(DOOR_HALF, BLDG_X1, 0, WALL_H, BLDG_Z0 - WALL_T / 2, BLDG_Z0 + WALL_T / 2, brickMat);
+wallBox(BLDG_X0 - WALL_T / 2, BLDG_X0 + WALL_T / 2, 0, WALL_H, BLDG_Z0, BLDG_Z1, brickMat);
+wallBox(BLDG_X1 - WALL_T / 2, BLDG_X1 + WALL_T / 2, 0, WALL_H, BLDG_Z0, BLDG_Z1, brickMat);
+
+// A pitched/gabled roofline + a brick chimney tower, on request --
+// replaces the original flat slab roof to match the reference photos'
+// silhouette.
+const roofMat = new THREE.MeshStandardMaterial({ map: makeNoiseTexture(0x2e2c28, 0.7, 1.15, 6), roughness: 0.88 });
+const roofRise = 2.6;
+const roofHalfW = (BLDG_X1 - BLDG_X0) / 2;
+const roofSlopeLen = Math.hypot(roofHalfW + 0.4, roofRise);
+const roofSlopeAngle = Math.atan2(roofRise, roofHalfW + 0.4);
+const roofMidZ = (BLDG_Z0 + BLDG_Z1) / 2;
+const roofDepth = (BLDG_Z1 - BLDG_Z0) + 0.8;
+for (const side of [-1, 1]) {
+  const panel = new THREE.Mesh(new THREE.BoxGeometry(roofSlopeLen, 0.2, roofDepth), roofMat);
+  panel.position.set(side * roofHalfW / 2, WALL_H + roofRise / 2, roofMidZ);
+  panel.rotation.z = side * roofSlopeAngle;
+  panel.castShadow = true;
+  panel.receiveShadow = true;
+  scene.add(panel);
+}
+const ridgeCap = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.3, roofDepth), roofMat);
+ridgeCap.position.set(0, WALL_H + roofRise + 0.05, roofMidZ);
+ridgeCap.castShadow = true;
+scene.add(ridgeCap);
+const chimney = new THREE.Mesh(new THREE.BoxGeometry(2.2, 6.5, 2.2), brickMat);
+chimney.position.set(BLDG_X0 + 4, WALL_H + 6.5 / 2, BLDG_Z0 + 3);
+chimney.castShadow = true;
+chimney.receiveShadow = true;
+scene.add(chimney);
+boxColliders.push(new THREE.Box3(
+  new THREE.Vector3(chimney.position.x - 1.1, 0, chimney.position.z - 1.1),
+  new THREE.Vector3(chimney.position.x + 1.1, WALL_H + 6.5, chimney.position.z + 1.1)
+));
+const chimneyCap = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.3, 2.6), roofMat);
+chimneyCap.position.set(chimney.position.x, WALL_H + 6.5 + 0.15, chimney.position.z);
+scene.add(chimneyCap);
+
+// A row of tall, glowing windows along each side wall, on request --
+// a self-lit glass pane reads as "lit from inside" purely from its own
+// emissive material (no outside light needed to make it glow), which is
+// exactly the dark-building-with-glowing-windows look in the reference
+// photo; a small point light just inside each one throws warm light
+// across the interior to match.
+const windowGlowMat = new THREE.MeshStandardMaterial({ color: 0xffdf9e, emissive: 0xffdf9e, emissiveIntensity: 2.2, roughness: 0.4 });
+const windowFrameMat = new THREE.MeshStandardMaterial({ color: 0x1c1a16, roughness: 0.8 });
+function buildSideWindow(wallX, wz, faceSign) {
+  const w = 1.1, h = 2.8, y = WALL_H * 0.58;
+  const pane = new THREE.Mesh(new THREE.PlaneGeometry(w, h), windowGlowMat);
+  pane.rotation.y = Math.PI / 2;
+  pane.position.set(wallX + faceSign * (WALL_T / 2 + 0.015), y, wz);
+  scene.add(pane);
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(0.08, h + 0.2, w + 0.2), windowFrameMat);
+  frame.position.set(wallX + faceSign * (WALL_T / 2 + 0.005), y, wz);
+  scene.add(frame);
+  const glow = new THREE.PointLight(0xffdf9e, 0.8, 9, 2);
+  glow.position.set(wallX - faceSign * 1.2, y, wz);
+  scene.add(glow);
+}
+for (const wz of [25, 31, 37, 43, 49]) {
+  buildSideWindow(BLDG_X0, wz, -1);
+  buildSideWindow(BLDG_X1, wz, 1);
+}
+
+// Exposed roof trusses, visible from inside -- on request (reference
+// photo of the open truss ceiling). Purely decorative, overhead, no
+// collision.
+const trussMat = new THREE.MeshStandardMaterial({ color: 0x2b2b26, roughness: 0.55, metalness: 0.5 });
+function buildTruss(z) {
+  const beam = new THREE.Mesh(new THREE.BoxGeometry(BLDG_X1 - BLDG_X0 - 0.6, 0.18, 0.18), trussMat);
+  beam.position.set(0, WALL_H - 0.15, z);
+  beam.castShadow = true;
+  scene.add(beam);
+  for (const side of [-1, 1]) {
+    const diag = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 3.2), trussMat);
+    diag.position.set(side * roofHalfW * 0.5, WALL_H - 0.9, z);
+    diag.rotation.x = side * 0.5;
+    scene.add(diag);
+  }
+}
+for (let z = BLDG_Z0 + 4; z < BLDG_Z1 - 2; z += 7) buildTruss(z);
+
+// Pipes running along the interior walls, same wasteland-facility
+// detail as the hanging cords.
+const pipeMat = new THREE.MeshStandardMaterial({ color: 0x6b5a3a, roughness: 0.6, metalness: 0.4 });
+function buildWallPipe(wallX, z0, z1, y, faceSign) {
+  const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, z1 - z0, 8), pipeMat);
+  pipe.rotation.x = Math.PI / 2;
+  pipe.position.set(wallX + faceSign * (WALL_T / 2 + 0.12), y, (z0 + z1) / 2);
+  scene.add(pipe);
+}
+buildWallPipe(BLDG_X0, BLDG_Z0 + 2, BLDG_Z1 - 2, WALL_H - 1.4, 1);
+buildWallPipe(BLDG_X1, BLDG_Z0 + 2, BLDG_Z1 - 2, WALL_H - 1.4, -1);
 
 const floorMat = new THREE.MeshStandardMaterial({ map: makeNoiseTexture(0x4e4c42, 0.7, 1.2, 10), roughness: 1 });
 const interiorFloor = new THREE.Mesh(new THREE.PlaneGeometry(BLDG_X1 - BLDG_X0 - 0.4, BLDG_Z1 - BLDG_Z0 - 0.4), floorMat);
@@ -288,6 +416,19 @@ function buildFallenCabinet(x, z, rotY) {
 buildFallenCabinet(-7, 33, 0.6);
 buildFallenCabinet(7, 24, -0.3);
 buildFallenCabinet(0, 45, 1.0);
+
+// More interior floor debris/rubble, on request (reference photos --
+// the real facility's floor is covered in it, not just desks/cabinets).
+const debrisMat = new THREE.MeshStandardMaterial({ map: makeNoiseTexture(0x55524a, 0.7, 1.1, 3), roughness: 0.95 });
+function buildDebris(x, z, s) {
+  const chunk = new THREE.Mesh(new THREE.BoxGeometry(s, s * 0.5, s * 0.8), debrisMat);
+  chunk.position.set(x, s * 0.25, z);
+  chunk.rotation.y = Math.random() * Math.PI;
+  chunk.castShadow = true;
+  chunk.receiveShadow = true;
+  scene.add(chunk);
+}
+for (const [dx, dz, ds] of [[-11, 24, 0.5], [12, 26, 0.4], [-3, 36, 0.35], [8, 40, 0.5], [-9, 46, 0.4], [2, 52, 0.45], [-13, 50, 0.35], [10, 48, 0.4]]) buildDebris(dx, dz, ds);
 
 // Cords hanging from the ceiling with the occasional random spark.
 const cordMat = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.85 });

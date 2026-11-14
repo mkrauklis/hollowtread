@@ -35,16 +35,19 @@ tower on the hill) until that image file is actually added to the repo
 
 Opens on an emergency-broadcast title card: *"Eco-Labs have uncovered a
 dreamworld that seems to be safe for now. We advise that everybody stays
-away from the lab."* Click or press any key to continue into a parking
-lot outside the lab (real tiled asphalt, not a flat color). The lab
-itself is dim — the sun outside casts real shadows, so the roof actually
-blocks it rather than the inside being as bright as the parking lot —
-and laid out as a real facility: a front room, a narrower hallway, and a
-back room, not one open box. It looks like a wasteland throughout —
-flipped desks, toppled filing cabinets, flickering lights, cords hanging
-from the ceiling that spark at random. Somewhere inside is a reinforced
-door; opening it (**E**, once close) cuts to a hazmat-suited figure
-pulling it open, then fades to **Level 1**.
+away from the lab."* Click or press any key to continue into a moonlit
+parking lot outside the lab (real tiled asphalt, light poles, traffic
+cones) — color-matched to reference photos of a decayed brick industrial
+building at night: brick walls, a pitched/gabled roof, a brick chimney
+tower, and a row of tall windows glowing warm against the dark exterior.
+Inside, it's taller than before, with exposed roof trusses and pipes
+running along the walls, and laid out as a real facility — a front room,
+a narrower hallway, and a back room, not one open box. It looks like a
+wasteland throughout — flipped desks, toppled filing cabinets, floor
+debris, flickering lights, cords hanging from the ceiling that spark at
+random. Somewhere inside is a reinforced door; opening it (**E**, once
+close) cuts to a hazmat-suited figure pulling it open, then fades to
+**Level 1**.
 
 **Level 1 — "The Empty Suburb"** is real rolling hills, color-matched
 directly to a reference photo: a deep gradient sky (not a flat color), a
