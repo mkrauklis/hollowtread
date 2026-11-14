@@ -22,7 +22,7 @@ canvas.game-canvas {
   position: absolute;
   inset: 0;
   display: block;
-  filter: saturate(1.55) brightness(1.12) contrast(1.08);
+  filter: saturate(1.2) brightness(1.04) contrast(1.05);
 }
 
 #dream-glow {
@@ -30,7 +30,7 @@ canvas.game-canvas {
   inset: 0;
   z-index: 4;
   pointer-events: none;
-  background: radial-gradient(ellipse at 50% 42%, rgba(255, 248, 214, 0.22) 0%, rgba(255, 248, 214, 0.08) 35%, rgba(255, 248, 214, 0) 65%);
+  background: radial-gradient(ellipse at 50% 42%, rgba(255, 248, 214, 0.12) 0%, rgba(255, 248, 214, 0.04) 35%, rgba(255, 248, 214, 0) 65%);
   mix-blend-mode: screen;
 }
 #dream-vignette {

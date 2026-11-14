@@ -46,18 +46,24 @@ from the ceiling that spark at random. Somewhere inside is a reinforced
 door; opening it (**E**, once close) cuts to a hazmat-suited figure
 pulling it open, then fades to **Level 1**.
 
-**Level 1 — "The Empty Suburb"** is real rolling hills (reference
-photos: a winding dirt path, a water tower on a hilltop, white picket
-fence following the contours) under a flat, too-perfect sky, fenced in
-the whole way around (there's no way over or out). A few ordinary houses
-stand on their own flattened patches of hillside, each one a real walk-in
-space — empty inside, which is the point. One house has no ground-floor
-way out at all; its door is up on the roof. The field's one ladder is
-lying in the grass somewhere else entirely — pick it up (**E**), carry it
-to that house, place it against the wall (**E** again), then hold **W**
-against it to climb. The roof door is the way out of the level; nothing
-past it is built yet, so reaching it just fades back to the title screen
-for now.
+**Level 1 — "The Empty Suburb"** is real rolling hills, color-matched
+directly to a reference photo: a deep gradient sky (not a flat color), a
+winding dirt path, a water tower on a hilltop, white picket fence
+following the contours with its own red/cyan chromatic-glitch fringe.
+Fenced in the whole way around (there's no way over or out). A few
+ordinary houses stand on their own flattened patches of hillside, each
+one a real walk-in space with proper white-trimmed windows and a door —
+empty inside, which is the point. One house has no ground-floor way out
+at all; its door is up on the roof. The field's one ladder is lying in
+the grass somewhere else entirely — pick it up (**E**), carry it to that
+house, place it against the wall (**E** again), then hold **W** against
+it to climb. The roof door is the way out of the level; nothing past it
+is built yet, so reaching it just fades back to the title screen for
+now.
+
+The whole game also has a dreamcore color treatment layered over it — a
+wide, slightly bowed-out lens, oversaturated colors, a soft glow, and a
+vignette — rather than a flat, literal render.
 
 ## Controls
 

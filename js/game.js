@@ -91,6 +91,21 @@ function makeNoiseTexture(hex, dark, light, repeat) {
   tex.repeat.set(repeat, repeat);
   return tex;
 }
+// A real vertical-gradient sky (deep saturated blue up top fading to a
+// paler blue at the horizon), on request (a reference photo) -- a flat
+// single color read as too uniform/synthetic next to it.
+function makeSkyGradientTexture(topHex, bottomHex) {
+  const w = 8, h = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  const grad = ctx.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, topHex);
+  grad.addColorStop(1, bottomHex);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, w, h);
+  return new THREE.CanvasTexture(canvas);
+}
 
 function wallBox(x0, x1, y0, y1, z0, z1, mat) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0), mat);
@@ -149,7 +164,11 @@ buildCar(10, 3, -0.1, carMats[0]);
 // the title screen's own background art -- also doubles as the lot's
 // play boundary so you can't wander off into the void.
 const fenceMat = new THREE.MeshStandardMaterial({ color: 0xece8dc, roughness: 0.6 });
-function buildFenceRun(x0, z0, x1, z1) {
+const fenceGlitchMats = [
+  new THREE.MeshStandardMaterial({ color: 0xff2040, emissive: 0xff2040, emissiveIntensity: 0.9, transparent: true, opacity: 0.6 }),
+  new THREE.MeshStandardMaterial({ color: 0x20e0ff, emissive: 0x20e0ff, emissiveIntensity: 0.9, transparent: true, opacity: 0.6 }),
+];
+function buildFenceRun(x0, z0, x1, z1, glitch) {
   const dx = x1 - x0, dz = z1 - z0;
   const len = Math.hypot(dx, dz);
   const count = Math.round(len / 0.9);
@@ -159,9 +178,22 @@ function buildFenceRun(x0, z0, x1, z1) {
   scene.add(rail);
   for (let i = 0; i <= count; i++) {
     const t = i / count;
+    const px = x0 + dx * t, pz = z0 + dz * t;
     const picket = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.0, 0.1), fenceMat);
-    picket.position.set(x0 + dx * t, 0.5, z0 + dz * t);
+    picket.position.set(px, 0.5, pz);
     scene.add(picket);
+    // A chromatic-fringe glitch accent right on the fence, on request (a
+    // reference photo) -- thin red/cyan ghost copies offset a few
+    // centimeters either side, same trick as the title screen's own
+    // anaglyph look, just localized to the fence instead of the whole
+    // screen.
+    if (glitch) {
+      for (let g = 0; g < 2; g++) {
+        const ghost = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.0, 0.1), fenceGlitchMats[g]);
+        ghost.position.set(px + (g === 0 ? -0.05 : 0.05), 0.5, pz);
+        scene.add(ghost);
+      }
+    }
   }
   boxColliders.push(new THREE.Box3(
     new THREE.Vector3(Math.min(x0, x1) - 0.1, 0, Math.min(z0, z1) - 0.1),
@@ -417,7 +449,7 @@ function distanceToPath(x, z) {
   return best;
 }
 
-const grassMat = new THREE.MeshStandardMaterial({ map: makeNoiseTexture(0x5fcf4a, 0.8, 1.15, 16), roughness: 1 }); // a hotter, more unnatural green -- dreamcore, not realistic lawn
+const grassMat = new THREE.MeshStandardMaterial({ map: makeNoiseTexture(0x6b8f3f, 0.9, 1.08, 26), roughness: 1 }); // matched directly to the reference photo's richer olive-green -- a narrower noise range than the lab's own textures, so it reads as fine turf grain rather than blotches
 const HILL_SEGS = 90;
 const level1Geo = new THREE.PlaneGeometry(SUBURB_HALF * 2, SUBURB_HALF * 2, HILL_SEGS, HILL_SEGS);
 level1Geo.rotateX(-Math.PI / 2);
@@ -435,7 +467,7 @@ function sculptSuburbTerrain() {
   level1Geo.computeVertexNormals();
 }
 
-const level1Light = new THREE.HemisphereLight(0xf0f4ff, 0x9fcf7e, 1.05); // brighter, a little blown-out -- dreamcore, on request
+const level1Light = new THREE.HemisphereLight(0xf0f4ff, 0x9fcf7e, 0.9);
 scene.add(level1Light);
 const suburbSun = new THREE.DirectionalLight(0xfff8ea, 0.7);
 suburbSun.position.set(LEVEL1_CENTER.x + 20, 45, LEVEL1_CENTER.z + 10);
@@ -463,10 +495,10 @@ flattenCircles.push({ x: pathPts[0].x, z: pathPts[0].y, r0: 4, r1: 9 });
 // the whole field this time -- "a white fence around the map that you
 // cant exit". The ground right under it is flattened (see hillStrength),
 // so the fence itself can stay a plain straight run.
-buildFenceRun(LEVEL1_CENTER.x - SUBURB_HALF, LEVEL1_CENTER.z - SUBURB_HALF, LEVEL1_CENTER.x + SUBURB_HALF, LEVEL1_CENTER.z - SUBURB_HALF);
-buildFenceRun(LEVEL1_CENTER.x - SUBURB_HALF, LEVEL1_CENTER.z + SUBURB_HALF, LEVEL1_CENTER.x + SUBURB_HALF, LEVEL1_CENTER.z + SUBURB_HALF);
-buildFenceRun(LEVEL1_CENTER.x - SUBURB_HALF, LEVEL1_CENTER.z - SUBURB_HALF, LEVEL1_CENTER.x - SUBURB_HALF, LEVEL1_CENTER.z + SUBURB_HALF);
-buildFenceRun(LEVEL1_CENTER.x + SUBURB_HALF, LEVEL1_CENTER.z - SUBURB_HALF, LEVEL1_CENTER.x + SUBURB_HALF, LEVEL1_CENTER.z + SUBURB_HALF);
+buildFenceRun(LEVEL1_CENTER.x - SUBURB_HALF, LEVEL1_CENTER.z - SUBURB_HALF, LEVEL1_CENTER.x + SUBURB_HALF, LEVEL1_CENTER.z - SUBURB_HALF, true);
+buildFenceRun(LEVEL1_CENTER.x - SUBURB_HALF, LEVEL1_CENTER.z + SUBURB_HALF, LEVEL1_CENTER.x + SUBURB_HALF, LEVEL1_CENTER.z + SUBURB_HALF, true);
+buildFenceRun(LEVEL1_CENTER.x - SUBURB_HALF, LEVEL1_CENTER.z - SUBURB_HALF, LEVEL1_CENTER.x - SUBURB_HALF, LEVEL1_CENTER.z + SUBURB_HALF, true);
+buildFenceRun(LEVEL1_CENTER.x + SUBURB_HALF, LEVEL1_CENTER.z - SUBURB_HALF, LEVEL1_CENTER.x + SUBURB_HALF, LEVEL1_CENTER.z + SUBURB_HALF, true);
 
 // The water tower -- a landmark standing on one of the hills, same
 // reference photos, purely decorative.
@@ -493,14 +525,45 @@ buildFenceRun(LEVEL1_CENTER.x + SUBURB_HALF, LEVEL1_CENTER.z - SUBURB_HALF, LEVE
   scene.add(g);
 })();
 
-const houseWallMat = new THREE.MeshStandardMaterial({ map: makeNoiseTexture(0xece3c0, 0.85, 1.05, 4), roughness: 0.8 });
-const houseRoofMat = new THREE.MeshStandardMaterial({ color: 0x6b6558, roughness: 0.75 });
+const houseWallMat = new THREE.MeshStandardMaterial({ map: makeNoiseTexture(0xe8d8a0, 0.85, 1.05, 4), roughness: 0.75 });
+const houseTrimMat = new THREE.MeshStandardMaterial({ color: 0xf4f2ea, roughness: 0.5 }); // white window/corner trim, matched to the reference
+const houseRoofMat = new THREE.MeshStandardMaterial({ color: 0xe0c4bf, roughness: 0.6 }); // the reference's own pale dusty-pink roof, not grey
 const houseFloorMat = new THREE.MeshStandardMaterial({ color: 0xcfc9b0, roughness: 0.9 });
+const windowGlassMat = new THREE.MeshStandardMaterial({ color: 0x1a2430, roughness: 0.25, metalness: 0.4 });
 const HOUSE_WALL_T = 0.25;
 
-// An ordinary, walk-in, empty house -- door on the south face, a pitched
-// (purely decorative, not walkable) roof. Returns nothing; it's just set
-// dressing with real walls you can't walk through.
+// A real white-trimmed window, dark glass behind a cross-mullion frame --
+// matched to the reference photo's own houses -- flush against a wall
+// that runs along X at a fixed Z, facing +Z or -Z (faceSign).
+function buildWindowOnZWall(wx, wallZ, y, faceSign) {
+  const w = 0.8, h = 0.9;
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(w + 0.14, h + 0.14, 0.07), houseTrimMat);
+  frame.position.set(wx, y, wallZ + faceSign * 0.13);
+  scene.add(frame);
+  const glass = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.04), windowGlassMat);
+  glass.position.set(wx, y, wallZ + faceSign * 0.16);
+  scene.add(glass);
+  const mv = new THREE.Mesh(new THREE.BoxGeometry(0.045, h, 0.05), houseTrimMat);
+  mv.position.set(wx, y, wallZ + faceSign * 0.155);
+  scene.add(mv);
+  const mh = new THREE.Mesh(new THREE.BoxGeometry(w, 0.045, 0.05), houseTrimMat);
+  mh.position.set(wx, y, wallZ + faceSign * 0.155);
+  scene.add(mh);
+}
+// A white-trimmed door frame, matched the same way.
+function buildDoorTrim(cx, wallZ, doorHalf, wallH, faceSign) {
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(doorHalf * 2 + 0.18, 2.15, 0.08), houseTrimMat);
+  frame.position.set(cx, 1.075, wallZ + faceSign * 0.1);
+  scene.add(frame);
+  const slab = new THREE.Mesh(new THREE.BoxGeometry(doorHalf * 2 - 0.1, 2.0, 0.06), new THREE.MeshStandardMaterial({ color: 0x5a3f2a, roughness: 0.6 }));
+  slab.position.set(cx, 1.0, wallZ + faceSign * 0.13);
+  scene.add(slab);
+}
+
+// An ordinary, walk-in, empty house -- door on the south face, four
+// white-trimmed windows flanking it, a pitched roof (purely decorative,
+// not walkable). Returns nothing; it's just set dressing with real walls
+// you can't walk through.
 function buildPlainHouse(cx, cz, w, d, wallH) {
   flattenCircles.push({ x: cx, z: cz, r0: Math.hypot(w, d) / 2 + 1, r1: Math.hypot(w, d) / 2 + 7 });
   const hw = w / 2, hd = d / 2, doorHalf = 0.85;
@@ -516,6 +579,12 @@ function buildPlainHouse(cx, cz, w, d, wallH) {
   roof.rotation.y = Math.PI / 4;
   roof.position.set(cx, wallH + 0.9, cz);
   scene.add(roof);
+  buildDoorTrim(cx, cz - hd, doorHalf, wallH, -1);
+  const winXL = cx - (hw + doorHalf) / 2, winXR = cx + (hw + doorHalf) / 2;
+  buildWindowOnZWall(winXL, cz - hd, 0.95, -1);
+  buildWindowOnZWall(winXR, cz - hd, 0.95, -1);
+  buildWindowOnZWall(winXL, cz - hd, 2.3, -1);
+  buildWindowOnZWall(winXR, cz - hd, 2.3, -1);
   const light = new THREE.PointLight(0xfff4d6, 0.6, 7, 2);
   light.position.set(cx, wallH - 0.4, cz);
   scene.add(light);
@@ -542,6 +611,12 @@ flattenCircles.push({ x: TARGET_HOUSE.cx, z: TARGET_HOUSE.cz, r0: 7, r1: 13 }); 
   const floor = new THREE.Mesh(new THREE.BoxGeometry(w - HOUSE_WALL_T, 0.1, d - HOUSE_WALL_T), houseFloorMat);
   floor.position.set(cx, -0.05, cz);
   scene.add(floor);
+  buildDoorTrim(cx, cz - hd, doorHalf, wallH, -1);
+  const winXL2 = cx - (hw + doorHalf) / 2, winXR2 = cx + (hw + doorHalf) / 2;
+  buildWindowOnZWall(winXL2, cz - hd, 0.95, -1);
+  buildWindowOnZWall(winXR2, cz - hd, 0.95, -1);
+  buildWindowOnZWall(winXL2, cz - hd, 2.3, -1);
+  buildWindowOnZWall(winXR2, cz - hd, 2.3, -1);
   // flat roof -- visual only, no collider (see note above)
   const roofSlab = new THREE.Mesh(new THREE.BoxGeometry(w + 0.3, 0.2, d + 0.3), houseRoofMat);
   roofSlab.position.set(cx, wallH + 0.1, cz);
@@ -815,7 +890,7 @@ function triggerDoorCutscene() {
       camera.position.copy(LEVEL1_SPAWN);
       yaw = 0; pitch = 0;
       camera.rotation.set(pitch, yaw, 0, 'YXZ');
-      scene.background = new THREE.Color(0x4fb0ff); // the suburb's own "perfect sky" -- dreamcore-vivid, not just clean
+      scene.background = makeSkyGradientTexture('#1455b0', '#5fa8e0'); // the suburb's own "perfect sky" -- a real gradient, deep blue overhead fading paler at the horizon, matching the reference photo directly
       showTitleCard('LEVEL 1');
     } else if (t < 5.9) {
       fadeOverlay.classList.remove('show');
